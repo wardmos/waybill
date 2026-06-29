@@ -41,6 +41,17 @@ Recommended files:
 - `commands.log`
 - `test-summary.md`
 
+## CLI
+
+Validate a bundle:
+
+```bash
+./cli/waybill validate .waybill
+```
+
+The CLI is intentionally small and uses only the Python standard library.
+It currently supports bundle validation.
+
 ## Commands
 
 Waybill supports two command names with the same behavior:

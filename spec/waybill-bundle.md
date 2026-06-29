@@ -69,7 +69,8 @@ An adapter exporting a bundle should:
    - `git rev-parse HEAD`
    - `git diff`
 3. Create `.waybill/`.
-4. Write `WAYBILL.md` using the standard template.
+4. Write `WAYBILL.md` using the exact section headings from the standard
+   template.
 5. Write `metadata.json`.
 6. Write recommended artifacts when information is available.
 7. Mark facts, assumptions, verified results, and unverified claims clearly.

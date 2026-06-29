@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""Waybill command line interface."""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from waybill_core.validation import has_errors, validate_bundle  # noqa: E402
+
+
+def cmd_validate(args: argparse.Namespace) -> int:
+    issues = validate_bundle(args.bundle)
+    if issues:
+        for issue in issues:
+            output = sys.stderr if issue.severity == "error" else sys.stdout
+            print(issue.format(), file=output)
+    if has_errors(issues):
+        print(f"FAIL invalid Waybill Bundle: {args.bundle}", file=sys.stderr)
+        return 1
+    print(f"PASS valid Waybill Bundle: {args.bundle}")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="waybill",
+        description="Validate and inspect local Waybill Bundles.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    validate = subparsers.add_parser("validate", help="validate a Waybill Bundle")
+    validate.add_argument("bundle", help="path to a Waybill Bundle directory")
+    validate.set_defaults(func=cmd_validate)
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

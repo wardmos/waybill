@@ -11,6 +11,12 @@ Run:
 python3 scripts/validate-waybill.py
 ```
 
+Validate a specific bundle:
+
+```bash
+./cli/waybill validate .waybill
+```
+
 This checks:
 
 - Required repository files.
@@ -22,6 +28,7 @@ This checks:
 - Required `WAYBILL.md` sections.
 - Obvious secret-like strings in examples.
 - Agent-neutral handoff wording in examples.
+- CLI bundle validation behavior through shared validation code.
 
 The script intentionally uses only the Python standard library.
 

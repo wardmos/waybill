@@ -10,6 +10,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from waybill_core.validation import validate_bundle  # noqa: E402
 
 REQUIRED_FILES = [
     "README.md",
@@ -19,6 +23,9 @@ REQUIRED_FILES = [
     "spec/waybill-bundle.md",
     "spec/waybill-template.md",
     "spec/metadata.schema.json",
+    "cli/waybill",
+    "waybill_core/__init__.py",
+    "waybill_core/validation.py",
     ".agents/plugins/marketplace.json",
     ".claude/skills/handoff/SKILL.md",
     ".claude/skills/waybill/SKILL.md",
@@ -33,40 +40,6 @@ REQUIRED_FILES = [
 EXAMPLES = [
     "examples/claude-to-codex",
     "examples/codex-to-claude",
-]
-
-WAYBILL_SECTIONS = [
-    "Original Goal",
-    "Current Status",
-    "User Constraints",
-    "Repo State",
-    "Changed Files",
-    "Commands Run",
-    "Test State",
-    "Failed Attempts",
-    "Current Hypothesis",
-    "Next Recommended Step",
-    "Risks / Unknowns",
-    "Instructions For Next Agent",
-]
-
-SECRET_PATTERNS = [
-    re.compile(pattern, re.IGNORECASE)
-    for pattern in [
-        r"sk-[A-Za-z0-9_-]{10,}",
-        r"api[_-]?key\s*[:=]",
-        r"password\s*[:=]",
-        r"secret\s*[:=]",
-        r"token\s*[:=]",
-        r"cookie\s*[:=]",
-    ]
-]
-
-BAD_AGENT_PHRASES = [
-    "Claude should",
-    "Claude must",
-    "Codex should",
-    "Codex must",
 ]
 
 COMMAND_CLASSIFICATION_TERMS = [
@@ -216,39 +189,11 @@ def validate_claude_skills() -> None:
 
 
 def validate_example(example_dir: Path) -> None:
-    for name in ["WAYBILL.md", "metadata.json"]:
-        if not (example_dir / name).is_file():
-            fail(f"{example_dir.relative_to(ROOT)} missing {name}")
-
-    metadata = read_json(example_dir / "metadata.json")
-    for key in ["schema_version", "source_agent", "created_at", "repo_root", "git", "artifacts"]:
-        if key not in metadata:
-            fail(f"{example_dir.relative_to(ROOT)} metadata missing {key}")
-
-    if metadata["schema_version"] != "draft":
-        fail(f"{example_dir.relative_to(ROOT)} metadata schema_version must be draft")
-    if not isinstance(metadata.get("git", {}).get("dirty"), bool):
-        fail(f"{example_dir.relative_to(ROOT)} metadata git.dirty must be boolean")
-    if metadata.get("artifacts", {}).get("waybill") != "WAYBILL.md":
-        fail(f"{example_dir.relative_to(ROOT)} metadata artifacts.waybill must be WAYBILL.md")
-
-    for artifact in metadata["artifacts"].values():
-        if not (example_dir / artifact).is_file():
-            fail(f"{example_dir.relative_to(ROOT)} missing artifact {artifact}")
-
-    waybill = (example_dir / "WAYBILL.md").read_text()
-    for section in WAYBILL_SECTIONS:
-        if f"## {section}" not in waybill:
-            fail(f"{example_dir.relative_to(ROOT)} WAYBILL.md missing section: {section}")
-
-    combined = "\n".join(path.read_text() for path in example_dir.iterdir() if path.is_file())
-    for pattern in SECRET_PATTERNS:
-        if pattern.search(combined):
-            fail(f"{example_dir.relative_to(ROOT)} may contain a secret matching {pattern.pattern}")
-
-    for phrase in BAD_AGENT_PHRASES:
-        if phrase in waybill:
-            fail(f"{example_dir.relative_to(ROOT)} contains agent-specific phrase: {phrase}")
+    issues = validate_bundle(example_dir)
+    errors = [issue for issue in issues if issue.severity == "error"]
+    if errors:
+        formatted = "; ".join(issue.format() for issue in errors)
+        fail(f"{example_dir.relative_to(ROOT)} invalid bundle: {formatted}")
 
 
 def validate_examples() -> None:

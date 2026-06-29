@@ -1,7 +1,8 @@
 # Install Waybill
 
-Waybill ships as Markdown instructions for Claude Code and a local Codex
-plugin. No CLI or package manager install is required.
+Waybill ships as Markdown instructions for Claude Code, a local Codex plugin,
+and a small Python standard-library CLI. No package manager install is
+required.
 
 ## Codex
 
@@ -124,6 +125,12 @@ After installing both sides, run the static repository validation:
 
 ```bash
 python3 scripts/validate-waybill.py
+```
+
+Validate any generated bundle:
+
+```bash
+./cli/waybill validate .waybill
 ```
 
 Then follow the manual end-to-end test plan in `TESTING.md`.

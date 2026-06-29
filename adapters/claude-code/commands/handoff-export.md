@@ -34,7 +34,8 @@ Create a Waybill Bundle for the current unfinished task.
    - `git rev-parse HEAD`
    - `git diff`
 4. Create `.waybill/`.
-5. Write `.waybill/WAYBILL.md` using `spec/waybill-template.md`.
+5. Write `.waybill/WAYBILL.md` using the exact section headings from
+   `spec/waybill-template.md`. Do not rename, omit, or substitute headings.
 6. Write `.waybill/metadata.json` following `spec/metadata.schema.json`.
 7. Write `.waybill/diff.patch` from the current diff when git is available.
 8. Write `.waybill/commands.log` with important commands from the conversation.

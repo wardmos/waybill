@@ -74,7 +74,8 @@ Procedure:
    - `git rev-parse HEAD`
    - `git diff`
 4. Create `.waybill/`.
-5. Write `.waybill/WAYBILL.md` using the standard handoff sections.
+5. Write `.waybill/WAYBILL.md` using the exact section headings from
+   `spec/waybill-template.md`. Do not rename, omit, or substitute headings.
 6. Write `.waybill/metadata.json`.
 7. Write `.waybill/diff.patch` from the current diff when git is available.
 8. Write `.waybill/commands.log` with important commands from the conversation.
