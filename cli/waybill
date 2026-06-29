@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
+from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +15,25 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from waybill_core.validation import has_errors, validate_bundle  # noqa: E402
+
+
+def read_metadata(bundle: Path) -> tuple[dict[str, Any] | None, str | None]:
+    path = bundle / "metadata.json"
+    if not path.is_file():
+        return None, "metadata.json is missing"
+    try:
+        metadata = json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        return None, f"metadata.json is invalid JSON: {exc}"
+    if not isinstance(metadata, dict):
+        return None, "metadata.json must contain an object"
+    return metadata, None
+
+
+def print_field(label: str, value: object) -> None:
+    if value is None or value == "":
+        value = "unknown"
+    print(f"{label}: {value}")
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
@@ -28,16 +49,62 @@ def cmd_validate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_inspect(args: argparse.Namespace) -> int:
+    bundle = Path(args.bundle)
+    issues = validate_bundle(bundle)
+    errors = [issue for issue in issues if issue.severity == "error"]
+    warnings = [issue for issue in issues if issue.severity == "warning"]
+
+    print(f"Bundle: {bundle}")
+
+    metadata, metadata_error = read_metadata(bundle)
+    if metadata_error:
+        print(f"Metadata: {metadata_error}")
+    elif metadata is not None:
+        git = metadata.get("git") if isinstance(metadata.get("git"), dict) else {}
+        artifacts = (
+            metadata.get("artifacts")
+            if isinstance(metadata.get("artifacts"), dict)
+            else {}
+        )
+
+        print_field("Source agent", metadata.get("source_agent"))
+        print_field("Created at", metadata.get("created_at"))
+        print_field("Repo root", metadata.get("repo_root"))
+        print_field("Git branch", git.get("branch"))
+        print_field("Git base ref", git.get("base_ref"))
+        print_field("Git head SHA", git.get("head_sha"))
+        print_field("Git dirty", git.get("dirty"))
+
+        print("Artifacts:")
+        for name, artifact in artifacts.items():
+            if not isinstance(artifact, str):
+                print(f"  - {name}: invalid path")
+                continue
+            status = "present" if (bundle / artifact).is_file() else "missing"
+            print(f"  - {name}: {artifact} ({status})")
+
+    print(f"Validation: {len(errors)} error(s), {len(warnings)} warning(s)")
+    for issue in issues:
+        print(f"  - {issue.format()}")
+
+    return 1 if errors else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="waybill",
-        description="Validate and inspect local Waybill Bundles.",
+        description="Inspect and validate local Waybill Bundles.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     validate = subparsers.add_parser("validate", help="validate a Waybill Bundle")
     validate.add_argument("bundle", help="path to a Waybill Bundle directory")
     validate.set_defaults(func=cmd_validate)
+
+    inspect = subparsers.add_parser("inspect", help="summarize a Waybill Bundle")
+    inspect.add_argument("bundle", help="path to a Waybill Bundle directory")
+    inspect.set_defaults(func=cmd_inspect)
 
     return parser
 

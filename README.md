@@ -49,8 +49,14 @@ Validate a bundle:
 ./cli/waybill validate .waybill
 ```
 
+Inspect bundle metadata and validation status:
+
+```bash
+./cli/waybill inspect .waybill
+```
+
 The CLI is intentionally small and uses only the Python standard library.
-It currently supports bundle validation.
+It currently supports bundle validation and inspection.
 
 ## Commands
 
@@ -117,7 +123,6 @@ handoff test plans.
 
 ## Current Limitations
 
-- No CLI yet.
 - No automatic patch application.
 - No automatic transcript parsing.
 - No secret redaction command yet.

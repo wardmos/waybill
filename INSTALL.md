@@ -133,4 +133,10 @@ Validate any generated bundle:
 ./cli/waybill validate .waybill
 ```
 
+Inspect bundle metadata and validation status:
+
+```bash
+./cli/waybill inspect .waybill
+```
+
 Then follow the manual end-to-end test plan in `TESTING.md`.

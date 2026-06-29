@@ -17,6 +17,12 @@ Validate a specific bundle:
 ./cli/waybill validate .waybill
 ```
 
+Inspect a specific bundle:
+
+```bash
+./cli/waybill inspect .waybill
+```
+
 This checks:
 
 - Required repository files.
@@ -29,6 +35,7 @@ This checks:
 - Obvious secret-like strings in examples.
 - Agent-neutral handoff wording in examples.
 - CLI bundle validation behavior through shared validation code.
+- CLI bundle inspection output for metadata, artifacts, and validation status.
 
 The script intentionally uses only the Python standard library.
 
