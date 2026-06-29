@@ -15,7 +15,8 @@ Continue it in Codex:
 ```
 
 Waybill keeps handoffs agent-neutral, local-first, and portable across coding agents.
-Waybill focuses on portable handoffs between coding agents.
+Waybill started with Claude Code and Codex. The current adapter set also
+includes OpenCode.
 
 ## What Waybill Creates
 
@@ -98,6 +99,20 @@ Use the Codex plugin in:
 adapters/codex/
 ```
 
+### OpenCode
+
+Use the OpenCode project commands and skills in:
+
+```text
+.opencode/
+```
+
+Reusable adapter files are available in:
+
+```text
+adapters/opencode/
+```
+
 ## Safety Defaults
 
 - `.waybill/` is ignored by default.
@@ -126,7 +141,8 @@ handoff test plans.
 - No automatic patch application.
 - No automatic transcript parsing.
 - No secret redaction command yet.
-- Claude Code and Codex are supported by the initial adapter set.
+- OpenCode support is file-based commands and skills; no OpenCode plugin hooks
+  are required yet.
 
 ## Roadmap
 

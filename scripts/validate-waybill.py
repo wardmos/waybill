@@ -29,12 +29,21 @@ REQUIRED_FILES = [
     ".agents/plugins/marketplace.json",
     ".claude/skills/handoff/SKILL.md",
     ".claude/skills/waybill/SKILL.md",
+    ".opencode/commands/handoff.md",
+    ".opencode/commands/waybill.md",
+    ".opencode/skills/handoff/SKILL.md",
+    ".opencode/skills/waybill/SKILL.md",
     "adapters/claude-code/README.md",
     "adapters/claude-code/commands/handoff-export.md",
     "adapters/claude-code/commands/handoff-import.md",
     "adapters/codex/README.md",
     "adapters/codex/.codex-plugin/plugin.json",
     "adapters/codex/skills/handoff/SKILL.md",
+    "adapters/opencode/README.md",
+    "adapters/opencode/commands/handoff.md",
+    "adapters/opencode/commands/waybill.md",
+    "adapters/opencode/skills/handoff/SKILL.md",
+    "adapters/opencode/skills/waybill/SKILL.md",
 ]
 
 EXAMPLES = [
@@ -188,6 +197,55 @@ def validate_claude_skills() -> None:
             fail("Claude waybill alias must require command log action classification")
 
 
+def validate_opencode_adapter() -> None:
+    command_paths = {
+        "handoff": ROOT / ".opencode/commands/handoff.md",
+        "waybill": ROOT / ".opencode/commands/waybill.md",
+        "adapter handoff": ROOT / "adapters/opencode/commands/handoff.md",
+        "adapter waybill": ROOT / "adapters/opencode/commands/waybill.md",
+    }
+    for name, path in command_paths.items():
+        text = path.read_text()
+        if not text.startswith("---\n"):
+            fail(f"OpenCode command {name} must start with frontmatter")
+        if "description:" not in text:
+            fail(f"OpenCode command {name} must declare a description")
+        if "$ARGUMENTS" not in text:
+            fail(f"OpenCode command {name} must pass $ARGUMENTS")
+        if "handoff" not in text:
+            fail(f"OpenCode command {name} must route to the handoff workflow")
+
+    skill_paths = {
+        "handoff": ROOT / ".opencode/skills/handoff/SKILL.md",
+        "waybill": ROOT / ".opencode/skills/waybill/SKILL.md",
+        "adapter handoff": ROOT / "adapters/opencode/skills/handoff/SKILL.md",
+        "adapter waybill": ROOT / "adapters/opencode/skills/waybill/SKILL.md",
+    }
+    for name, path in skill_paths.items():
+        text = path.read_text()
+        if not text.startswith("---\n"):
+            fail(f"OpenCode skill {name} must start with frontmatter")
+        expected = "name: handoff" if "handoff" in name else "name: waybill"
+        if expected not in text:
+            fail(f"OpenCode skill {name} must declare {expected}")
+        if "description:" not in text:
+            fail(f"OpenCode skill {name} must declare a description")
+        if "compatibility: opencode" not in text:
+            fail(f"OpenCode skill {name} must declare compatibility: opencode")
+        if "argument-hint:" in text:
+            fail(f"OpenCode skill {name} must not use Claude-specific argument-hint")
+        if "export" not in text or "import" not in text:
+            fail(f"OpenCode skill {name} must cover export and import")
+        if "Do not automatically apply `diff.patch`" not in text:
+            fail(f"OpenCode skill {name} must forbid automatic patch application")
+        if ".waybill/" not in text:
+            fail(f"OpenCode skill {name} must mention .waybill/")
+        if name.endswith("handoff") and not has_command_classification_rule(text):
+            fail("OpenCode handoff skill must require command log action classification")
+        if "source_agent" in text and "opencode" not in text:
+            fail(f"OpenCode skill {name} must use source_agent opencode")
+
+
 def validate_example(example_dir: Path) -> None:
     issues = validate_bundle(example_dir)
     errors = [issue for issue in issues if issue.severity == "error"]
@@ -208,6 +266,7 @@ def main() -> int:
         ("Codex plugin", validate_codex_plugin),
         ("Codex marketplace", validate_codex_marketplace),
         ("Claude skills", validate_claude_skills),
+        ("OpenCode adapter", validate_opencode_adapter),
         ("examples", validate_examples),
     ]
 

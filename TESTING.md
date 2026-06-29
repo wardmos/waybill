@@ -34,6 +34,7 @@ This checks:
 - Required `WAYBILL.md` sections.
 - Obvious secret-like strings in examples.
 - Agent-neutral handoff wording in examples.
+- OpenCode command and skill frontmatter.
 - CLI bundle validation behavior through shared validation code.
 - CLI bundle inspection output for metadata, artifacts, and validation status.
 
@@ -170,6 +171,45 @@ Expected result:
 - `commands.log` separates read-only inspection commands from bundle-writing
   actions such as creating `.waybill/` and writing artifact files.
 - `diff.patch` does not imply code changed when only the bundle was written.
+
+## OpenCode Smoke Test
+
+This repository includes project-scoped OpenCode commands and skills:
+
+```text
+.opencode/commands/handoff.md
+.opencode/commands/waybill.md
+.opencode/skills/handoff/SKILL.md
+.opencode/skills/waybill/SKILL.md
+```
+
+To smoke test them in OpenCode:
+
+1. Start OpenCode from the repository root:
+
+   ```bash
+   opencode
+   ```
+
+2. Run:
+
+   ```text
+   /handoff import examples/claude-to-codex
+   ```
+
+3. Run the alias:
+
+   ```text
+   /waybill import examples/claude-to-codex
+   ```
+
+Expected result:
+
+- OpenCode loads the project command and handoff skill.
+- OpenCode reads the example bundle.
+- OpenCode checks the current repository state.
+- OpenCode reports that the example bundle references a different app repo.
+- OpenCode does not apply `diff.patch`.
 
 ## Expected Result
 

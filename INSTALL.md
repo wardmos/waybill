@@ -119,9 +119,50 @@ adapters/claude-code/commands/
 Use those files if your Claude Code setup still depends on `.claude/commands/`
 style custom commands instead of skills.
 
+## OpenCode
+
+This repository includes project-scoped OpenCode commands and skills:
+
+```text
+.opencode/commands/handoff.md
+.opencode/commands/waybill.md
+.opencode/skills/handoff/SKILL.md
+.opencode/skills/waybill/SKILL.md
+```
+
+To try them:
+
+1. Open this repository in OpenCode:
+
+   ```bash
+   opencode
+   ```
+
+2. Invoke the primary command:
+
+   ```text
+   /handoff import examples/claude-to-codex
+   ```
+
+3. Invoke the alias:
+
+   ```text
+   /waybill import examples/claude-to-codex
+   ```
+
+Expected result: OpenCode reads the example bundle, checks the repository
+state, summarizes the original task, and identifies the next recommended step
+without applying `diff.patch`.
+
+The reusable adapter files are available in:
+
+```text
+adapters/opencode/
+```
+
 ## Smoke Test
 
-After installing both sides, run the static repository validation:
+After installing the adapters you need, run the static repository validation:
 
 ```bash
 python3 scripts/validate-waybill.py
