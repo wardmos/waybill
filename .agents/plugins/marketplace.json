@@ -1,0 +1,20 @@
+{
+  "name": "waybill-local",
+  "interface": {
+    "displayName": "Waybill Local"
+  },
+  "plugins": [
+    {
+      "name": "waybill",
+      "source": {
+        "source": "local",
+        "path": "./adapters/codex"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

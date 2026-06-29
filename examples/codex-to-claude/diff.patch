@@ -1,0 +1,23 @@
+diff --git a/src/settings/preferences.ts b/src/settings/preferences.ts
+index 5555555..6666666 100644
+--- a/src/settings/preferences.ts
++++ b/src/settings/preferences.ts
+@@ -14,9 +14,8 @@ export function buildPreferencesPayload(form: PreferencesForm) {
+   return {
+     theme: form.theme,
+-    displayName: form.displayName,
+-    email: form.email,
+-    timeZone: form.timeZone
++    timeZone: form.timeZone
+   };
+ }
+diff --git a/tests/preferences-save.test.ts b/tests/preferences-save.test.ts
+index 7777777..8888888 100644
+--- a/tests/preferences-save.test.ts
++++ b/tests/preferences-save.test.ts
+@@ -22,6 +22,7 @@ test("saves preferences without profile fields", async () => {
+   expect(payload.theme).toBe("dark");
+   expect(payload.displayName).toBeUndefined();
++  expect(payload.email).toBeUndefined();
+   expect(payload.timezone).toBe("America/New_York");
+ });

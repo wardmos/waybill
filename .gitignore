@@ -1,0 +1,6 @@
+.waybill/
+
+# Local editor and OS files
+.DS_Store
+.idea/
+.vscode/

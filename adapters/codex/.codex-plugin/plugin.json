@@ -1,0 +1,25 @@
+{
+  "name": "waybill",
+  "version": "0.0.0",
+  "description": "Portable handover bundles for coding agents.",
+  "author": {
+    "name": "Waybill Project"
+  },
+  "license": "Apache-2.0",
+  "keywords": ["handoff", "agents", "coding-agents", "waybill"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Waybill",
+    "shortDescription": "Export and import portable coding-agent handoffs.",
+    "longDescription": "Waybill creates local, agent-neutral handoff bundles so unfinished coding tasks can move between Codex, Claude Code, and future agents.",
+    "developerName": "Waybill Project",
+    "category": "Productivity",
+    "capabilities": ["Write"],
+    "defaultPrompt": [
+      "/handoff export",
+      "/handoff import .waybill",
+      "/waybill export"
+    ],
+    "brandColor": "#2563EB"
+  }
+}

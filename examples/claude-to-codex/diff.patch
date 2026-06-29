@@ -1,0 +1,19 @@
+diff --git a/src/payment/retry.ts b/src/payment/retry.ts
+index 1111111..2222222 100644
+--- a/src/payment/retry.ts
++++ b/src/payment/retry.ts
+@@ -8,7 +8,7 @@ export function shouldRetry(attempt: number, limit: number): boolean {
+-  return attempt < limit;
++  return attempt + 1 < limit;
+ }
+ 
+ export function nextRetryDelay(attempt: number): number {
+diff --git a/tests/payment-retry.test.ts b/tests/payment-retry.test.ts
+index 3333333..4444444 100644
+--- a/tests/payment-retry.test.ts
++++ b/tests/payment-retry.test.ts
+@@ -12,7 +12,7 @@ test("stops after retry limit", () => {
+-  expect(result.retryCount).toBe(4);
++  expect(result.retryCount).toBe(3);
+   expect(result.state).toBe("failed");
+ });

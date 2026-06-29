@@ -1,0 +1,18 @@
+{
+  "schema_version": "draft",
+  "source_agent": "claude-code",
+  "created_at": "2026-07-01T12:00:00Z",
+  "repo_root": ".",
+  "git": {
+    "branch": "fix/payment-retry-limit",
+    "base_ref": "main",
+    "head_sha": "unknown",
+    "dirty": true
+  },
+  "artifacts": {
+    "waybill": "WAYBILL.md",
+    "diff": "diff.patch",
+    "commands": "commands.log",
+    "test_summary": "test-summary.md"
+  }
+}

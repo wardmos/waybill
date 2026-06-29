@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://waybill.dev/schemas/metadata.schema.json",
+  "title": "Waybill Metadata",
+  "description": "Metadata for a Waybill Bundle.",
+  "type": "object",
+  "required": ["schema_version", "source_agent", "created_at", "repo_root", "git", "artifacts"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "draft"
+    },
+    "source_agent": {
+      "type": "string",
+      "description": "The adapter or agent that exported the bundle."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repo_root": {
+      "type": "string",
+      "description": "Repository root relative to the bundle producer."
+    },
+    "git": {
+      "type": "object",
+      "required": ["branch", "base_ref", "head_sha", "dirty"],
+      "additionalProperties": true,
+      "properties": {
+        "branch": {
+          "type": "string"
+        },
+        "base_ref": {
+          "type": "string"
+        },
+        "head_sha": {
+          "type": "string"
+        },
+        "dirty": {
+          "type": "boolean"
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "required": ["waybill"],
+      "additionalProperties": true,
+      "properties": {
+        "waybill": {
+          "type": "string"
+        },
+        "diff": {
+          "type": "string"
+        },
+        "commands": {
+          "type": "string"
+        },
+        "test_summary": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
