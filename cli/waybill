@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from waybill_core.packing import pack_bundle  # noqa: E402
+from waybill_core.packing import pack_bundle, unpack_bundle  # noqa: E402
 from waybill_core.redaction import redact_bundle  # noqa: E402
 from waybill_core.rendering import render_bundle  # noqa: E402
 from waybill_core.validation import has_errors, validate_bundle  # noqa: E402
@@ -142,6 +142,39 @@ def cmd_pack(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_unpack(args: argparse.Namespace) -> int:
+    try:
+        report = unpack_bundle(args.archive, args.output, force=args.force)
+    except (
+        FileExistsError,
+        FileNotFoundError,
+        NotADirectoryError,
+        ValueError,
+        OSError,
+    ) as exc:
+        print(f"FAIL {exc}", file=sys.stderr)
+        return 1
+
+    print(f"Unpacked archive: {report.source}")
+    print(f"Output directory: {report.output}")
+    print(f"Bundle path: {report.bundle}")
+    print(f"Archive root: {report.archive_root}")
+    print(f"Files unpacked: {report.file_count}")
+    print(f"Bytes unpacked: {report.byte_count}")
+
+    issues = validate_bundle(report.bundle)
+    if issues:
+        for issue in issues:
+            output = sys.stderr if issue.severity == "error" else sys.stdout
+            print(issue.format(), file=output)
+    if has_errors(issues):
+        print("FAIL unpacked bundle is invalid", file=sys.stderr)
+        return 1
+
+    print(f"PASS valid Waybill Bundle: {report.bundle}")
+    return 0
+
+
 def cmd_render(args: argparse.Namespace) -> int:
     try:
         rendered = render_bundle(args.bundle)
@@ -212,6 +245,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="replace the output file if it already exists",
     )
     pack.set_defaults(func=cmd_pack)
+
+    unpack = subparsers.add_parser("unpack", help="unzip and validate a Waybill Bundle")
+    unpack.add_argument("archive", help="path to a Waybill Bundle zip archive")
+    unpack.add_argument(
+        "--output",
+        required=True,
+        help="directory to unpack the archive into",
+    )
+    unpack.add_argument(
+        "--force",
+        action="store_true",
+        help="replace the output directory if it already exists",
+    )
+    unpack.set_defaults(func=cmd_unpack)
 
     render = subparsers.add_parser("render", help="render a bundle review report")
     render.add_argument("bundle", help="path to a Waybill Bundle directory")

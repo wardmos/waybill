@@ -35,6 +35,12 @@ Pack a validated bundle:
 ./cli/waybill pack .waybill-redacted --output waybill.zip
 ```
 
+Unpack and validate a zip archive:
+
+```bash
+./cli/waybill unpack waybill.zip --output /tmp/waybill-unpacked
+```
+
 Render a Markdown review report:
 
 ```bash
@@ -57,6 +63,7 @@ This checks:
 - CLI bundle inspection output for metadata, artifacts, and validation status.
 - CLI redaction output for common token and key/value patterns.
 - CLI pack output and refusal to archive invalid bundles.
+- CLI unpack output and validation of unpacked bundles.
 - CLI render output for Markdown review reports.
 
 The script intentionally uses only the Python standard library.
@@ -91,6 +98,22 @@ Expected result:
 - The archive contains the bundle files under one top-level directory.
 - Existing output is refused unless `--force` is provided.
 - Invalid bundles are refused and no archive is written.
+
+## CLI Unpack Smoke Test
+
+Unpack a valid archive:
+
+```bash
+./cli/waybill unpack /tmp/waybill-example.zip --output /tmp/waybill-unpacked --force
+```
+
+Expected result:
+
+- The command extracts the archive into the output directory.
+- The archive must contain one top-level directory.
+- Absolute paths and `..` paths are rejected.
+- The unpacked bundle is validated after extraction.
+- Existing output is refused unless `--force` is provided.
 
 ## CLI Render Smoke Test
 

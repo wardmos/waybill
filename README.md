@@ -68,6 +68,12 @@ Pack a validated bundle into a zip archive:
 ./cli/waybill pack .waybill-redacted --output waybill.zip
 ```
 
+Unpack and validate a zip archive:
+
+```bash
+./cli/waybill unpack waybill.zip --output /tmp/waybill-unpacked
+```
+
 Render a Markdown review report:
 
 ```bash
@@ -76,7 +82,7 @@ Render a Markdown review report:
 
 The CLI is intentionally small and uses only the Python standard library.
 It currently supports bundle validation, inspection, redacted copies, Markdown
-rendering, and zip packing.
+rendering, zip packing, and zip unpacking.
 
 ## Commands
 

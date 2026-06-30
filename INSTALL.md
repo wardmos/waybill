@@ -192,6 +192,12 @@ Pack a validated bundle into a zip archive:
 ./cli/waybill pack .waybill-redacted --output waybill.zip
 ```
 
+Unpack and validate a zip archive:
+
+```bash
+./cli/waybill unpack waybill.zip --output /tmp/waybill-unpacked
+```
+
 Render a Markdown review report:
 
 ```bash
