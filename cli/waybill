@@ -18,6 +18,7 @@ from waybill_core.doctor import doctor_repository  # noqa: E402
 from waybill_core.install import install_adapters  # noqa: E402
 from waybill_core.packing import pack_bundle, unpack_bundle  # noqa: E402
 from waybill_core.redaction import redact_bundle  # noqa: E402
+from waybill_core.repo import verify_repo_state  # noqa: E402
 from waybill_core.rendering import render_bundle  # noqa: E402
 from waybill_core.validation import has_errors, validate_bundle  # noqa: E402
 
@@ -96,6 +97,25 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         return 1
 
     print("PASS Waybill adapter installation looks ready")
+    return 0
+
+
+def cmd_verify_repo(args: argparse.Namespace) -> int:
+    report = verify_repo_state(args.bundle, args.repo)
+    print(f"Bundle: {report.bundle}")
+    print(f"Repo: {report.repo}")
+    for check in report.checks:
+        print(
+            f"  - {check.status.upper()}: {check.name}: "
+            f"expected={check.expected!r} actual={check.actual!r} - {check.message}"
+        )
+
+    if report.has_errors:
+        sys.stdout.flush()
+        print("FAIL bundle repo state does not match current repo", file=sys.stderr)
+        return 1
+
+    print("PASS bundle repo state matches current repo")
     return 0
 
 
@@ -283,6 +303,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_adapter_argument(doctor, "check")
     doctor.set_defaults(func=cmd_doctor)
+
+    verify_repo = subparsers.add_parser(
+        "verify-repo",
+        help="compare bundle metadata with a repository",
+    )
+    verify_repo.add_argument("bundle", help="path to a Waybill Bundle directory")
+    verify_repo.add_argument(
+        "--repo",
+        default=".",
+        help="repository directory to compare; defaults to the current directory",
+    )
+    verify_repo.set_defaults(func=cmd_verify_repo)
 
     inspect = subparsers.add_parser("inspect", help="summarize a Waybill Bundle")
     inspect.add_argument("bundle", help="path to a Waybill Bundle directory")

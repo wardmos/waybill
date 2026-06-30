@@ -180,6 +180,12 @@ Check the target repository installation:
 ./cli/waybill doctor --target /path/to/repo
 ```
 
+Compare a bundle with the current repository state:
+
+```bash
+./cli/waybill verify-repo .waybill --repo .
+```
+
 Validate any generated bundle:
 
 ```bash

@@ -10,6 +10,7 @@ from .packing import (
     unpack_bundle,
 )
 from .redaction import RedactionReport, redact_bundle, redact_text
+from .repo import RepoCheck, RepoVerificationReport, verify_repo_state
 from .rendering import render_bundle
 from .validation import ValidationIssue, validate_bundle
 
@@ -21,6 +22,8 @@ __all__ = [
     "InstallAction",
     "InstallReport",
     "RedactionReport",
+    "RepoCheck",
+    "RepoVerificationReport",
     "UnpackReport",
     "ValidationIssue",
     "doctor_repository",
@@ -31,4 +34,5 @@ __all__ = [
     "render_bundle",
     "unpack_bundle",
     "validate_bundle",
+    "verify_repo_state",
 ]

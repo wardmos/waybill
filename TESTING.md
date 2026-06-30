@@ -23,6 +23,12 @@ Check adapter installation:
 ./cli/waybill doctor --target /tmp/waybill-init-target
 ```
 
+Compare bundle metadata with a repo:
+
+```bash
+./cli/waybill verify-repo .waybill --repo .
+```
+
 Validate a specific bundle:
 
 ```bash
@@ -73,6 +79,7 @@ This checks:
 - OpenCode command and skill frontmatter.
 - CLI adapter initialization into target repositories.
 - CLI adapter installation checks.
+- CLI repository-state verification against bundle metadata.
 - CLI bundle validation behavior through shared validation code.
 - CLI bundle inspection output for metadata, artifacts, and validation status.
 - CLI redaction output for common token and key/value patterns.
@@ -112,6 +119,21 @@ Expected result:
 - `.gitignore` with `.waybill/` is reported as `OK`.
 - A partial installation returns a non-zero exit code and reports missing files.
 - `--adapter opencode` checks only OpenCode files.
+
+## CLI Verify Repo Smoke Test
+
+Compare an example bundle with the current repository:
+
+```bash
+./cli/waybill verify-repo examples/claude-to-codex --repo .
+```
+
+Expected result:
+
+- The command reads `metadata.json`.
+- The command checks the target repo branch, HEAD, and dirty state.
+- The example bundle reports a mismatch against the Waybill repository.
+- A synthetic bundle with matching current repo metadata returns `PASS`.
 
 ## CLI Redaction Smoke Test
 
