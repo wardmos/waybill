@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from waybill_core.install import install_adapters  # noqa: E402
 from waybill_core.packing import pack_bundle, unpack_bundle  # noqa: E402
 from waybill_core.redaction import redact_bundle  # noqa: E402
 from waybill_core.rendering import render_bundle  # noqa: E402
@@ -49,6 +50,31 @@ def cmd_validate(args: argparse.Namespace) -> int:
         print(f"FAIL invalid Waybill Bundle: {args.bundle}", file=sys.stderr)
         return 1
     print(f"PASS valid Waybill Bundle: {args.bundle}")
+    return 0
+
+
+def cmd_init(args: argparse.Namespace) -> int:
+    try:
+        report = install_adapters(
+            REPO_ROOT,
+            args.target,
+            args.adapter or ["all"],
+            force=args.force,
+        )
+    except (
+        FileExistsError,
+        FileNotFoundError,
+        NotADirectoryError,
+        ValueError,
+        OSError,
+    ) as exc:
+        print(f"FAIL {exc}", file=sys.stderr)
+        return 1
+
+    print(f"Initialized Waybill adapters in: {report.target}")
+    print(f"Adapters: {', '.join(report.adapters)}")
+    for action in report.actions:
+        print(f"  - {action.action}: {action.path}")
     return 0
 
 
@@ -213,6 +239,25 @@ def build_parser() -> argparse.ArgumentParser:
     validate = subparsers.add_parser("validate", help="validate a Waybill Bundle")
     validate.add_argument("bundle", help="path to a Waybill Bundle directory")
     validate.set_defaults(func=cmd_validate)
+
+    init = subparsers.add_parser("init", help="install Waybill adapter files")
+    init.add_argument(
+        "--target",
+        default=".",
+        help="target repository directory; defaults to the current directory",
+    )
+    init.add_argument(
+        "--adapter",
+        action="append",
+        choices=["all", "claude-code", "opencode"],
+        help="adapter to install; may be repeated",
+    )
+    init.add_argument(
+        "--force",
+        action="store_true",
+        help="replace existing adapter files",
+    )
+    init.set_defaults(func=cmd_init)
 
     inspect = subparsers.add_parser("inspect", help="summarize a Waybill Bundle")
     inspect.add_argument("bundle", help="path to a Waybill Bundle directory")

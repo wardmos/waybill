@@ -168,6 +168,12 @@ After installing the adapters you need, run the static repository validation:
 python3 scripts/validate-waybill.py
 ```
 
+Install Claude Code and OpenCode project files into another repository:
+
+```bash
+./cli/waybill init --target /path/to/repo
+```
+
 Validate any generated bundle:
 
 ```bash

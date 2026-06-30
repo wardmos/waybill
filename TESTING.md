@@ -11,6 +11,12 @@ Run:
 python3 scripts/validate-waybill.py
 ```
 
+Install project-local adapters into a target repository:
+
+```bash
+./cli/waybill init --target /tmp/waybill-init-target
+```
+
 Validate a specific bundle:
 
 ```bash
@@ -59,6 +65,7 @@ This checks:
 - Obvious secret-like strings in examples.
 - Agent-neutral handoff wording in examples.
 - OpenCode command and skill frontmatter.
+- CLI adapter initialization into target repositories.
 - CLI bundle validation behavior through shared validation code.
 - CLI bundle inspection output for metadata, artifacts, and validation status.
 - CLI redaction output for common token and key/value patterns.
@@ -67,6 +74,22 @@ This checks:
 - CLI render output for Markdown review reports.
 
 The script intentionally uses only the Python standard library.
+
+## CLI Init Smoke Test
+
+Install adapters into a temporary repository:
+
+```bash
+./cli/waybill init --target /tmp/waybill-init-target --force
+```
+
+Expected result:
+
+- Claude Code skills are copied into `.claude/skills/`.
+- OpenCode commands and skills are copied into `.opencode/`.
+- `.gitignore` includes `.waybill/`.
+- Existing adapter files are refused unless `--force` is provided.
+- `--adapter opencode` installs only OpenCode files.
 
 ## CLI Redaction Smoke Test
 
