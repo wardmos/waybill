@@ -23,6 +23,12 @@ Check adapter installation:
 ./cli/waybill doctor --target /tmp/waybill-init-target
 ```
 
+Create a draft bundle:
+
+```bash
+./cli/waybill new --output /tmp/waybill-draft --repo . --force
+```
+
 Compare bundle metadata with a repo:
 
 ```bash
@@ -79,6 +85,7 @@ This checks:
 - OpenCode command and skill frontmatter.
 - CLI adapter initialization into target repositories.
 - CLI adapter installation checks.
+- CLI draft bundle scaffolding.
 - CLI repository-state verification against bundle metadata.
 - CLI bundle validation behavior through shared validation code.
 - CLI bundle inspection output for metadata, artifacts, and validation status.
@@ -119,6 +126,23 @@ Expected result:
 - `.gitignore` with `.waybill/` is reported as `OK`.
 - A partial installation returns a non-zero exit code and reports missing files.
 - `--adapter opencode` checks only OpenCode files.
+
+## CLI New Smoke Test
+
+Create a draft bundle from the current repository:
+
+```bash
+./cli/waybill new --output /tmp/waybill-draft --repo . --force
+```
+
+Expected result:
+
+- The command writes the five standard Waybill files.
+- `metadata.json` records the current branch, HEAD, and dirty state.
+- `diff.patch` captures the current tracked diff, or records that no tracked
+  diff was captured.
+- The generated bundle passes `./cli/waybill validate`.
+- Existing standard files are refused unless `--force` is provided.
 
 ## CLI Verify Repo Smoke Test
 

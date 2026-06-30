@@ -20,6 +20,7 @@ from waybill_core.packing import pack_bundle, unpack_bundle  # noqa: E402
 from waybill_core.redaction import redact_bundle  # noqa: E402
 from waybill_core.repo import verify_repo_state  # noqa: E402
 from waybill_core.rendering import render_bundle  # noqa: E402
+from waybill_core.scaffold import create_draft_bundle  # noqa: E402
 from waybill_core.validation import has_errors, validate_bundle  # noqa: E402
 
 
@@ -116,6 +117,36 @@ def cmd_verify_repo(args: argparse.Namespace) -> int:
         return 1
 
     print("PASS bundle repo state matches current repo")
+    return 0
+
+
+def cmd_new(args: argparse.Namespace) -> int:
+    try:
+        report = create_draft_bundle(
+            args.output,
+            args.repo,
+            source_agent=args.source_agent,
+            goal=args.goal,
+            force=args.force,
+        )
+    except (
+        FileExistsError,
+        FileNotFoundError,
+        NotADirectoryError,
+        ValueError,
+        OSError,
+    ) as exc:
+        print(f"FAIL {exc}", file=sys.stderr)
+        return 1
+
+    print(f"Draft bundle: {report.output}")
+    print(f"Repo: {report.repo}")
+    print(f"Source agent: {report.source_agent}")
+    print(f"Dirty: {report.dirty}")
+    print("Files:")
+    for file in report.files:
+        print(f"  - {file}")
+    print("Review and edit the draft bundle before importing it elsewhere.")
     return 0
 
 
@@ -315,6 +346,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="repository directory to compare; defaults to the current directory",
     )
     verify_repo.set_defaults(func=cmd_verify_repo)
+
+    new = subparsers.add_parser("new", help="create a draft Waybill Bundle")
+    new.add_argument(
+        "--output",
+        default=".waybill",
+        help="bundle directory to write; defaults to .waybill",
+    )
+    new.add_argument(
+        "--repo",
+        default=".",
+        help="repository directory to inspect; defaults to the current directory",
+    )
+    new.add_argument(
+        "--source-agent",
+        default="waybill-cli",
+        help="metadata source_agent value; defaults to waybill-cli",
+    )
+    new.add_argument(
+        "--goal",
+        help="optional original goal text to place in WAYBILL.md",
+    )
+    new.add_argument(
+        "--force",
+        action="store_true",
+        help="replace existing standard Waybill files in the output directory",
+    )
+    new.set_defaults(func=cmd_new)
 
     inspect = subparsers.add_parser("inspect", help="summarize a Waybill Bundle")
     inspect.add_argument("bundle", help="path to a Waybill Bundle directory")

@@ -12,11 +12,13 @@ from .packing import (
 from .redaction import RedactionReport, redact_bundle, redact_text
 from .repo import RepoCheck, RepoVerificationReport, verify_repo_state
 from .rendering import render_bundle
+from .scaffold import DraftBundleReport, create_draft_bundle
 from .validation import ValidationIssue, validate_bundle
 
 __all__ = [
     "DoctorCheck",
     "DoctorReport",
+    "DraftBundleReport",
     "PackReport",
     "PackedFile",
     "InstallAction",
@@ -26,6 +28,7 @@ __all__ = [
     "RepoVerificationReport",
     "UnpackReport",
     "ValidationIssue",
+    "create_draft_bundle",
     "doctor_repository",
     "install_adapters",
     "pack_bundle",

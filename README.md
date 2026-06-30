@@ -56,6 +56,12 @@ Check a target repo's adapter installation:
 ./cli/waybill doctor --target /path/to/repo
 ```
 
+Create a draft bundle from the current repo:
+
+```bash
+./cli/waybill new --output .waybill --repo .
+```
+
 Compare bundle metadata with the current repo:
 
 ```bash
@@ -99,9 +105,9 @@ Render a Markdown review report:
 ```
 
 The CLI is intentionally small and uses only the Python standard library.
-It currently supports adapter initialization checks, repository-state
-verification, bundle validation, inspection, redacted copies, Markdown
-rendering, zip packing, and zip unpacking.
+It currently supports adapter initialization checks, draft bundle scaffolding,
+repository-state verification, bundle validation, inspection, redacted copies,
+Markdown rendering, zip packing, and zip unpacking.
 
 ## Commands
 
