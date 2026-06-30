@@ -2,6 +2,7 @@
 
 from .packing import PackReport, PackedFile, pack_bundle
 from .redaction import RedactionReport, redact_bundle, redact_text
+from .rendering import render_bundle
 from .validation import ValidationIssue, validate_bundle
 
 __all__ = [
@@ -12,5 +13,6 @@ __all__ = [
     "pack_bundle",
     "redact_bundle",
     "redact_text",
+    "render_bundle",
     "validate_bundle",
 ]

@@ -16,6 +16,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from waybill_core.packing import pack_bundle  # noqa: E402
 from waybill_core.redaction import redact_bundle  # noqa: E402
+from waybill_core.rendering import render_bundle  # noqa: E402
 from waybill_core.validation import has_errors, validate_bundle  # noqa: E402
 
 
@@ -141,6 +142,34 @@ def cmd_pack(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_render(args: argparse.Namespace) -> int:
+    try:
+        rendered = render_bundle(args.bundle)
+    except (FileNotFoundError, NotADirectoryError, OSError) as exc:
+        print(f"FAIL {exc}", file=sys.stderr)
+        return 1
+
+    if not args.output:
+        print(rendered, end="")
+        return 0
+
+    output = Path(args.output)
+    bundle = Path(args.bundle)
+    if bundle.resolve() in output.resolve().parents:
+        print("FAIL output path must not be inside the source bundle", file=sys.stderr)
+        return 1
+
+    if output.exists() and not args.force:
+        print(f"FAIL output path already exists: {output}", file=sys.stderr)
+        return 1
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(rendered)
+    print(f"Rendered bundle report: {output}")
+    print("Review the report before sharing it.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="waybill",
@@ -183,6 +212,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="replace the output file if it already exists",
     )
     pack.set_defaults(func=cmd_pack)
+
+    render = subparsers.add_parser("render", help="render a bundle review report")
+    render.add_argument("bundle", help="path to a Waybill Bundle directory")
+    render.add_argument(
+        "--output",
+        help="Markdown file to write; defaults to stdout",
+    )
+    render.add_argument(
+        "--force",
+        action="store_true",
+        help="replace the output file if it already exists",
+    )
+    render.set_defaults(func=cmd_render)
 
     return parser
 

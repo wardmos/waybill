@@ -192,4 +192,10 @@ Pack a validated bundle into a zip archive:
 ./cli/waybill pack .waybill-redacted --output waybill.zip
 ```
 
+Render a Markdown review report:
+
+```bash
+./cli/waybill render .waybill-redacted --output waybill-report.md
+```
+
 Then follow the manual end-to-end test plan in `TESTING.md`.

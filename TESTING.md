@@ -35,6 +35,12 @@ Pack a validated bundle:
 ./cli/waybill pack .waybill-redacted --output waybill.zip
 ```
 
+Render a Markdown review report:
+
+```bash
+./cli/waybill render .waybill-redacted --output waybill-report.md
+```
+
 This checks:
 
 - Required repository files.
@@ -51,6 +57,7 @@ This checks:
 - CLI bundle inspection output for metadata, artifacts, and validation status.
 - CLI redaction output for common token and key/value patterns.
 - CLI pack output and refusal to archive invalid bundles.
+- CLI render output for Markdown review reports.
 
 The script intentionally uses only the Python standard library.
 
@@ -84,6 +91,23 @@ Expected result:
 - The archive contains the bundle files under one top-level directory.
 - Existing output is refused unless `--force` is provided.
 - Invalid bundles are refused and no archive is written.
+
+## CLI Render Smoke Test
+
+Render a bundle report:
+
+```bash
+./cli/waybill render examples/claude-to-codex --output /tmp/waybill-report.md --force
+```
+
+Expected result:
+
+- The command writes a Markdown report.
+- The report includes metadata, artifact status, validation status, and
+  `WAYBILL.md` content.
+- Rendering to stdout also works when `--output` is omitted.
+- Existing output is refused unless `--force` is provided.
+- Output inside the source bundle is refused.
 
 ## Manual Test: Claude Code to Codex
 
