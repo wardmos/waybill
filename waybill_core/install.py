@@ -58,6 +58,8 @@ def install_adapters(
 
 
 def _normalize_adapters(adapters: list[str]) -> list[str]:
+    if not adapters:
+        return list(SUPPORTED_ADAPTERS)
     if "all" in adapters:
         return list(SUPPORTED_ADAPTERS)
 
@@ -104,6 +106,10 @@ def _adapter_files(adapter: str) -> list[tuple[str, str]]:
         ]
 
     raise ValueError(f"unsupported adapter: {adapter}")
+
+
+def adapter_target_files(adapter: str) -> list[str]:
+    return [target for _source, target in _adapter_files(adapter)]
 
 
 def _copy_file(

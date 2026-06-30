@@ -50,6 +50,12 @@ Install project-local Claude Code and OpenCode adapter files into another repo:
 ./cli/waybill init --target /path/to/repo
 ```
 
+Check a target repo's adapter installation:
+
+```bash
+./cli/waybill doctor --target /path/to/repo
+```
+
 Validate a bundle:
 
 ```bash
@@ -87,8 +93,9 @@ Render a Markdown review report:
 ```
 
 The CLI is intentionally small and uses only the Python standard library.
-It currently supports adapter initialization, bundle validation, inspection,
-redacted copies, Markdown rendering, zip packing, and zip unpacking.
+It currently supports adapter initialization checks, bundle validation,
+inspection, redacted copies, Markdown rendering, zip packing, and zip
+unpacking.
 
 ## Commands
 

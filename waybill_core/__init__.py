@@ -1,5 +1,6 @@
 """Waybill shared helpers."""
 
+from .doctor import DoctorCheck, DoctorReport, doctor_repository
 from .install import InstallAction, InstallReport, install_adapters
 from .packing import (
     PackReport,
@@ -13,6 +14,8 @@ from .rendering import render_bundle
 from .validation import ValidationIssue, validate_bundle
 
 __all__ = [
+    "DoctorCheck",
+    "DoctorReport",
     "PackReport",
     "PackedFile",
     "InstallAction",
@@ -20,6 +23,7 @@ __all__ = [
     "RedactionReport",
     "UnpackReport",
     "ValidationIssue",
+    "doctor_repository",
     "install_adapters",
     "pack_bundle",
     "redact_bundle",

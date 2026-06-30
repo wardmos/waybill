@@ -17,6 +17,12 @@ Install project-local adapters into a target repository:
 ./cli/waybill init --target /tmp/waybill-init-target
 ```
 
+Check adapter installation:
+
+```bash
+./cli/waybill doctor --target /tmp/waybill-init-target
+```
+
 Validate a specific bundle:
 
 ```bash
@@ -66,6 +72,7 @@ This checks:
 - Agent-neutral handoff wording in examples.
 - OpenCode command and skill frontmatter.
 - CLI adapter initialization into target repositories.
+- CLI adapter installation checks.
 - CLI bundle validation behavior through shared validation code.
 - CLI bundle inspection output for metadata, artifacts, and validation status.
 - CLI redaction output for common token and key/value patterns.
@@ -90,6 +97,21 @@ Expected result:
 - `.gitignore` includes `.waybill/`.
 - Existing adapter files are refused unless `--force` is provided.
 - `--adapter opencode` installs only OpenCode files.
+
+## CLI Doctor Smoke Test
+
+Check an initialized repository:
+
+```bash
+./cli/waybill doctor --target /tmp/waybill-init-target
+```
+
+Expected result:
+
+- Installed Claude Code and OpenCode files are reported as `OK`.
+- `.gitignore` with `.waybill/` is reported as `OK`.
+- A partial installation returns a non-zero exit code and reports missing files.
+- `--adapter opencode` checks only OpenCode files.
 
 ## CLI Redaction Smoke Test
 

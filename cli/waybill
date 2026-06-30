@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from waybill_core.doctor import doctor_repository  # noqa: E402
 from waybill_core.install import install_adapters  # noqa: E402
 from waybill_core.packing import pack_bundle, unpack_bundle  # noqa: E402
 from waybill_core.redaction import redact_bundle  # noqa: E402
@@ -75,6 +76,26 @@ def cmd_init(args: argparse.Namespace) -> int:
     print(f"Adapters: {', '.join(report.adapters)}")
     for action in report.actions:
         print(f"  - {action.action}: {action.path}")
+    return 0
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    try:
+        report = doctor_repository(args.target, args.adapter or ["all"])
+    except ValueError as exc:
+        print(f"FAIL {exc}", file=sys.stderr)
+        return 1
+
+    print(f"Waybill doctor target: {report.target}")
+    print(f"Adapters: {', '.join(report.adapters)}")
+    for check in report.checks:
+        print(f"  - {check.status.upper()}: {check.name}: {check.message}")
+
+    if report.has_errors:
+        print("FAIL Waybill adapter installation has problems", file=sys.stderr)
+        return 1
+
+    print("PASS Waybill adapter installation looks ready")
     return 0
 
 
@@ -246,18 +267,22 @@ def build_parser() -> argparse.ArgumentParser:
         default=".",
         help="target repository directory; defaults to the current directory",
     )
-    init.add_argument(
-        "--adapter",
-        action="append",
-        choices=["all", "claude-code", "opencode"],
-        help="adapter to install; may be repeated",
-    )
+    add_adapter_argument(init, "install")
     init.add_argument(
         "--force",
         action="store_true",
         help="replace existing adapter files",
     )
     init.set_defaults(func=cmd_init)
+
+    doctor = subparsers.add_parser("doctor", help="check Waybill adapter files")
+    doctor.add_argument(
+        "--target",
+        default=".",
+        help="target repository directory; defaults to the current directory",
+    )
+    add_adapter_argument(doctor, "check")
+    doctor.set_defaults(func=cmd_doctor)
 
     inspect = subparsers.add_parser("inspect", help="summarize a Waybill Bundle")
     inspect.add_argument("bundle", help="path to a Waybill Bundle directory")
@@ -319,6 +344,15 @@ def build_parser() -> argparse.ArgumentParser:
     render.set_defaults(func=cmd_render)
 
     return parser
+
+
+def add_adapter_argument(parser: argparse.ArgumentParser, verb: str) -> None:
+    parser.add_argument(
+        "--adapter",
+        action="append",
+        choices=["all", "claude-code", "opencode"],
+        help=f"adapter to {verb}; may be repeated",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
