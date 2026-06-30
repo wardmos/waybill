@@ -211,6 +211,21 @@ Expected result:
 - OpenCode reports that the example bundle references a different app repo.
 - OpenCode does not apply `diff.patch`.
 
+Non-interactive smoke test:
+
+```bash
+opencode run --command handoff \
+  "import examples/claude-to-codex. Do not modify files; only read the bundle, verify repository state, and summarize the handoff."
+```
+
+Expected result:
+
+- OpenCode loads the `handoff` skill.
+- OpenCode reads the example bundle artifacts.
+- OpenCode runs read-only git state checks.
+- OpenCode identifies the repo mismatch.
+- OpenCode exits successfully without modifying files.
+
 ## Expected Result
 
 The MVP passes when both directions work:
