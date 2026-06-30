@@ -56,8 +56,14 @@ Inspect bundle metadata and validation status:
 ./cli/waybill inspect .waybill
 ```
 
+Create a redacted copy for review before sharing:
+
+```bash
+./cli/waybill redact .waybill --output .waybill-redacted
+```
+
 The CLI is intentionally small and uses only the Python standard library.
-It currently supports bundle validation and inspection.
+It currently supports bundle validation, inspection, and redacted copies.
 
 ## Commands
 
@@ -140,7 +146,8 @@ handoff test plans.
 
 - No automatic patch application.
 - No automatic transcript parsing.
-- No secret redaction command yet.
+- Secret redaction is best-effort pattern replacement; users still need to
+  review redacted bundles before sharing.
 - OpenCode support is file-based commands and skills; no OpenCode plugin hooks
   are required yet.
 

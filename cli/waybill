@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from waybill_core.redaction import redact_bundle  # noqa: E402
 from waybill_core.validation import has_errors, validate_bundle  # noqa: E402
 
 
@@ -91,6 +92,26 @@ def cmd_inspect(args: argparse.Namespace) -> int:
     return 1 if errors else 0
 
 
+def cmd_redact(args: argparse.Namespace) -> int:
+    try:
+        report = redact_bundle(args.bundle, args.output, force=args.force)
+    except (FileExistsError, FileNotFoundError, NotADirectoryError, ValueError) as exc:
+        print(f"FAIL {exc}", file=sys.stderr)
+        return 1
+
+    print(f"Redacted bundle: {report.output}")
+    print(f"Source bundle: {report.source}")
+    print(f"Files processed: {len(report.files)}")
+    print(f"Replacements: {report.replacement_count}")
+
+    for file in report.files:
+        suffix = " copied binary" if file.copied_binary else ""
+        print(f"  - {file.path}: {file.replacements} replacement(s){suffix}")
+
+    print("Review the redacted bundle before sharing it.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="waybill",
@@ -105,6 +126,20 @@ def build_parser() -> argparse.ArgumentParser:
     inspect = subparsers.add_parser("inspect", help="summarize a Waybill Bundle")
     inspect.add_argument("bundle", help="path to a Waybill Bundle directory")
     inspect.set_defaults(func=cmd_inspect)
+
+    redact = subparsers.add_parser("redact", help="copy a bundle with secrets redacted")
+    redact.add_argument("bundle", help="path to a Waybill Bundle directory")
+    redact.add_argument(
+        "--output",
+        required=True,
+        help="directory to write the redacted bundle into",
+    )
+    redact.add_argument(
+        "--force",
+        action="store_true",
+        help="replace the output directory if it already exists",
+    )
+    redact.set_defaults(func=cmd_redact)
 
     return parser
 

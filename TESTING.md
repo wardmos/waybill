@@ -23,6 +23,12 @@ Inspect a specific bundle:
 ./cli/waybill inspect .waybill
 ```
 
+Create a redacted copy:
+
+```bash
+./cli/waybill redact .waybill --output .waybill-redacted
+```
+
 This checks:
 
 - Required repository files.
@@ -37,8 +43,24 @@ This checks:
 - OpenCode command and skill frontmatter.
 - CLI bundle validation behavior through shared validation code.
 - CLI bundle inspection output for metadata, artifacts, and validation status.
+- CLI redaction output for common token and key/value patterns.
 
 The script intentionally uses only the Python standard library.
+
+## CLI Redaction Smoke Test
+
+Create a temporary bundle containing synthetic secrets, then redact it:
+
+```bash
+./cli/waybill redact /tmp/waybill-secret-fixture --output /tmp/waybill-secret-redacted --force
+```
+
+Expected result:
+
+- The output directory is created separately from the source bundle.
+- Secret-like values are replaced with `[REDACTED]`.
+- The original source bundle is not modified.
+- Existing output is refused unless `--force` is provided.
 
 ## Manual Test: Claude Code to Codex
 

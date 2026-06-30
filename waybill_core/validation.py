@@ -32,11 +32,11 @@ SECRET_PATTERNS = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in [
         r"sk-[A-Za-z0-9_-]{10,}",
-        r"api[_-]?key\s*[:=]",
-        r"password\s*[:=]",
-        r"secret\s*[:=]",
-        r"token\s*[:=]",
-        r"cookie\s*[:=]",
+        r"Bearer\s+(?!\[REDACTED\])[A-Za-z0-9._~+/=-]+",
+        (
+            r"['\"]?(api[_-]?key|password|secret|token|cookie)['\"]?"
+            r"\s*[:=]\s*['\"]?(?!\[REDACTED\])[^\"'\s,}]+"
+        ),
     ]
 ]
 

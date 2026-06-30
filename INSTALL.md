@@ -180,4 +180,10 @@ Inspect bundle metadata and validation status:
 ./cli/waybill inspect .waybill
 ```
 
+Create a redacted copy before sharing:
+
+```bash
+./cli/waybill redact .waybill --output .waybill-redacted
+```
+
 Then follow the manual end-to-end test plan in `TESTING.md`.
