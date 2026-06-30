@@ -62,8 +62,15 @@ Create a redacted copy for review before sharing:
 ./cli/waybill redact .waybill --output .waybill-redacted
 ```
 
+Pack a validated bundle into a zip archive:
+
+```bash
+./cli/waybill pack .waybill-redacted --output waybill.zip
+```
+
 The CLI is intentionally small and uses only the Python standard library.
-It currently supports bundle validation, inspection, and redacted copies.
+It currently supports bundle validation, inspection, redacted copies, and zip
+packing.
 
 ## Commands
 

@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from waybill_core.packing import pack_bundle  # noqa: E402
 from waybill_core.redaction import redact_bundle  # noqa: E402
 from waybill_core.validation import has_errors, validate_bundle  # noqa: E402
 
@@ -112,10 +113,38 @@ def cmd_redact(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_pack(args: argparse.Namespace) -> int:
+    issues = validate_bundle(args.bundle)
+    if has_errors(issues):
+        for issue in issues:
+            if issue.severity == "error":
+                print(issue.format(), file=sys.stderr)
+        print("FAIL bundle is invalid; refusing to pack", file=sys.stderr)
+        return 1
+
+    warnings = [issue for issue in issues if issue.severity == "warning"]
+    for warning in warnings:
+        print(warning.format())
+
+    try:
+        report = pack_bundle(args.bundle, args.output, force=args.force)
+    except (FileExistsError, FileNotFoundError, NotADirectoryError, ValueError) as exc:
+        print(f"FAIL {exc}", file=sys.stderr)
+        return 1
+
+    print(f"Packed bundle: {report.output}")
+    print(f"Source bundle: {report.source}")
+    print(f"Archive root: {report.archive_root}")
+    print(f"Files packed: {report.file_count}")
+    print(f"Bytes packed: {report.byte_count}")
+    print("Review the archive before sharing it.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="waybill",
-        description="Inspect and validate local Waybill Bundles.",
+        description="Work with local Waybill Bundles.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -140,6 +169,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="replace the output directory if it already exists",
     )
     redact.set_defaults(func=cmd_redact)
+
+    pack = subparsers.add_parser("pack", help="validate and zip a Waybill Bundle")
+    pack.add_argument("bundle", help="path to a Waybill Bundle directory")
+    pack.add_argument(
+        "--output",
+        required=True,
+        help="zip file to write",
+    )
+    pack.add_argument(
+        "--force",
+        action="store_true",
+        help="replace the output file if it already exists",
+    )
+    pack.set_defaults(func=cmd_pack)
 
     return parser
 

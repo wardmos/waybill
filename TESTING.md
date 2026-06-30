@@ -29,6 +29,12 @@ Create a redacted copy:
 ./cli/waybill redact .waybill --output .waybill-redacted
 ```
 
+Pack a validated bundle:
+
+```bash
+./cli/waybill pack .waybill-redacted --output waybill.zip
+```
+
 This checks:
 
 - Required repository files.
@@ -44,6 +50,7 @@ This checks:
 - CLI bundle validation behavior through shared validation code.
 - CLI bundle inspection output for metadata, artifacts, and validation status.
 - CLI redaction output for common token and key/value patterns.
+- CLI pack output and refusal to archive invalid bundles.
 
 The script intentionally uses only the Python standard library.
 
@@ -61,6 +68,22 @@ Expected result:
 - Secret-like values are replaced with `[REDACTED]`.
 - The original source bundle is not modified.
 - Existing output is refused unless `--force` is provided.
+
+## CLI Pack Smoke Test
+
+Pack a valid bundle:
+
+```bash
+./cli/waybill pack examples/claude-to-codex --output /tmp/waybill-example.zip --force
+```
+
+Expected result:
+
+- The command validates the bundle before packing.
+- A zip archive is created at the output path.
+- The archive contains the bundle files under one top-level directory.
+- Existing output is refused unless `--force` is provided.
+- Invalid bundles are refused and no archive is written.
 
 ## Manual Test: Claude Code to Codex
 

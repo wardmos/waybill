@@ -25,6 +25,7 @@ REQUIRED_FILES = [
     "spec/metadata.schema.json",
     "cli/waybill",
     "waybill_core/__init__.py",
+    "waybill_core/packing.py",
     "waybill_core/redaction.py",
     "waybill_core/validation.py",
     ".agents/plugins/marketplace.json",

@@ -186,4 +186,10 @@ Create a redacted copy before sharing:
 ./cli/waybill redact .waybill --output .waybill-redacted
 ```
 
+Pack a validated bundle into a zip archive:
+
+```bash
+./cli/waybill pack .waybill-redacted --output waybill.zip
+```
+
 Then follow the manual end-to-end test plan in `TESTING.md`.
