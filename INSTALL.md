@@ -197,6 +197,7 @@ Run the full import preflight check:
 
 ```bash
 ./cli/waybill preflight .waybill --repo .
+./cli/waybill preflight .waybill --repo . --json
 ```
 
 Check whether a bundle is ready for handoff:

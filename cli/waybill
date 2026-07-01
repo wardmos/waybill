@@ -17,7 +17,10 @@ if str(REPO_ROOT) not in sys.path:
 from waybill_core.doctor import doctor_repository  # noqa: E402
 from waybill_core.install import install_adapters  # noqa: E402
 from waybill_core.packing import pack_bundle, unpack_bundle  # noqa: E402
-from waybill_core.preflight import run_import_preflight  # noqa: E402
+from waybill_core.preflight import (  # noqa: E402
+    ImportPreflightReport,
+    run_import_preflight,
+)
 from waybill_core.readiness import check_export_readiness  # noqa: E402
 from waybill_core.redaction import redact_bundle  # noqa: E402
 from waybill_core.repo import (  # noqa: E402
@@ -93,6 +96,22 @@ def build_repo_report(report: RepoVerificationReport) -> dict[str, object]:
         "repo": str(report.repo),
         "valid": not report.has_errors,
         "checks": [repo_check_to_dict(check) for check in report.checks],
+    }
+
+
+def build_preflight_report(report: ImportPreflightReport) -> dict[str, object]:
+    validation = build_validation_report(
+        report.bundle,
+        report.validation_issues,
+    )
+    return {
+        "bundle": str(report.bundle),
+        "repo": str(report.repo),
+        "valid": not report.has_errors,
+        "validation": validation,
+        "repo_checks": [
+            repo_check_to_dict(check) for check in report.repo_report.checks
+        ],
     }
 
 
@@ -267,6 +286,9 @@ def cmd_preflight(args: argparse.Namespace) -> int:
     report = run_import_preflight(args.bundle, args.repo)
     errors = report.validation_errors
     warnings = report.validation_warnings
+    if args.json:
+        print(json.dumps(build_preflight_report(report), indent=2))
+        return 1 if report.has_errors else 0
 
     print(f"Bundle: {report.bundle}")
     print(f"Repo: {report.repo}")
@@ -609,6 +631,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--repo",
         default=".",
         help="repository directory to compare; defaults to the current directory",
+    )
+    preflight.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
     )
     preflight.set_defaults(func=cmd_preflight)
 

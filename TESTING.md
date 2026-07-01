@@ -40,6 +40,7 @@ Run the full import preflight check:
 
 ```bash
 ./cli/waybill preflight .waybill --repo .
+./cli/waybill preflight .waybill --repo . --json
 ```
 
 Check whether a bundle is ready for handoff:
@@ -107,7 +108,7 @@ This checks:
 - CLI adapter initialization into target repositories.
 - CLI adapter installation checks.
 - CLI draft bundle scaffolding.
-- CLI import preflight checks.
+- CLI import preflight checks in text and JSON.
 - CLI export readiness checks for draft placeholders.
 - CLI repository-state verification against bundle metadata in text and JSON.
 - CLI bundle validation behavior through text and JSON output.
@@ -222,12 +223,14 @@ Run validation and repo-state checks together:
 
 ```bash
 ./cli/waybill preflight /tmp/waybill-draft --repo .
+./cli/waybill preflight /tmp/waybill-draft --repo . --json
 ```
 
 Expected result:
 
 - The command reports validation errors and warnings.
 - The command reports repository state checks.
+- JSON output parses as valid JSON and includes validation plus repo checks.
 - A generated draft bundle for the current repository returns `PASS`.
 - An example bundle targeting another branch returns non-zero.
 
