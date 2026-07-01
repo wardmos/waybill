@@ -24,7 +24,11 @@ from waybill_core.repo import verify_repo_state  # noqa: E402
 from waybill_core.rendering import render_bundle  # noqa: E402
 from waybill_core.scaffold import create_draft_bundle  # noqa: E402
 from waybill_core.sharing import share_bundle  # noqa: E402
-from waybill_core.validation import has_errors, validate_bundle  # noqa: E402
+from waybill_core.validation import (  # noqa: E402
+    ValidationIssue,
+    has_errors,
+    validate_bundle,
+)
 
 
 def read_metadata(bundle: Path) -> tuple[dict[str, Any] | None, str | None]:
@@ -44,6 +48,66 @@ def print_field(label: str, value: object) -> None:
     if value is None or value == "":
         value = "unknown"
     print(f"{label}: {value}")
+
+
+def issue_to_dict(issue: ValidationIssue) -> dict[str, object]:
+    return {
+        "severity": issue.severity,
+        "message": issue.message,
+        "path": issue.path,
+    }
+
+
+def build_inspect_report(
+    bundle: Path,
+    metadata: dict[str, Any] | None,
+    metadata_error: str | None,
+    issues: list[ValidationIssue],
+) -> dict[str, object]:
+    errors = [issue for issue in issues if issue.severity == "error"]
+    warnings = [issue for issue in issues if issue.severity == "warning"]
+    artifacts = []
+    artifact_metadata = (
+        metadata.get("artifacts")
+        if isinstance(metadata, dict) and isinstance(metadata.get("artifacts"), dict)
+        else {}
+    )
+
+    for name, artifact in artifact_metadata.items():
+        if not isinstance(artifact, str):
+            artifacts.append(
+                {
+                    "name": name,
+                    "path": None,
+                    "status": "invalid",
+                    "bytes": 0,
+                }
+            )
+            continue
+
+        path = bundle / artifact
+        present = path.is_file()
+        artifacts.append(
+            {
+                "name": name,
+                "path": artifact,
+                "status": "present" if present else "missing",
+                "bytes": path.stat().st_size if present else 0,
+            }
+        )
+
+    return {
+        "bundle": str(bundle),
+        "valid": len(errors) == 0,
+        "metadata": metadata,
+        "metadata_error": metadata_error,
+        "artifacts": artifacts,
+        "validation": {
+            "errors": len(errors),
+            "warnings": len(warnings),
+            "issues": [issue_to_dict(issue) for issue in issues],
+        },
+    }
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
@@ -221,10 +285,15 @@ def cmd_inspect(args: argparse.Namespace) -> int:
     issues = validate_bundle(bundle)
     errors = [issue for issue in issues if issue.severity == "error"]
     warnings = [issue for issue in issues if issue.severity == "warning"]
+    metadata, metadata_error = read_metadata(bundle)
+
+    if args.json:
+        report = build_inspect_report(bundle, metadata, metadata_error, issues)
+        print(json.dumps(report, indent=2))
+        return 1 if errors else 0
 
     print(f"Bundle: {bundle}")
 
-    metadata, metadata_error = read_metadata(bundle)
     if metadata_error:
         print(f"Metadata: {metadata_error}")
     elif metadata is not None:
@@ -501,6 +570,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     inspect = subparsers.add_parser("inspect", help="summarize a Waybill Bundle")
     inspect.add_argument("bundle", help="path to a Waybill Bundle directory")
+    inspect.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
+    )
     inspect.set_defaults(func=cmd_inspect)
 
     redact = subparsers.add_parser("redact", help="copy a bundle with secrets redacted")

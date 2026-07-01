@@ -214,6 +214,7 @@ Inspect bundle metadata and validation status:
 
 ```bash
 ./cli/waybill inspect .waybill
+./cli/waybill inspect .waybill --json
 ```
 
 Create a redacted copy before sharing:
