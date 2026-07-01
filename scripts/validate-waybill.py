@@ -29,6 +29,7 @@ REQUIRED_FILES = [
     "waybill_core/install.py",
     "waybill_core/packing.py",
     "waybill_core/preflight.py",
+    "waybill_core/readiness.py",
     "waybill_core/redaction.py",
     "waybill_core/repo.py",
     "waybill_core/rendering.py",

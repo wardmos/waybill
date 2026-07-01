@@ -18,6 +18,7 @@ from waybill_core.doctor import doctor_repository  # noqa: E402
 from waybill_core.install import install_adapters  # noqa: E402
 from waybill_core.packing import pack_bundle, unpack_bundle  # noqa: E402
 from waybill_core.preflight import run_import_preflight  # noqa: E402
+from waybill_core.readiness import check_export_readiness  # noqa: E402
 from waybill_core.redaction import redact_bundle  # noqa: E402
 from waybill_core.repo import verify_repo_state  # noqa: E402
 from waybill_core.rendering import render_bundle  # noqa: E402
@@ -176,6 +177,42 @@ def cmd_preflight(args: argparse.Namespace) -> int:
         return 1
 
     print("PASS import preflight passed")
+    return 0
+
+
+def cmd_ready(args: argparse.Namespace) -> int:
+    report = check_export_readiness(args.bundle, args.repo)
+    errors = [
+        issue for issue in report.validation_issues if issue.severity == "error"
+    ]
+    warnings = [
+        issue for issue in report.validation_issues if issue.severity == "warning"
+    ]
+
+    print(f"Bundle: {report.bundle}")
+    print(f"Repo: {report.repo}")
+    print(f"Validation: {len(errors)} error(s), {len(warnings)} warning(s)")
+    for issue in report.validation_issues:
+        print(f"  - {issue.format()}")
+
+    print("Repo checks:")
+    for check in report.repo_report.checks:
+        print(
+            f"  - {check.status.upper()}: {check.name}: "
+            f"expected={check.expected!r} actual={check.actual!r} - {check.message}"
+        )
+
+    print("Content checks:")
+    for check in report.content_checks:
+        path = f" {check.path}" if check.path else ""
+        print(f"  - {check.status.upper()}: {check.name}{path}: {check.message}")
+
+    if report.has_errors:
+        sys.stdout.flush()
+        print("FAIL bundle is not ready for handoff", file=sys.stderr)
+        return 1
+
+    print("PASS bundle is ready for handoff")
     return 0
 
 
@@ -449,6 +486,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="repository directory to compare; defaults to the current directory",
     )
     preflight.set_defaults(func=cmd_preflight)
+
+    ready = subparsers.add_parser(
+        "ready",
+        help="check whether a bundle is ready for handoff",
+    )
+    ready.add_argument("bundle", help="path to a Waybill Bundle directory")
+    ready.add_argument(
+        "--repo",
+        default=".",
+        help="repository directory to compare; defaults to the current directory",
+    )
+    ready.set_defaults(func=cmd_ready)
 
     inspect = subparsers.add_parser("inspect", help="summarize a Waybill Bundle")
     inspect.add_argument("bundle", help="path to a Waybill Bundle directory")

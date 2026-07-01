@@ -198,6 +198,12 @@ Run the full import preflight check:
 ./cli/waybill preflight .waybill --repo .
 ```
 
+Check whether a bundle is ready for handoff:
+
+```bash
+./cli/waybill ready .waybill --repo .
+```
+
 Validate any generated bundle:
 
 ```bash

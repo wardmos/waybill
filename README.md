@@ -74,6 +74,12 @@ Run the full import preflight check:
 ./cli/waybill preflight .waybill --repo .
 ```
 
+Check whether a bundle is ready for handoff:
+
+```bash
+./cli/waybill ready .waybill --repo .
+```
+
 Validate a bundle:
 
 ```bash
@@ -119,8 +125,8 @@ Render a Markdown review report:
 The CLI is intentionally small and uses only the Python standard library.
 It currently supports adapter initialization checks, draft bundle scaffolding,
 import preflight checks, repository-state verification, bundle validation,
-inspection, redacted copies, shareable archive preparation, Markdown rendering,
-zip packing, and zip unpacking.
+export readiness checks, inspection, redacted copies, shareable archive
+preparation, Markdown rendering, zip packing, and zip unpacking.
 
 ## Commands
 
