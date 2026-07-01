@@ -66,6 +66,7 @@ Compare bundle metadata with the current repo:
 
 ```bash
 ./cli/waybill verify-repo .waybill --repo .
+./cli/waybill verify-repo .waybill --repo . --json
 ```
 
 Run the full import preflight check:

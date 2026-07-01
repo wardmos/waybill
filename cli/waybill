@@ -20,7 +20,11 @@ from waybill_core.packing import pack_bundle, unpack_bundle  # noqa: E402
 from waybill_core.preflight import run_import_preflight  # noqa: E402
 from waybill_core.readiness import check_export_readiness  # noqa: E402
 from waybill_core.redaction import redact_bundle  # noqa: E402
-from waybill_core.repo import verify_repo_state  # noqa: E402
+from waybill_core.repo import (  # noqa: E402
+    RepoCheck,
+    RepoVerificationReport,
+    verify_repo_state,
+)
 from waybill_core.rendering import render_bundle  # noqa: E402
 from waybill_core.scaffold import create_draft_bundle  # noqa: E402
 from waybill_core.sharing import share_bundle  # noqa: E402
@@ -70,6 +74,25 @@ def build_validation_report(
         "errors": len(errors),
         "warnings": len(warnings),
         "issues": [issue_to_dict(issue) for issue in issues],
+    }
+
+
+def repo_check_to_dict(check: RepoCheck) -> dict[str, object]:
+    return {
+        "name": check.name,
+        "status": check.status,
+        "expected": check.expected,
+        "actual": check.actual,
+        "message": check.message,
+    }
+
+
+def build_repo_report(report: RepoVerificationReport) -> dict[str, object]:
+    return {
+        "bundle": str(report.bundle),
+        "repo": str(report.repo),
+        "valid": not report.has_errors,
+        "checks": [repo_check_to_dict(check) for check in report.checks],
     }
 
 
@@ -189,6 +212,10 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 def cmd_verify_repo(args: argparse.Namespace) -> int:
     report = verify_repo_state(args.bundle, args.repo)
+    if args.json:
+        print(json.dumps(build_repo_report(report), indent=2))
+        return 1 if report.has_errors else 0
+
     print(f"Bundle: {report.bundle}")
     print(f"Repo: {report.repo}")
     for check in report.checks:
@@ -538,6 +565,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--repo",
         default=".",
         help="repository directory to compare; defaults to the current directory",
+    )
+    verify_repo.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
     )
     verify_repo.set_defaults(func=cmd_verify_repo)
 

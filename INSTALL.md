@@ -190,6 +190,7 @@ Compare a bundle with the current repository state:
 
 ```bash
 ./cli/waybill verify-repo .waybill --repo .
+./cli/waybill verify-repo .waybill --repo . --json
 ```
 
 Run the full import preflight check:

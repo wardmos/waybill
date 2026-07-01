@@ -33,6 +33,7 @@ Compare bundle metadata with a repo:
 
 ```bash
 ./cli/waybill verify-repo .waybill --repo .
+./cli/waybill verify-repo .waybill --repo . --json
 ```
 
 Run the full import preflight check:
@@ -108,7 +109,7 @@ This checks:
 - CLI draft bundle scaffolding.
 - CLI import preflight checks.
 - CLI export readiness checks for draft placeholders.
-- CLI repository-state verification against bundle metadata.
+- CLI repository-state verification against bundle metadata in text and JSON.
 - CLI bundle validation behavior through text and JSON output.
 - CLI bundle inspection output for text and JSON reports.
 - CLI redaction output for common token and key/value patterns.
@@ -173,6 +174,7 @@ Compare an example bundle with the current repository:
 
 ```bash
 ./cli/waybill verify-repo examples/claude-to-codex --repo .
+./cli/waybill verify-repo examples/claude-to-codex --repo . --json
 ```
 
 Expected result:
@@ -180,6 +182,7 @@ Expected result:
 - The command reads `metadata.json`.
 - The command checks the target repo branch, HEAD, and dirty state.
 - The example bundle reports a mismatch against the Waybill repository.
+- JSON output parses as valid JSON and includes `valid` plus check details.
 - A synthetic bundle with matching current repo metadata returns `PASS`.
 
 ## CLI Validate Smoke Test
