@@ -48,6 +48,7 @@ Install project-local Claude Code and OpenCode adapter files into another repo:
 
 ```bash
 ./cli/waybill init --target /path/to/repo
+./cli/waybill init --target /path/to/repo --json
 ```
 
 Check a target repo's adapter installation:

@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -88,6 +90,15 @@ def require_file(path: str) -> Path:
     if not file_path.is_file():
         fail(f"missing required file: {path}")
     return file_path
+
+
+def run_waybill(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [str(ROOT / "cli/waybill"), *args],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
 
 
 def has_command_classification_rule(text: str) -> bool:
@@ -269,6 +280,66 @@ def validate_examples() -> None:
         validate_example(ROOT / example)
 
 
+def validate_cli_init() -> None:
+    with tempfile.TemporaryDirectory(prefix="waybill-init-") as target:
+        target_path = Path(target)
+
+        text_result = run_waybill("init", "--target", target, "--force")
+        if text_result.returncode != 0:
+            fail(f"init text command failed: {text_result.stderr.strip()}")
+        if "Initialized Waybill adapters in:" not in text_result.stdout:
+            fail("init text output must report the target repository")
+
+        json_result = run_waybill("init", "--target", target, "--force", "--json")
+        if json_result.returncode != 0:
+            fail(f"init JSON command failed: {json_result.stderr.strip()}")
+        try:
+            report = json.loads(json_result.stdout)
+        except json.JSONDecodeError as exc:
+            fail(f"init JSON output is invalid: {exc}")
+
+        if report.get("success") is not True:
+            fail("init JSON output must set success true")
+        if report.get("target") != str(target_path):
+            fail("init JSON output must include the target path")
+        if report.get("adapters") != ["claude-code", "opencode"]:
+            fail("init JSON output must include selected adapters")
+
+        actions = report.get("actions")
+        if not isinstance(actions, list) or not actions:
+            fail("init JSON output must include file actions")
+        for action in actions:
+            if not isinstance(action, dict):
+                fail("init JSON actions must be objects")
+            if not isinstance(action.get("path"), str):
+                fail("init JSON actions must include path")
+            if action.get("action") not in {"created", "updated", "unchanged"}:
+                fail("init JSON actions must include a known action")
+
+        for expected in [
+            ".claude/skills/handoff/SKILL.md",
+            ".opencode/commands/handoff.md",
+            ".opencode/skills/handoff/SKILL.md",
+            ".gitignore",
+        ]:
+            if not (target_path / expected).is_file():
+                fail(f"init must install {expected}")
+
+    with tempfile.TemporaryDirectory(prefix="waybill-init-missing-") as parent:
+        missing = str(Path(parent) / "missing")
+        error_result = run_waybill("init", "--target", missing, "--json")
+        if error_result.returncode == 0:
+            fail("init JSON error command must fail for a missing target")
+        try:
+            error_report = json.loads(error_result.stdout)
+        except json.JSONDecodeError as exc:
+            fail(f"init JSON error output is invalid: {exc}")
+        if error_report.get("success") is not False:
+            fail("init JSON error output must set success false")
+        if "does not exist" not in str(error_report.get("error", "")):
+            fail("init JSON error output must include the failure reason")
+
+
 def main() -> int:
     checks = [
         ("structure", validate_structure),
@@ -278,6 +349,7 @@ def main() -> int:
         ("Claude skills", validate_claude_skills),
         ("OpenCode adapter", validate_opencode_adapter),
         ("examples", validate_examples),
+        ("CLI init", validate_cli_init),
     ]
 
     try:

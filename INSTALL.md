@@ -172,6 +172,7 @@ Install Claude Code and OpenCode project files into another repository:
 
 ```bash
 ./cli/waybill init --target /path/to/repo
+./cli/waybill init --target /path/to/repo --json
 ```
 
 Check the target repository installation:

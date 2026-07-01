@@ -15,6 +15,7 @@ Install project-local adapters into a target repository:
 
 ```bash
 ./cli/waybill init --target /tmp/waybill-init-target
+./cli/waybill init --target /tmp/waybill-init-target --force --json
 ```
 
 Check adapter installation:
@@ -107,7 +108,7 @@ This checks:
 - Obvious secret-like strings in examples.
 - Agent-neutral handoff wording in examples.
 - OpenCode command and skill frontmatter.
-- CLI adapter initialization into target repositories.
+- CLI adapter initialization into target repositories in text and JSON.
 - CLI adapter installation checks in text and JSON.
 - CLI draft bundle scaffolding.
 - CLI import preflight checks in text and JSON.
@@ -129,6 +130,7 @@ Install adapters into a temporary repository:
 
 ```bash
 ./cli/waybill init --target /tmp/waybill-init-target --force
+./cli/waybill init --target /tmp/waybill-init-target --force --json
 ```
 
 Expected result:
@@ -138,6 +140,7 @@ Expected result:
 - `.gitignore` includes `.waybill/`.
 - Existing adapter files are refused unless `--force` is provided.
 - `--adapter opencode` installs only OpenCode files.
+- JSON output parses as valid JSON and includes installed adapter actions.
 
 ## CLI Doctor Smoke Test
 
