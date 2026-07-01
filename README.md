@@ -84,6 +84,7 @@ Validate a bundle:
 
 ```bash
 ./cli/waybill validate .waybill
+./cli/waybill validate .waybill --json
 ```
 
 Inspect bundle metadata and validation status:

@@ -51,6 +51,7 @@ Validate a specific bundle:
 
 ```bash
 ./cli/waybill validate .waybill
+./cli/waybill validate .waybill --json
 ```
 
 Inspect a specific bundle:
@@ -108,7 +109,7 @@ This checks:
 - CLI import preflight checks.
 - CLI export readiness checks for draft placeholders.
 - CLI repository-state verification against bundle metadata.
-- CLI bundle validation behavior through shared validation code.
+- CLI bundle validation behavior through text and JSON output.
 - CLI bundle inspection output for text and JSON reports.
 - CLI redaction output for common token and key/value patterns.
 - CLI share output for redacted archive preparation.
@@ -180,6 +181,22 @@ Expected result:
 - The command checks the target repo branch, HEAD, and dirty state.
 - The example bundle reports a mismatch against the Waybill repository.
 - A synthetic bundle with matching current repo metadata returns `PASS`.
+
+## CLI Validate Smoke Test
+
+Validate a bundle in text and JSON modes:
+
+```bash
+./cli/waybill validate examples/claude-to-codex
+./cli/waybill validate examples/claude-to-codex --json
+```
+
+Expected result:
+
+- Text output reports `PASS` for a valid bundle.
+- JSON output parses as valid JSON.
+- JSON output includes `valid`, error count, warning count, and issue details.
+- Invalid bundles return non-zero in both modes.
 
 ## CLI Inspect Smoke Test
 

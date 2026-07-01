@@ -58,6 +58,21 @@ def issue_to_dict(issue: ValidationIssue) -> dict[str, object]:
     }
 
 
+def build_validation_report(
+    bundle: str | Path,
+    issues: list[ValidationIssue],
+) -> dict[str, object]:
+    errors = [issue for issue in issues if issue.severity == "error"]
+    warnings = [issue for issue in issues if issue.severity == "warning"]
+    return {
+        "bundle": str(bundle),
+        "valid": len(errors) == 0,
+        "errors": len(errors),
+        "warnings": len(warnings),
+        "issues": [issue_to_dict(issue) for issue in issues],
+    }
+
+
 def build_inspect_report(
     bundle: Path,
     metadata: dict[str, Any] | None,
@@ -112,6 +127,10 @@ def build_inspect_report(
 
 def cmd_validate(args: argparse.Namespace) -> int:
     issues = validate_bundle(args.bundle)
+    if args.json:
+        print(json.dumps(build_validation_report(args.bundle, issues), indent=2))
+        return 1 if has_errors(issues) else 0
+
     if issues:
         for issue in issues:
             output = sys.stderr if issue.severity == "error" else sys.stdout
@@ -480,6 +499,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     validate = subparsers.add_parser("validate", help="validate a Waybill Bundle")
     validate.add_argument("bundle", help="path to a Waybill Bundle directory")
+    validate.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
+    )
     validate.set_defaults(func=cmd_validate)
 
     init = subparsers.add_parser("init", help="install Waybill adapter files")
