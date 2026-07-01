@@ -22,6 +22,7 @@ from waybill_core.redaction import redact_bundle  # noqa: E402
 from waybill_core.repo import verify_repo_state  # noqa: E402
 from waybill_core.rendering import render_bundle  # noqa: E402
 from waybill_core.scaffold import create_draft_bundle  # noqa: E402
+from waybill_core.sharing import share_bundle  # noqa: E402
 from waybill_core.validation import has_errors, validate_bundle  # noqa: E402
 
 
@@ -268,6 +269,41 @@ def cmd_pack(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_share(args: argparse.Namespace) -> int:
+    try:
+        report = share_bundle(
+            args.bundle,
+            args.output,
+            redacted_output=args.redacted_output,
+            force=args.force,
+        )
+    except (
+        FileExistsError,
+        FileNotFoundError,
+        NotADirectoryError,
+        ValueError,
+        OSError,
+    ) as exc:
+        print(f"FAIL {exc}", file=sys.stderr)
+        return 1
+
+    warnings = [
+        issue for issue in report.validation_issues if issue.severity == "warning"
+    ]
+    print(f"Source bundle: {report.source}")
+    print(f"Redacted review bundle: {report.redacted}")
+    print(f"Archive: {report.archive}")
+    print(f"Redaction replacements: {report.redaction.replacement_count}")
+    print(f"Files packed: {report.pack.file_count}")
+    print(f"Bytes packed: {report.pack.byte_count}")
+    if warnings:
+        print("Validation warnings:")
+        for warning in warnings:
+            print(f"  - {warning.format()}")
+    print("Review the redacted bundle and archive before sharing them.")
+    return 0
+
+
 def cmd_unpack(args: argparse.Namespace) -> int:
     try:
         report = unpack_bundle(args.archive, args.output, force=args.force)
@@ -445,6 +481,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="replace the output file if it already exists",
     )
     pack.set_defaults(func=cmd_pack)
+
+    share = subparsers.add_parser(
+        "share",
+        help="redact, validate, and zip a Waybill Bundle",
+    )
+    share.add_argument("bundle", help="path to a Waybill Bundle directory")
+    share.add_argument(
+        "--output",
+        required=True,
+        help="zip file to write",
+    )
+    share.add_argument(
+        "--redacted-output",
+        help="directory for the redacted review bundle; defaults near output",
+    )
+    share.add_argument(
+        "--force",
+        action="store_true",
+        help="replace existing redacted output or zip file",
+    )
+    share.set_defaults(func=cmd_share)
 
     unpack = subparsers.add_parser("unpack", help="unzip and validate a Waybill Bundle")
     unpack.add_argument("archive", help="path to a Waybill Bundle zip archive")

@@ -216,6 +216,12 @@ Create a redacted copy before sharing:
 ./cli/waybill redact .waybill --output .waybill-redacted
 ```
 
+Redact, validate, and pack a shareable archive:
+
+```bash
+./cli/waybill share .waybill --output waybill.zip
+```
+
 Pack a validated bundle into a zip archive:
 
 ```bash

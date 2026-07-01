@@ -33,6 +33,7 @@ REQUIRED_FILES = [
     "waybill_core/repo.py",
     "waybill_core/rendering.py",
     "waybill_core/scaffold.py",
+    "waybill_core/sharing.py",
     "waybill_core/validation.py",
     ".agents/plugins/marketplace.json",
     ".claude/skills/handoff/SKILL.md",

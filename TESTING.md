@@ -59,6 +59,12 @@ Create a redacted copy:
 ./cli/waybill redact .waybill --output .waybill-redacted
 ```
 
+Create a redacted zip archive:
+
+```bash
+./cli/waybill share .waybill --output waybill.zip
+```
+
 Pack a validated bundle:
 
 ```bash
@@ -97,6 +103,7 @@ This checks:
 - CLI bundle validation behavior through shared validation code.
 - CLI bundle inspection output for metadata, artifacts, and validation status.
 - CLI redaction output for common token and key/value patterns.
+- CLI share output for redacted archive preparation.
 - CLI pack output and refusal to archive invalid bundles.
 - CLI unpack output and validation of unpacked bundles.
 - CLI render output for Markdown review reports.
@@ -195,6 +202,22 @@ Expected result:
 - Secret-like values are replaced with `[REDACTED]`.
 - The original source bundle is not modified.
 - Existing output is refused unless `--force` is provided.
+
+## CLI Share Smoke Test
+
+Create a redacted review bundle and zip archive in one command:
+
+```bash
+./cli/waybill share examples/claude-to-codex --output /tmp/waybill-share.zip --force
+```
+
+Expected result:
+
+- The command creates a redacted review bundle near the output archive.
+- The redacted review bundle is validated before packing.
+- The command creates a zip archive from the redacted bundle.
+- Existing output is refused unless `--force` is provided.
+- Invalid redacted bundles are refused and no archive is written.
 
 ## CLI Pack Smoke Test
 

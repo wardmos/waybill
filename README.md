@@ -92,6 +92,12 @@ Create a redacted copy for review before sharing:
 ./cli/waybill redact .waybill --output .waybill-redacted
 ```
 
+Redact, validate, and pack a shareable archive:
+
+```bash
+./cli/waybill share .waybill --output waybill.zip
+```
+
 Pack a validated bundle into a zip archive:
 
 ```bash
@@ -113,7 +119,8 @@ Render a Markdown review report:
 The CLI is intentionally small and uses only the Python standard library.
 It currently supports adapter initialization checks, draft bundle scaffolding,
 import preflight checks, repository-state verification, bundle validation,
-inspection, redacted copies, Markdown rendering, zip packing, and zip unpacking.
+inspection, redacted copies, shareable archive preparation, Markdown rendering,
+zip packing, and zip unpacking.
 
 ## Commands
 
