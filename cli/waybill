@@ -14,7 +14,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from waybill_core.doctor import doctor_repository  # noqa: E402
+from waybill_core.doctor import (  # noqa: E402
+    DoctorCheck,
+    DoctorReport,
+    doctor_repository,
+)
 from waybill_core.install import install_adapters  # noqa: E402
 from waybill_core.packing import pack_bundle, unpack_bundle  # noqa: E402
 from waybill_core.preflight import (  # noqa: E402
@@ -81,6 +85,23 @@ def build_validation_report(
         "errors": len(errors),
         "warnings": len(warnings),
         "issues": [issue_to_dict(issue) for issue in issues],
+    }
+
+
+def doctor_check_to_dict(check: DoctorCheck) -> dict[str, object]:
+    return {
+        "name": check.name,
+        "status": check.status,
+        "message": check.message,
+    }
+
+
+def build_doctor_report(report: DoctorReport) -> dict[str, object]:
+    return {
+        "target": str(report.target),
+        "adapters": report.adapters,
+        "valid": not report.has_errors,
+        "checks": [doctor_check_to_dict(check) for check in report.checks],
     }
 
 
@@ -247,6 +268,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(f"FAIL {exc}", file=sys.stderr)
         return 1
+    if args.json:
+        print(json.dumps(build_doctor_report(report), indent=2))
+        return 1 if report.has_errors else 0
 
     print(f"Waybill doctor target: {report.target}")
     print(f"Adapters: {', '.join(report.adapters)}")
@@ -611,6 +635,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="target repository directory; defaults to the current directory",
     )
     add_adapter_argument(doctor, "check")
+    doctor.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
+    )
     doctor.set_defaults(func=cmd_doctor)
 
     verify_repo = subparsers.add_parser(

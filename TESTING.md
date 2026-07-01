@@ -21,6 +21,7 @@ Check adapter installation:
 
 ```bash
 ./cli/waybill doctor --target /tmp/waybill-init-target
+./cli/waybill doctor --target /tmp/waybill-init-target --json
 ```
 
 Create a draft bundle:
@@ -107,7 +108,7 @@ This checks:
 - Agent-neutral handoff wording in examples.
 - OpenCode command and skill frontmatter.
 - CLI adapter initialization into target repositories.
-- CLI adapter installation checks.
+- CLI adapter installation checks in text and JSON.
 - CLI draft bundle scaffolding.
 - CLI import preflight checks in text and JSON.
 - CLI export readiness checks for draft placeholders in text and JSON.
@@ -144,12 +145,14 @@ Check an initialized repository:
 
 ```bash
 ./cli/waybill doctor --target /tmp/waybill-init-target
+./cli/waybill doctor --target /tmp/waybill-init-target --json
 ```
 
 Expected result:
 
 - Installed Claude Code and OpenCode files are reported as `OK`.
 - `.gitignore` with `.waybill/` is reported as `OK`.
+- JSON output parses as valid JSON and includes adapter check details.
 - A partial installation returns a non-zero exit code and reports missing files.
 - `--adapter opencode` checks only OpenCode files.
 

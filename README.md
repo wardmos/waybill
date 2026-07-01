@@ -54,6 +54,7 @@ Check a target repo's adapter installation:
 
 ```bash
 ./cli/waybill doctor --target /path/to/repo
+./cli/waybill doctor --target /path/to/repo --json
 ```
 
 Create a draft bundle from the current repo:
