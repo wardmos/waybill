@@ -80,6 +80,7 @@ Check whether a bundle is ready for handoff:
 
 ```bash
 ./cli/waybill ready .waybill --repo .
+./cli/waybill ready .waybill --repo . --json
 ```
 
 Validate a bundle:

@@ -21,7 +21,11 @@ from waybill_core.preflight import (  # noqa: E402
     ImportPreflightReport,
     run_import_preflight,
 )
-from waybill_core.readiness import check_export_readiness  # noqa: E402
+from waybill_core.readiness import (  # noqa: E402
+    ExportReadinessReport,
+    ReadinessCheck,
+    check_export_readiness,
+)
 from waybill_core.redaction import redact_bundle  # noqa: E402
 from waybill_core.repo import (  # noqa: E402
     RepoCheck,
@@ -111,6 +115,34 @@ def build_preflight_report(report: ImportPreflightReport) -> dict[str, object]:
         "validation": validation,
         "repo_checks": [
             repo_check_to_dict(check) for check in report.repo_report.checks
+        ],
+    }
+
+
+def readiness_check_to_dict(check: ReadinessCheck) -> dict[str, object]:
+    return {
+        "name": check.name,
+        "status": check.status,
+        "message": check.message,
+        "path": check.path,
+    }
+
+
+def build_readiness_report(report: ExportReadinessReport) -> dict[str, object]:
+    validation = build_validation_report(
+        report.bundle,
+        report.validation_issues,
+    )
+    return {
+        "bundle": str(report.bundle),
+        "repo": str(report.repo),
+        "valid": not report.has_errors,
+        "validation": validation,
+        "repo_checks": [
+            repo_check_to_dict(check) for check in report.repo_report.checks
+        ],
+        "content_checks": [
+            readiness_check_to_dict(check) for check in report.content_checks
         ],
     }
 
@@ -320,6 +352,9 @@ def cmd_ready(args: argparse.Namespace) -> int:
     warnings = [
         issue for issue in report.validation_issues if issue.severity == "warning"
     ]
+    if args.json:
+        print(json.dumps(build_readiness_report(report), indent=2))
+        return 1 if report.has_errors else 0
 
     print(f"Bundle: {report.bundle}")
     print(f"Repo: {report.repo}")
@@ -648,6 +683,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--repo",
         default=".",
         help="repository directory to compare; defaults to the current directory",
+    )
+    ready.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
     )
     ready.set_defaults(func=cmd_ready)
 
