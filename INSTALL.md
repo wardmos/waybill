@@ -192,6 +192,12 @@ Compare a bundle with the current repository state:
 ./cli/waybill verify-repo .waybill --repo .
 ```
 
+Run the full import preflight check:
+
+```bash
+./cli/waybill preflight .waybill --repo .
+```
+
 Validate any generated bundle:
 
 ```bash

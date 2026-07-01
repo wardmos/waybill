@@ -35,6 +35,12 @@ Compare bundle metadata with a repo:
 ./cli/waybill verify-repo .waybill --repo .
 ```
 
+Run the full import preflight check:
+
+```bash
+./cli/waybill preflight .waybill --repo .
+```
+
 Validate a specific bundle:
 
 ```bash
@@ -86,6 +92,7 @@ This checks:
 - CLI adapter initialization into target repositories.
 - CLI adapter installation checks.
 - CLI draft bundle scaffolding.
+- CLI import preflight checks.
 - CLI repository-state verification against bundle metadata.
 - CLI bundle validation behavior through shared validation code.
 - CLI bundle inspection output for metadata, artifacts, and validation status.
@@ -158,6 +165,21 @@ Expected result:
 - The command checks the target repo branch, HEAD, and dirty state.
 - The example bundle reports a mismatch against the Waybill repository.
 - A synthetic bundle with matching current repo metadata returns `PASS`.
+
+## CLI Preflight Smoke Test
+
+Run validation and repo-state checks together:
+
+```bash
+./cli/waybill preflight /tmp/waybill-draft --repo .
+```
+
+Expected result:
+
+- The command reports validation errors and warnings.
+- The command reports repository state checks.
+- A generated draft bundle for the current repository returns `PASS`.
+- An example bundle targeting another branch returns non-zero.
 
 ## CLI Redaction Smoke Test
 

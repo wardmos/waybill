@@ -9,6 +9,7 @@ from .packing import (
     pack_bundle,
     unpack_bundle,
 )
+from .preflight import ImportPreflightReport, run_import_preflight
 from .redaction import RedactionReport, redact_bundle, redact_text
 from .repo import RepoCheck, RepoVerificationReport, verify_repo_state
 from .rendering import render_bundle
@@ -19,6 +20,7 @@ __all__ = [
     "DoctorCheck",
     "DoctorReport",
     "DraftBundleReport",
+    "ImportPreflightReport",
     "PackReport",
     "PackedFile",
     "InstallAction",
@@ -35,6 +37,7 @@ __all__ = [
     "redact_bundle",
     "redact_text",
     "render_bundle",
+    "run_import_preflight",
     "unpack_bundle",
     "validate_bundle",
     "verify_repo_state",

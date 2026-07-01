@@ -68,6 +68,12 @@ Compare bundle metadata with the current repo:
 ./cli/waybill verify-repo .waybill --repo .
 ```
 
+Run the full import preflight check:
+
+```bash
+./cli/waybill preflight .waybill --repo .
+```
+
 Validate a bundle:
 
 ```bash
@@ -106,8 +112,8 @@ Render a Markdown review report:
 
 The CLI is intentionally small and uses only the Python standard library.
 It currently supports adapter initialization checks, draft bundle scaffolding,
-repository-state verification, bundle validation, inspection, redacted copies,
-Markdown rendering, zip packing, and zip unpacking.
+import preflight checks, repository-state verification, bundle validation,
+inspection, redacted copies, Markdown rendering, zip packing, and zip unpacking.
 
 ## Commands
 
