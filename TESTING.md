@@ -71,6 +71,7 @@ Create a redacted copy:
 
 ```bash
 ./cli/waybill redact .waybill --output .waybill-redacted
+./cli/waybill redact .waybill --output .waybill-redacted --json
 ```
 
 Create a redacted zip archive:
@@ -117,7 +118,7 @@ This checks:
 - CLI repository-state verification against bundle metadata in text and JSON.
 - CLI bundle validation behavior through text and JSON output.
 - CLI bundle inspection output for text and JSON reports.
-- CLI redaction output for common token and key/value patterns.
+- CLI redaction output for common token and key/value patterns in text and JSON.
 - CLI share output for redacted archive preparation.
 - CLI pack output and refusal to archive invalid bundles.
 - CLI unpack output and validation of unpacked bundles.
@@ -269,6 +270,7 @@ Create a temporary bundle containing synthetic secrets, then redact it:
 
 ```bash
 ./cli/waybill redact /tmp/waybill-secret-fixture --output /tmp/waybill-secret-redacted --force
+./cli/waybill redact /tmp/waybill-secret-fixture --output /tmp/waybill-secret-redacted --force --json
 ```
 
 Expected result:
@@ -277,6 +279,8 @@ Expected result:
 - Secret-like values are replaced with `[REDACTED]`.
 - The original source bundle is not modified.
 - Existing output is refused unless `--force` is provided.
+- JSON output parses as valid JSON and includes source, output, file count,
+  replacement count, and per-file replacement details.
 
 ## CLI Share Smoke Test
 

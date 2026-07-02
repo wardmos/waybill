@@ -228,6 +228,7 @@ Create a redacted copy before sharing:
 
 ```bash
 ./cli/waybill redact .waybill --output .waybill-redacted
+./cli/waybill redact .waybill --output .waybill-redacted --json
 ```
 
 Redact, validate, and pack a shareable archive:

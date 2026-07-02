@@ -34,7 +34,11 @@ from waybill_core.readiness import (  # noqa: E402
     ReadinessCheck,
     check_export_readiness,
 )
-from waybill_core.redaction import redact_bundle  # noqa: E402
+from waybill_core.redaction import (  # noqa: E402
+    RedactedFile,
+    RedactionReport,
+    redact_bundle,
+)
 from waybill_core.repo import (  # noqa: E402
     RepoCheck,
     RepoVerificationReport,
@@ -133,6 +137,25 @@ def build_draft_report(report: DraftBundleReport) -> dict[str, object]:
         "dirty": report.dirty,
         "success": True,
         "files": report.files,
+    }
+
+
+def redacted_file_to_dict(file: RedactedFile) -> dict[str, object]:
+    return {
+        "path": file.path,
+        "replacements": file.replacements,
+        "copied_binary": file.copied_binary,
+    }
+
+
+def build_redaction_report(report: RedactionReport) -> dict[str, object]:
+    return {
+        "source": str(report.source),
+        "output": str(report.output),
+        "success": True,
+        "files_processed": len(report.files),
+        "replacements": report.replacement_count,
+        "files": [redacted_file_to_dict(file) for file in report.files],
     }
 
 
@@ -503,8 +526,15 @@ def cmd_redact(args: argparse.Namespace) -> int:
     try:
         report = redact_bundle(args.bundle, args.output, force=args.force)
     except (FileExistsError, FileNotFoundError, NotADirectoryError, ValueError) as exc:
+        if args.json:
+            print(json.dumps({"success": False, "error": str(exc)}, indent=2))
+            return 1
         print(f"FAIL {exc}", file=sys.stderr)
         return 1
+
+    if args.json:
+        print(json.dumps(build_redaction_report(report), indent=2))
+        return 0
 
     print(f"Redacted bundle: {report.output}")
     print(f"Source bundle: {report.source}")
@@ -795,6 +825,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
         help="replace the output directory if it already exists",
+    )
+    redact.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
     )
     redact.set_defaults(func=cmd_redact)
 

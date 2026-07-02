@@ -411,6 +411,119 @@ def validate_cli_new() -> None:
             fail("new JSON error output must include the failure reason")
 
 
+def write_redaction_fixture(source: Path) -> None:
+    source.mkdir()
+    (source / "WAYBILL.md").write_text(
+        "\n".join(
+            [
+                "# Fixture",
+                "api_key: fixture-value",
+                "token=fixture-value",
+                "Bearer fixture-value",
+            ]
+        )
+    )
+    (source / "metadata.json").write_text('{"password": "fixture-value"}\n')
+    (source / "diff.patch").write_text("secret: fixture-value\n")
+    (source / "commands.log").write_text("cookie=fixture-value\n")
+    (source / "test-summary.md").write_text("fixture-value\n")
+
+
+def validate_cli_redact() -> None:
+    with tempfile.TemporaryDirectory(prefix="waybill-redact-") as parent:
+        parent_path = Path(parent)
+        source = parent_path / "source"
+        output = parent_path / "redacted"
+        write_redaction_fixture(source)
+
+        text_result = run_waybill(
+            "redact",
+            str(source),
+            "--output",
+            str(output),
+            "--force",
+        )
+        if text_result.returncode != 0:
+            fail(f"redact text command failed: {text_result.stderr.strip()}")
+        if "Redacted bundle:" not in text_result.stdout:
+            fail("redact text output must report the output bundle path")
+
+        json_result = run_waybill(
+            "redact",
+            str(source),
+            "--output",
+            str(output),
+            "--force",
+            "--json",
+        )
+        if json_result.returncode != 0:
+            fail(f"redact JSON command failed: {json_result.stderr.strip()}")
+        try:
+            report = json.loads(json_result.stdout)
+        except json.JSONDecodeError as exc:
+            fail(f"redact JSON output is invalid: {exc}")
+
+        if report.get("success") is not True:
+            fail("redact JSON output must set success true")
+        if report.get("source") != str(source):
+            fail("redact JSON output must include the source path")
+        if report.get("output") != str(output):
+            fail("redact JSON output must include the output path")
+        if report.get("files_processed") != len(STANDARD_FILES):
+            fail("redact JSON output must include the file count")
+        if report.get("replacements") != 7:
+            fail("redact JSON output must include the replacement count")
+
+        files = report.get("files")
+        if not isinstance(files, list) or len(files) != len(STANDARD_FILES):
+            fail("redact JSON output must include per-file details")
+        for file in files:
+            if not isinstance(file, dict):
+                fail("redact JSON file details must be objects")
+            if not isinstance(file.get("path"), str):
+                fail("redact JSON file details must include path")
+            if not isinstance(file.get("replacements"), int):
+                fail("redact JSON file details must include replacements")
+            if not isinstance(file.get("copied_binary"), bool):
+                fail("redact JSON file details must include copied_binary")
+
+        source_text = "\n".join(path.read_text() for path in source.iterdir())
+        output_text = "\n".join(path.read_text() for path in output.iterdir())
+        for original in [
+            "fixture-value",
+            "fixture-value",
+            "fixture-value",
+            "fixture-value",
+            "fixture-value",
+            "fixture-value",
+            "fixture-value",
+        ]:
+            if original not in source_text:
+                fail("redact must not modify the source bundle")
+            if original in output_text:
+                fail("redact must remove fake secret values from output")
+        if "[REDACTED]" not in output_text:
+            fail("redact output must contain the redaction placeholder")
+
+        error_result = run_waybill(
+            "redact",
+            str(source),
+            "--output",
+            str(output),
+            "--json",
+        )
+        if error_result.returncode == 0:
+            fail("redact JSON error command must fail when output exists without --force")
+        try:
+            error_report = json.loads(error_result.stdout)
+        except json.JSONDecodeError as exc:
+            fail(f"redact JSON error output is invalid: {exc}")
+        if error_report.get("success") is not False:
+            fail("redact JSON error output must set success false")
+        if "already exists" not in str(error_report.get("error", "")):
+            fail("redact JSON error output must include the failure reason")
+
+
 def main() -> int:
     checks = [
         ("structure", validate_structure),
@@ -422,6 +535,7 @@ def main() -> int:
         ("examples", validate_examples),
         ("CLI init", validate_cli_init),
         ("CLI new", validate_cli_new),
+        ("CLI redact", validate_cli_redact),
     ]
 
     try:
