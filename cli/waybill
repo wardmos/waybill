@@ -41,7 +41,7 @@ from waybill_core.repo import (  # noqa: E402
     verify_repo_state,
 )
 from waybill_core.rendering import render_bundle  # noqa: E402
-from waybill_core.scaffold import create_draft_bundle  # noqa: E402
+from waybill_core.scaffold import DraftBundleReport, create_draft_bundle  # noqa: E402
 from waybill_core.sharing import share_bundle  # noqa: E402
 from waybill_core.validation import (  # noqa: E402
     ValidationIssue,
@@ -122,6 +122,17 @@ def build_install_report(report: InstallReport) -> dict[str, object]:
         "adapters": report.adapters,
         "success": True,
         "actions": [install_action_to_dict(action) for action in report.actions],
+    }
+
+
+def build_draft_report(report: DraftBundleReport) -> dict[str, object]:
+    return {
+        "output": str(report.output),
+        "repo": str(report.repo),
+        "source_agent": report.source_agent,
+        "dirty": report.dirty,
+        "success": True,
+        "files": report.files,
     }
 
 
@@ -351,8 +362,15 @@ def cmd_new(args: argparse.Namespace) -> int:
         ValueError,
         OSError,
     ) as exc:
+        if args.json:
+            print(json.dumps({"success": False, "error": str(exc)}, indent=2))
+            return 1
         print(f"FAIL {exc}", file=sys.stderr)
         return 1
+
+    if args.json:
+        print(json.dumps(build_draft_report(report), indent=2))
+        return 0
 
     print(f"Draft bundle: {report.output}")
     print(f"Repo: {report.repo}")
@@ -715,6 +733,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
         help="replace existing standard Waybill files in the output directory",
+    )
+    new.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
     )
     new.set_defaults(func=cmd_new)
 

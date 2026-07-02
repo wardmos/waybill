@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from waybill_core.scaffold import STANDARD_FILES  # noqa: E402
 from waybill_core.validation import validate_bundle  # noqa: E402
 
 REQUIRED_FILES = [
@@ -340,6 +341,76 @@ def validate_cli_init() -> None:
             fail("init JSON error output must include the failure reason")
 
 
+def validate_cli_new() -> None:
+    with tempfile.TemporaryDirectory(prefix="waybill-new-") as parent:
+        output = Path(parent) / "bundle"
+
+        text_result = run_waybill(
+            "new",
+            "--output",
+            str(output),
+            "--repo",
+            str(ROOT),
+            "--force",
+        )
+        if text_result.returncode != 0:
+            fail(f"new text command failed: {text_result.stderr.strip()}")
+        if "Draft bundle:" not in text_result.stdout:
+            fail("new text output must report the draft bundle path")
+
+        json_result = run_waybill(
+            "new",
+            "--output",
+            str(output),
+            "--repo",
+            str(ROOT),
+            "--force",
+            "--json",
+        )
+        if json_result.returncode != 0:
+            fail(f"new JSON command failed: {json_result.stderr.strip()}")
+        try:
+            report = json.loads(json_result.stdout)
+        except json.JSONDecodeError as exc:
+            fail(f"new JSON output is invalid: {exc}")
+
+        if report.get("success") is not True:
+            fail("new JSON output must set success true")
+        if report.get("output") != str(output):
+            fail("new JSON output must include the output path")
+        if report.get("repo") != str(ROOT):
+            fail("new JSON output must include the repo path")
+        if report.get("source_agent") != "waybill-cli":
+            fail("new JSON output must include the source agent")
+        if not isinstance(report.get("dirty"), bool):
+            fail("new JSON output must include dirty as a boolean")
+        if report.get("files") != STANDARD_FILES:
+            fail("new JSON output must include standard generated files")
+
+        for expected in STANDARD_FILES:
+            if not (output / expected).is_file():
+                fail(f"new must write {expected}")
+
+        error_result = run_waybill(
+            "new",
+            "--output",
+            str(output),
+            "--repo",
+            str(ROOT),
+            "--json",
+        )
+        if error_result.returncode == 0:
+            fail("new JSON error command must fail when output exists without --force")
+        try:
+            error_report = json.loads(error_result.stdout)
+        except json.JSONDecodeError as exc:
+            fail(f"new JSON error output is invalid: {exc}")
+        if error_report.get("success") is not False:
+            fail("new JSON error output must set success false")
+        if "already contains Waybill files" not in str(error_report.get("error", "")):
+            fail("new JSON error output must include the failure reason")
+
+
 def main() -> int:
     checks = [
         ("structure", validate_structure),
@@ -350,6 +421,7 @@ def main() -> int:
         ("OpenCode adapter", validate_opencode_adapter),
         ("examples", validate_examples),
         ("CLI init", validate_cli_init),
+        ("CLI new", validate_cli_new),
     ]
 
     try:

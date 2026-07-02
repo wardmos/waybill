@@ -186,6 +186,7 @@ Create a draft bundle:
 
 ```bash
 ./cli/waybill new --output .waybill --repo .
+./cli/waybill new --output .waybill --repo . --json
 ```
 
 Compare a bundle with the current repository state:

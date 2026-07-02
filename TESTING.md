@@ -29,6 +29,7 @@ Create a draft bundle:
 
 ```bash
 ./cli/waybill new --output /tmp/waybill-draft --repo . --force
+./cli/waybill new --output /tmp/waybill-draft --repo . --force --json
 ```
 
 Compare bundle metadata with a repo:
@@ -110,7 +111,7 @@ This checks:
 - OpenCode command and skill frontmatter.
 - CLI adapter initialization into target repositories in text and JSON.
 - CLI adapter installation checks in text and JSON.
-- CLI draft bundle scaffolding.
+- CLI draft bundle scaffolding in text and JSON.
 - CLI import preflight checks in text and JSON.
 - CLI export readiness checks for draft placeholders in text and JSON.
 - CLI repository-state verification against bundle metadata in text and JSON.
@@ -165,6 +166,7 @@ Create a draft bundle from the current repository:
 
 ```bash
 ./cli/waybill new --output /tmp/waybill-draft --repo . --force
+./cli/waybill new --output /tmp/waybill-draft --repo . --force --json
 ```
 
 Expected result:
@@ -173,6 +175,8 @@ Expected result:
 - `metadata.json` records the current branch, HEAD, and dirty state.
 - `diff.patch` captures the current tracked diff, or records that no tracked
   diff was captured.
+- JSON output parses as valid JSON and includes output, repo, source agent,
+  dirty state, and generated files.
 - The generated bundle passes `./cli/waybill validate`.
 - Existing standard files are refused unless `--force` is provided.
 

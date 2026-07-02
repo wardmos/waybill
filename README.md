@@ -62,6 +62,7 @@ Create a draft bundle from the current repo:
 
 ```bash
 ./cli/waybill new --output .waybill --repo .
+./cli/waybill new --output .waybill --repo . --json
 ```
 
 Compare bundle metadata with the current repo:
