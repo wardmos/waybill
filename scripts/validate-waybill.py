@@ -524,6 +524,114 @@ def validate_cli_redact() -> None:
             fail("redact JSON error output must include the failure reason")
 
 
+def validate_cli_pack() -> None:
+    with tempfile.TemporaryDirectory(prefix="waybill-pack-") as parent:
+        parent_path = Path(parent)
+        output = parent_path / "waybill-example.zip"
+
+        text_result = run_waybill(
+            "pack",
+            "examples/claude-to-codex",
+            "--output",
+            str(output),
+            "--force",
+        )
+        if text_result.returncode != 0:
+            fail(f"pack text command failed: {text_result.stderr.strip()}")
+        if "Packed bundle:" not in text_result.stdout:
+            fail("pack text output must report the output archive path")
+
+        json_result = run_waybill(
+            "pack",
+            "examples/claude-to-codex",
+            "--output",
+            str(output),
+            "--force",
+            "--json",
+        )
+        if json_result.returncode != 0:
+            fail(f"pack JSON command failed: {json_result.stderr.strip()}")
+        try:
+            report = json.loads(json_result.stdout)
+        except json.JSONDecodeError as exc:
+            fail(f"pack JSON output is invalid: {exc}")
+
+        if report.get("success") is not True:
+            fail("pack JSON output must set success true")
+        if report.get("source") != "examples/claude-to-codex":
+            fail("pack JSON output must include the source bundle path")
+        if report.get("output") != str(output):
+            fail("pack JSON output must include the output archive path")
+        if report.get("archive_root") != "claude-to-codex":
+            fail("pack JSON output must include the archive root")
+        if report.get("file_count") != len(STANDARD_FILES):
+            fail("pack JSON output must include the file count")
+        if not isinstance(report.get("byte_count"), int) or report["byte_count"] <= 0:
+            fail("pack JSON output must include the byte count")
+        validation = report.get("validation")
+        if not isinstance(validation, dict) or validation.get("valid") is not True:
+            fail("pack JSON output must include passing validation details")
+
+        files = report.get("files")
+        if not isinstance(files, list) or len(files) != len(STANDARD_FILES):
+            fail("pack JSON output must include packed file details")
+        for file in files:
+            if not isinstance(file, dict):
+                fail("pack JSON file details must be objects")
+            if not isinstance(file.get("path"), str):
+                fail("pack JSON file details must include path")
+            if not file["path"].startswith("claude-to-codex/"):
+                fail("pack JSON file paths must include the archive root")
+            if not isinstance(file.get("size"), int):
+                fail("pack JSON file details must include size")
+        if not output.is_file():
+            fail("pack must create the output zip archive")
+
+        exists_result = run_waybill(
+            "pack",
+            "examples/claude-to-codex",
+            "--output",
+            str(output),
+            "--json",
+        )
+        if exists_result.returncode == 0:
+            fail("pack JSON error command must fail when output exists without --force")
+        try:
+            exists_report = json.loads(exists_result.stdout)
+        except json.JSONDecodeError as exc:
+            fail(f"pack JSON existing-output error is invalid: {exc}")
+        if exists_report.get("success") is not False:
+            fail("pack JSON existing-output error must set success false")
+        if "already exists" not in str(exists_report.get("error", "")):
+            fail("pack JSON existing-output error must include the failure reason")
+
+        invalid = parent_path / "invalid"
+        invalid_output = parent_path / "invalid.zip"
+        write_redaction_fixture(invalid)
+        invalid_result = run_waybill(
+            "pack",
+            str(invalid),
+            "--output",
+            str(invalid_output),
+            "--json",
+        )
+        if invalid_result.returncode == 0:
+            fail("pack JSON invalid-bundle command must fail")
+        try:
+            invalid_report = json.loads(invalid_result.stdout)
+        except json.JSONDecodeError as exc:
+            fail(f"pack JSON invalid-bundle output is invalid: {exc}")
+        if invalid_report.get("success") is not False:
+            fail("pack JSON invalid-bundle output must set success false")
+        invalid_validation = invalid_report.get("validation")
+        if not isinstance(invalid_validation, dict):
+            fail("pack JSON invalid-bundle output must include validation details")
+        if invalid_validation.get("valid") is not False:
+            fail("pack JSON invalid-bundle validation must be invalid")
+        if invalid_output.exists():
+            fail("pack must not write an archive for invalid bundles")
+
+
 def main() -> int:
     checks = [
         ("structure", validate_structure),
@@ -536,6 +644,7 @@ def main() -> int:
         ("CLI init", validate_cli_init),
         ("CLI new", validate_cli_new),
         ("CLI redact", validate_cli_redact),
+        ("CLI pack", validate_cli_pack),
     ]
 
     try:

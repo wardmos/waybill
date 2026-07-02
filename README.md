@@ -117,6 +117,7 @@ Pack a validated bundle into a zip archive:
 
 ```bash
 ./cli/waybill pack .waybill-redacted --output waybill.zip
+./cli/waybill pack .waybill-redacted --output waybill.zip --json
 ```
 
 Unpack and validate a zip archive:

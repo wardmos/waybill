@@ -24,7 +24,12 @@ from waybill_core.install import (  # noqa: E402
     InstallReport,
     install_adapters,
 )
-from waybill_core.packing import pack_bundle, unpack_bundle  # noqa: E402
+from waybill_core.packing import (  # noqa: E402
+    PackReport,
+    PackedFile,
+    pack_bundle,
+    unpack_bundle,
+)
 from waybill_core.preflight import (  # noqa: E402
     ImportPreflightReport,
     run_import_preflight,
@@ -156,6 +161,29 @@ def build_redaction_report(report: RedactionReport) -> dict[str, object]:
         "files_processed": len(report.files),
         "replacements": report.replacement_count,
         "files": [redacted_file_to_dict(file) for file in report.files],
+    }
+
+
+def packed_file_to_dict(file: PackedFile) -> dict[str, object]:
+    return {
+        "path": file.path,
+        "size": file.size,
+    }
+
+
+def build_pack_report(
+    report: PackReport,
+    validation: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "source": str(report.source),
+        "output": str(report.output),
+        "archive_root": report.archive_root,
+        "success": True,
+        "file_count": report.file_count,
+        "byte_count": report.byte_count,
+        "validation": validation,
+        "files": [packed_file_to_dict(file) for file in report.files],
     }
 
 
@@ -552,6 +580,18 @@ def cmd_redact(args: argparse.Namespace) -> int:
 def cmd_pack(args: argparse.Namespace) -> int:
     issues = validate_bundle(args.bundle)
     if has_errors(issues):
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "success": False,
+                        "error": "bundle is invalid; refusing to pack",
+                        "validation": build_validation_report(args.bundle, issues),
+                    },
+                    indent=2,
+                )
+            )
+            return 1
         for issue in issues:
             if issue.severity == "error":
                 print(issue.format(), file=sys.stderr)
@@ -559,14 +599,23 @@ def cmd_pack(args: argparse.Namespace) -> int:
         return 1
 
     warnings = [issue for issue in issues if issue.severity == "warning"]
-    for warning in warnings:
-        print(warning.format())
+    if not args.json:
+        for warning in warnings:
+            print(warning.format())
 
     try:
         report = pack_bundle(args.bundle, args.output, force=args.force)
     except (FileExistsError, FileNotFoundError, NotADirectoryError, ValueError) as exc:
+        if args.json:
+            print(json.dumps({"success": False, "error": str(exc)}, indent=2))
+            return 1
         print(f"FAIL {exc}", file=sys.stderr)
         return 1
+
+    if args.json:
+        validation = build_validation_report(args.bundle, issues)
+        print(json.dumps(build_pack_report(report, validation), indent=2))
+        return 0
 
     print(f"Packed bundle: {report.output}")
     print(f"Source bundle: {report.source}")
@@ -844,6 +893,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
         help="replace the output file if it already exists",
+    )
+    pack.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
     )
     pack.set_defaults(func=cmd_pack)
 

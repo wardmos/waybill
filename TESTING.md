@@ -84,6 +84,7 @@ Pack a validated bundle:
 
 ```bash
 ./cli/waybill pack .waybill-redacted --output waybill.zip
+./cli/waybill pack .waybill-redacted --output waybill.zip --json
 ```
 
 Unpack and validate a zip archive:
@@ -120,7 +121,7 @@ This checks:
 - CLI bundle inspection output for text and JSON reports.
 - CLI redaction output for common token and key/value patterns in text and JSON.
 - CLI share output for redacted archive preparation.
-- CLI pack output and refusal to archive invalid bundles.
+- CLI pack output and refusal to archive invalid bundles in text and JSON.
 - CLI unpack output and validation of unpacked bundles.
 - CLI render output for Markdown review reports.
 
@@ -304,6 +305,7 @@ Pack a valid bundle:
 
 ```bash
 ./cli/waybill pack examples/claude-to-codex --output /tmp/waybill-example.zip --force
+./cli/waybill pack examples/claude-to-codex --output /tmp/waybill-example.zip --force --json
 ```
 
 Expected result:
@@ -313,6 +315,8 @@ Expected result:
 - The archive contains the bundle files under one top-level directory.
 - Existing output is refused unless `--force` is provided.
 - Invalid bundles are refused and no archive is written.
+- JSON output parses as valid JSON and includes validation status, archive root,
+  file count, byte count, and packed file details.
 
 ## CLI Unpack Smoke Test
 
