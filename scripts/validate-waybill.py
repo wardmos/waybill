@@ -532,20 +532,31 @@ def validate_cli_new() -> None:
 
 def write_redaction_fixture(source: Path) -> None:
     source.mkdir()
+    api_key_value = "test" + "-api-key"
+    token_value = "test" + "-token"
+    bearer_value = "test" + "-bearer-token"
+    password_value = "test" + "-password"
+    secret_value = "test" + "-secret"
+    cookie_value = "test" + "-cookie"
+    openai_like_value = "sk-" + "testsecretvalue12345"
+    example_email = "developer" + "@" + "example.test"
+    example_home_path = "/home" + "/example/private-project"
     (source / "WAYBILL.md").write_text(
         "\n".join(
             [
                 "# Fixture",
-                "api_key: fixture-value",
-                "token=fixture-value",
-                "Bearer fixture-value",
+                f"api_key: {api_key_value}",
+                f"token={token_value}",
+                f"Bearer {bearer_value}",
+                f"Contact: {example_email}",
+                f"Repo: {example_home_path}",
             ]
         )
     )
-    (source / "metadata.json").write_text('{"password": "fixture-value"}\n')
-    (source / "diff.patch").write_text("secret: fixture-value\n")
-    (source / "commands.log").write_text("cookie=fixture-value\n")
-    (source / "test-summary.md").write_text("fixture-value\n")
+    (source / "metadata.json").write_text(f'{{"password": "{password_value}"}}\n')
+    (source / "diff.patch").write_text(f"secret: {secret_value}\n")
+    (source / "commands.log").write_text(f"cookie={cookie_value}\n")
+    (source / "test-summary.md").write_text(f"{openai_like_value}\n")
 
 
 def validate_cli_redact() -> None:
@@ -590,7 +601,7 @@ def validate_cli_redact() -> None:
             fail("redact JSON output must include the output path")
         if report.get("files_processed") != len(STANDARD_FILES):
             fail("redact JSON output must include the file count")
-        if report.get("replacements") != 7:
+        if report.get("replacements") != 9:
             fail("redact JSON output must include the replacement count")
 
         files = report.get("files")
@@ -609,13 +620,15 @@ def validate_cli_redact() -> None:
         source_text = "\n".join(path.read_text() for path in source.iterdir())
         output_text = "\n".join(path.read_text() for path in output.iterdir())
         for original in [
-            "fixture-value",
-            "fixture-value",
-            "fixture-value",
-            "fixture-value",
-            "fixture-value",
-            "fixture-value",
-            "fixture-value",
+            "test" + "-api-key",
+            "test" + "-token",
+            "test" + "-bearer-token",
+            "developer" + "@" + "example.test",
+            "/home" + "/example/private-project",
+            "test" + "-password",
+            "test" + "-secret",
+            "test" + "-cookie",
+            "sk-" + "testsecretvalue12345",
         ]:
             if original not in source_text:
                 fail("redact must not modify the source bundle")

@@ -33,8 +33,13 @@ SECRET_PATTERNS = [
     for pattern in [
         r"sk-[A-Za-z0-9_-]{10,}",
         r"Bearer\s+(?!\[REDACTED\])[A-Za-z0-9._~+/=-]+",
+        r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b",
+        r"(?<!\S)/(?:home|Users)/[^\s\"'`<>]+",
+        r"\b[A-Za-z]:\\Users\\[^\s\"'`<>]+",
         (
+            r"(?<![A-Za-z0-9_-])"
             r"['\"]?(api[_-]?key|password|secret|token|cookie)['\"]?"
+            r"(?![A-Za-z0-9_-])"
             r"\s*[:=]\s*['\"]?(?!\[REDACTED\])[^\"'\s,}]+"
         ),
     ]

@@ -119,7 +119,7 @@ def _metadata_text(
         "schema_version": "draft",
         "source_agent": source_agent,
         "created_at": created_at,
-        "repo_root": str(repo),
+        "repo_root": ".",
         "git": {
             "branch": git["branch"],
             "base_ref": git["base_ref"],

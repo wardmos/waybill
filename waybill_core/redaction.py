@@ -13,12 +13,17 @@ REDACTION_PLACEHOLDER = "[REDACTED]"
 TOKEN_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9_-]{10,}"),
     re.compile(r"Bearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE),
+    re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE),
+    re.compile(r"(?<!\S)/(?:home|Users)/[^\s\"'`<>]+"),
+    re.compile(r"\b[A-Za-z]:\\Users\\[^\s\"'`<>]+"),
 ]
 
 KEY_VALUE_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_-])"
     r"(?P<key_quote>[\"']?)"
     r"(?P<key>api[_-]?key|password|secret|token|cookie)"
     r"(?P=key_quote)"
+    r"(?![A-Za-z0-9_-])"
     r"(?P<separator>\s*[:=]\s*)"
     r"(?P<value_quote>[\"']?)"
     r"(?!\[REDACTED\])"
