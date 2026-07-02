@@ -11,6 +11,44 @@ Run:
 python3 scripts/validate-waybill.py
 ```
 
+## Repeatable Agent Smoke Tests
+
+When the local agent CLIs are installed and authenticated, run the read-only
+import smoke tests with:
+
+```bash
+scripts/smoke-agents.sh --tool codex
+scripts/smoke-agents.sh --tool opencode
+scripts/smoke-agents.sh --tool cursor
+scripts/smoke-agents.sh --tool gemini
+scripts/smoke-agents.sh --tool claude
+```
+
+Run all supported tools in one pass:
+
+```bash
+scripts/smoke-agents.sh
+```
+
+Print the exact commands without calling any model:
+
+```bash
+scripts/smoke-agents.sh --dry-run
+```
+
+The script uses `examples/claude-to-codex` by default and requires the working
+tree to be clean before and after each tool runs. Command logs are written under
+`/tmp`.
+
+Notes:
+
+- These checks call real agent CLIs and may use model credits.
+- Some CLIs write local session or log files outside the repository.
+- Run these from a normal terminal, not from a restrictive coding-agent sandbox,
+  if the CLI needs access to its own local state.
+- Gemini CLI in plan mode may not have shell tools available; it should still
+  read the bundle and report the repo mismatch from available context.
+
 Install project-local adapters into a target repository:
 
 ```bash

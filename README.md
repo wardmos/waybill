@@ -18,6 +18,8 @@ Waybill keeps handoffs agent-neutral, local-first, and portable across coding ag
 Waybill started with Claude Code and Codex. The current adapter set also
 includes OpenCode, Cursor CLI, and Gemini CLI.
 
+For the shortest setup path, see `QUICKSTART.md`.
+
 ## What Waybill Creates
 
 A Waybill Bundle is a local directory in the current repository:
@@ -243,6 +245,19 @@ Run the repository checks:
 ```bash
 python3 scripts/validate-waybill.py
 ```
+
+Run repeatable local agent smoke tests when the relevant CLIs are installed:
+
+```bash
+scripts/smoke-agents.sh --tool codex
+scripts/smoke-agents.sh --tool opencode
+scripts/smoke-agents.sh --tool cursor
+scripts/smoke-agents.sh --tool gemini
+scripts/smoke-agents.sh --tool claude
+```
+
+Use `scripts/smoke-agents.sh --dry-run` to print the exact commands without
+calling any agent model.
 
 See `TESTING.md` for the manual Claude Code to Codex and Codex to Claude Code
 handoff test plans.

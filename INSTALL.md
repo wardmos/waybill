@@ -5,6 +5,9 @@ OpenCode commands and skills, Cursor project rules, Gemini CLI workspace
 skills, and a small Python standard-library CLI. No package manager install is
 required.
 
+For the shortest setup path, start with `QUICKSTART.md`. This document keeps
+the fuller per-adapter details.
+
 ## Codex
 
 This repository includes a repo-scoped plugin marketplace:

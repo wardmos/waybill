@@ -20,6 +20,7 @@ from waybill_core.validation import validate_bundle  # noqa: E402
 
 REQUIRED_FILES = [
     "README.md",
+    "QUICKSTART.md",
     ".gitignore",
     "INSTALL.md",
     "TESTING.md",
@@ -27,6 +28,7 @@ REQUIRED_FILES = [
     "spec/waybill-template.md",
     "spec/metadata.schema.json",
     "cli/waybill",
+    "scripts/smoke-agents.sh",
     "waybill_core/__init__.py",
     "waybill_core/doctor.py",
     "waybill_core/install.py",
@@ -125,9 +127,34 @@ def validate_structure() -> None:
     if ".waybill/" not in gitignore:
         fail(".gitignore must ignore .waybill/")
 
+    quickstart = (ROOT / "QUICKSTART.md").read_text()
+    for term in [
+        "./cli/waybill init",
+        "./cli/waybill doctor",
+        "/handoff export",
+        "/handoff import .waybill",
+        "./cli/waybill validate",
+        "./cli/waybill share",
+        "scripts/smoke-agents.sh",
+    ]:
+        if term not in quickstart:
+            fail(f"quickstart must include {term}")
+
     bundle_spec = (ROOT / "spec/waybill-bundle.md").read_text()
     if not has_command_classification_rule(bundle_spec):
         fail("bundle spec must require command log action classification")
+
+    smoke_path = ROOT / "scripts/smoke-agents.sh"
+    smoke_script = smoke_path.read_text()
+    if not smoke_path.stat().st_mode & 0o111:
+        fail("agent smoke script must be executable")
+    for term in ["claude", "codex", "cursor", "opencode", "gemini"]:
+        if term not in smoke_script:
+            fail(f"agent smoke script must include {term}")
+    if "git -C \"$ROOT\" status --short" not in smoke_script:
+        fail("agent smoke script must check repository cleanliness")
+    if "--dry-run" not in smoke_script:
+        fail("agent smoke script must provide a dry-run mode")
 
 
 def validate_metadata_schema() -> None:
