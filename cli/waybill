@@ -1090,7 +1090,7 @@ def add_adapter_argument(parser: argparse.ArgumentParser, verb: str) -> None:
     parser.add_argument(
         "--adapter",
         action="append",
-        choices=["all", "claude-code", "opencode"],
+        choices=["all", "claude-code", "opencode", "cursor"],
         help=f"adapter to {verb}; may be repeated",
     )
 

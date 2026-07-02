@@ -1,8 +1,8 @@
 # Install Waybill
 
 Waybill ships as Markdown instructions for Claude Code, a local Codex plugin,
-and a small Python standard-library CLI. No package manager install is
-required.
+OpenCode commands and skills, Cursor project rules, and a small Python
+standard-library CLI. No package manager install is required.
 
 ## Codex
 
@@ -160,6 +160,35 @@ The reusable adapter files are available in:
 adapters/opencode/
 ```
 
+## Cursor CLI
+
+This repository includes project-scoped Cursor rules:
+
+```text
+.cursor/rules/
+```
+
+To smoke test them with Cursor CLI in read-only ask mode:
+
+```bash
+agent -p --trust --mode=ask "handoff import examples/claude-to-codex. Do not modify files; only read the bundle, verify repository state, and summarize the handoff."
+```
+
+For scriptable output:
+
+```bash
+agent -p --trust --mode=ask --output-format json "handoff import examples/claude-to-codex. Do not modify files; only summarize."
+```
+
+Expected result: Cursor reads the example bundle, checks the repository state,
+summarizes the original task, and does not automatically apply `diff.patch`.
+
+Reusable adapter files are available in:
+
+```text
+adapters/cursor/
+```
+
 ## Smoke Test
 
 After installing the adapters you need, run the static repository validation:
@@ -168,7 +197,7 @@ After installing the adapters you need, run the static repository validation:
 python3 scripts/validate-waybill.py
 ```
 
-Install Claude Code and OpenCode project files into another repository:
+Install Claude Code, OpenCode, and Cursor project files into another repository:
 
 ```bash
 ./cli/waybill init --target /path/to/repo

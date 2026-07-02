@@ -114,6 +114,7 @@ This checks:
 - Obvious secret-like strings in examples.
 - Agent-neutral handoff wording in examples.
 - OpenCode command and skill frontmatter.
+- Cursor rule frontmatter and handoff safety rules.
 - CLI adapter initialization into target repositories in text and JSON.
 - CLI draft bundle scaffolding in text and JSON.
 - CLI redaction output for common token and key/value patterns in text and JSON.
@@ -138,9 +139,11 @@ Expected result:
 
 - Claude Code skills are copied into `.claude/skills/`.
 - OpenCode commands and skills are copied into `.opencode/`.
+- Cursor rules are copied into `.cursor/rules/`.
 - `.gitignore` includes `.waybill/`.
 - Existing adapter files are refused unless `--force` is provided.
 - `--adapter opencode` installs only OpenCode files.
+- `--adapter cursor` installs only Cursor rule files.
 - JSON output parses as valid JSON and includes installed adapter actions.
 
 ## CLI Doctor Smoke Test
@@ -154,11 +157,12 @@ Check an initialized repository:
 
 Expected result:
 
-- Installed Claude Code and OpenCode files are reported as `OK`.
+- Installed Claude Code, OpenCode, and Cursor files are reported as `OK`.
 - `.gitignore` with `.waybill/` is reported as `OK`.
 - JSON output parses as valid JSON and includes adapter check details.
 - A partial installation returns a non-zero exit code and reports missing files.
 - `--adapter opencode` checks only OpenCode files.
+- `--adapter cursor` checks only Cursor rule files.
 
 ## CLI New Smoke Test
 
@@ -543,6 +547,37 @@ Expected result:
 - OpenCode runs read-only git state checks.
 - OpenCode identifies the repo mismatch.
 - OpenCode exits successfully without modifying files.
+
+## Cursor CLI Smoke Test
+
+This repository includes project-scoped Cursor rules:
+
+```text
+.cursor/rules/handoff.mdc
+.cursor/rules/waybill.mdc
+```
+
+To smoke test them with Cursor CLI in read-only ask mode:
+
+```bash
+agent -p --trust --mode=ask \
+  "handoff import examples/claude-to-codex. Do not modify files; only read the bundle, verify repository state, and summarize the handoff."
+```
+
+For scriptable output:
+
+```bash
+agent -p --trust --mode=ask --output-format json \
+  "handoff import examples/claude-to-codex. Do not modify files; only summarize."
+```
+
+Expected result:
+
+- Cursor loads the project rule.
+- Cursor reads the example bundle artifacts.
+- Cursor checks the current repository state.
+- Cursor reports that the example bundle references a different app repo.
+- Cursor does not apply `diff.patch`.
 
 ## Expected Result
 

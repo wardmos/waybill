@@ -46,12 +46,17 @@ REQUIRED_FILES = [
     ".opencode/commands/waybill.md",
     ".opencode/skills/handoff/SKILL.md",
     ".opencode/skills/waybill/SKILL.md",
+    ".cursor/rules/handoff.mdc",
+    ".cursor/rules/waybill.mdc",
     "adapters/claude-code/README.md",
     "adapters/claude-code/commands/handoff-export.md",
     "adapters/claude-code/commands/handoff-import.md",
     "adapters/codex/README.md",
     "adapters/codex/.codex-plugin/plugin.json",
     "adapters/codex/skills/handoff/SKILL.md",
+    "adapters/cursor/README.md",
+    "adapters/cursor/rules/handoff.mdc",
+    "adapters/cursor/rules/waybill.mdc",
     "adapters/opencode/README.md",
     "adapters/opencode/commands/handoff.md",
     "adapters/opencode/commands/waybill.md",
@@ -268,6 +273,43 @@ def validate_opencode_adapter() -> None:
             fail(f"OpenCode skill {name} must use source_agent opencode")
 
 
+def validate_cursor_adapter() -> None:
+    rule_paths = {
+        "handoff": ROOT / ".cursor/rules/handoff.mdc",
+        "waybill": ROOT / ".cursor/rules/waybill.mdc",
+        "adapter handoff": ROOT / "adapters/cursor/rules/handoff.mdc",
+        "adapter waybill": ROOT / "adapters/cursor/rules/waybill.mdc",
+    }
+    for name, path in rule_paths.items():
+        text = path.read_text()
+        if not text.startswith("---\n"):
+            fail(f"Cursor rule {name} must start with frontmatter")
+        if "description:" not in text:
+            fail(f"Cursor rule {name} must declare a description")
+        if "alwaysApply: false" not in text:
+            fail(f"Cursor rule {name} must not always apply")
+        if "export" not in text or "import" not in text:
+            fail(f"Cursor rule {name} must cover export and import")
+        if "Do not automatically apply `diff.patch`" not in text:
+            fail(f"Cursor rule {name} must forbid automatic patch application")
+        if ".waybill/" not in text:
+            fail(f"Cursor rule {name} must mention .waybill/")
+        if name.endswith("handoff") and not has_command_classification_rule(text):
+            fail("Cursor handoff rule must require command log action classification")
+        if "source_agent" in text and "cursor" not in text:
+            fail(f"Cursor rule {name} must use source_agent cursor")
+
+    readme = (ROOT / "adapters/cursor/README.md").read_text()
+    for expected in [
+        ".cursor/rules/*.mdc",
+        "agent -p",
+        "--mode=ask",
+        "--output-format json",
+    ]:
+        if expected not in readme:
+            fail(f"Cursor README must mention {expected}")
+
+
 def validate_example(example_dir: Path) -> None:
     issues = validate_bundle(example_dir)
     errors = [issue for issue in issues if issue.severity == "error"]
@@ -303,7 +345,7 @@ def validate_cli_init() -> None:
             fail("init JSON output must set success true")
         if report.get("target") != str(target_path):
             fail("init JSON output must include the target path")
-        if report.get("adapters") != ["claude-code", "opencode"]:
+        if report.get("adapters") != ["claude-code", "opencode", "cursor"]:
             fail("init JSON output must include selected adapters")
 
         actions = report.get("actions")
@@ -321,6 +363,7 @@ def validate_cli_init() -> None:
             ".claude/skills/handoff/SKILL.md",
             ".opencode/commands/handoff.md",
             ".opencode/skills/handoff/SKILL.md",
+            ".cursor/rules/handoff.mdc",
             ".gitignore",
         ]:
             if not (target_path / expected).is_file():
@@ -942,6 +985,7 @@ def main() -> int:
         ("Codex marketplace", validate_codex_marketplace),
         ("Claude skills", validate_claude_skills),
         ("OpenCode adapter", validate_opencode_adapter),
+        ("Cursor adapter", validate_cursor_adapter),
         ("examples", validate_examples),
         ("CLI init", validate_cli_init),
         ("CLI new", validate_cli_new),

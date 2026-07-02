@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-SUPPORTED_ADAPTERS = ["claude-code", "opencode"]
+SUPPORTED_ADAPTERS = ["claude-code", "opencode", "cursor"]
 
 
 @dataclass(frozen=True)
@@ -102,6 +102,18 @@ def _adapter_files(adapter: str) -> list[tuple[str, str]]:
             (
                 ".opencode/skills/waybill/SKILL.md",
                 ".opencode/skills/waybill/SKILL.md",
+            ),
+        ]
+
+    if adapter == "cursor":
+        return [
+            (
+                ".cursor/rules/handoff.mdc",
+                ".cursor/rules/handoff.mdc",
+            ),
+            (
+                ".cursor/rules/waybill.mdc",
+                ".cursor/rules/waybill.mdc",
             ),
         ]
 

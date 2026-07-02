@@ -1,0 +1,151 @@
+---
+description: Export or import local Waybill Bundles for unfinished coding-agent tasks.
+alwaysApply: false
+---
+
+# Waybill Handoff
+
+Waybill is an agent-neutral handoff format for unfinished coding tasks.
+
+Use this rule when the user asks for any of:
+
+```text
+handoff export
+waybill export
+export a waybill
+handoff import .waybill
+waybill import .waybill
+import a waybill
+continue from a waybill
+```
+
+`handoff` is the primary workflow name. `waybill` is an alias with the same
+behavior. Cursor CLI does not need a custom slash-command file for this
+adapter; run it by prompting `agent` or `agent -p` with the handoff request.
+
+## Bundle Format
+
+Default path:
+
+```text
+.waybill/
+```
+
+Required files:
+
+- `WAYBILL.md`
+- `metadata.json`
+
+Recommended files:
+
+- `diff.patch`
+- `commands.log`
+- `test-summary.md`
+
+Follow the repository spec when present:
+
+- `spec/waybill-bundle.md`
+- `spec/waybill-template.md`
+- `spec/metadata.schema.json`
+
+## Export
+
+When exporting, create a Waybill Bundle for the current unfinished task.
+
+Rules:
+
+- Generate agent-neutral content.
+- Do not say that Cursor must be the next agent.
+- Distinguish facts from assumptions.
+- Distinguish verified results from unverified claims.
+- Use `.waybill/` as the default output directory.
+- Do not run tests unless the user explicitly asks.
+- Do not upload or share bundle contents.
+
+Procedure:
+
+1. Identify the original user goal from the conversation.
+2. Identify the current status, completed work, pending work, and blockers.
+3. Inspect the repository with read-only commands when available:
+   - `git status --short`
+   - `git branch --show-current`
+   - `git rev-parse HEAD`
+   - `git diff`
+4. Create `.waybill/`.
+5. Write `.waybill/WAYBILL.md` using the exact section headings from
+   `spec/waybill-template.md`. Do not rename, omit, or substitute headings.
+6. Write `.waybill/metadata.json`.
+7. Write `.waybill/diff.patch` from the current diff when git is available.
+8. Write `.waybill/commands.log` with important commands from the conversation.
+   Separate read-only inspection commands from bundle-writing actions. Do not
+   claim every command was read-only if `.waybill/` was created or files were
+   written.
+9. Write `.waybill/test-summary.md` with passing, failing, and not-run checks.
+10. Tell the user the bundle was created and remind them to review it for
+    sensitive information.
+
+Use this `metadata.json` shape:
+
+```json
+{
+  "schema_version": "draft",
+  "source_agent": "cursor",
+  "created_at": "2026-07-01T00:00:00Z",
+  "repo_root": ".",
+  "git": {
+    "branch": "main",
+    "base_ref": "unknown",
+    "head_sha": "unknown",
+    "dirty": true
+  },
+  "artifacts": {
+    "waybill": "WAYBILL.md",
+    "diff": "diff.patch",
+    "commands": "commands.log",
+    "test_summary": "test-summary.md"
+  }
+}
+```
+
+Use the current UTC timestamp for `created_at`. Use `unknown` when a value
+cannot be determined.
+
+## Import
+
+When importing, read a Waybill Bundle and prepare to continue the task.
+
+Rules:
+
+- Read the bundle before acting.
+- Verify the current repository state before trusting the bundle.
+- Do not automatically apply `diff.patch`.
+- Do not run dangerous commands.
+- Do not assume the source agent is available.
+- Ask the user before making changes if the bundle targets a different
+  repository, branch, or HEAD.
+
+Procedure:
+
+1. Resolve the bundle path. If omitted, use `.waybill/`.
+2. Read `WAYBILL.md` and `metadata.json`.
+3. Read `diff.patch`, `commands.log`, and `test-summary.md` when present.
+4. Inspect current repository state with read-only commands when available:
+   - `git status --short`
+   - `git branch --show-current`
+   - `git rev-parse HEAD`
+5. Compare the current repository with bundle metadata.
+6. Summarize the handoff before editing:
+   - Original goal
+   - Current status
+   - Changed files
+   - Test state
+   - Failed attempts
+   - Risks and unknowns
+   - Next recommended step
+7. Continue only after grounding the next action in the bundle and current repo.
+
+## Safety
+
+`.waybill/` may contain prompts, paths, diffs, logs, test output, tokens,
+cookies, API keys, or customer data. Keep it local unless the user explicitly
+chooses to share it.

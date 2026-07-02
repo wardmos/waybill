@@ -16,7 +16,7 @@ Continue it in Codex:
 
 Waybill keeps handoffs agent-neutral, local-first, and portable across coding agents.
 Waybill started with Claude Code and Codex. The current adapter set also
-includes OpenCode.
+includes OpenCode and Cursor CLI.
 
 ## What Waybill Creates
 
@@ -44,7 +44,8 @@ Recommended files:
 
 ## CLI
 
-Install project-local Claude Code and OpenCode adapter files into another repo:
+Install project-local Claude Code, OpenCode, and Cursor adapter files into
+another repo:
 
 ```bash
 ./cli/waybill init --target /path/to/repo
@@ -195,6 +196,20 @@ Reusable adapter files are available in:
 adapters/opencode/
 ```
 
+### Cursor CLI
+
+Use the Cursor project rules in:
+
+```text
+.cursor/rules/
+```
+
+Reusable adapter files are available in:
+
+```text
+adapters/cursor/
+```
+
 ## Safety Defaults
 
 - `.waybill/` is ignored by default.
@@ -226,6 +241,8 @@ handoff test plans.
   review redacted bundles before sharing.
 - OpenCode support is file-based commands and skills; no OpenCode plugin hooks
   are required yet.
+- Cursor support uses project rules loaded by Cursor Agent and Cursor CLI; no
+  Cursor plugin hook is required yet.
 
 ## Roadmap
 
