@@ -1,7 +1,7 @@
 # Testing Waybill
 
-This document describes the checks for the Claude Code and Codex
-handoff flow.
+This document describes the checks for the Waybill handoff and CLI
+workflow.
 
 ## Static Validation
 
@@ -78,6 +78,7 @@ Create a redacted zip archive:
 
 ```bash
 ./cli/waybill share .waybill --output waybill.zip
+./cli/waybill share .waybill --output waybill.zip --json
 ```
 
 Pack a validated bundle:
@@ -91,12 +92,14 @@ Unpack and validate a zip archive:
 
 ```bash
 ./cli/waybill unpack waybill.zip --output /tmp/waybill-unpacked
+./cli/waybill unpack waybill.zip --output /tmp/waybill-unpacked --json
 ```
 
 Render a Markdown review report:
 
 ```bash
 ./cli/waybill render .waybill-redacted --output waybill-report.md
+./cli/waybill render .waybill-redacted --output waybill-report.md --json
 ```
 
 This checks:
@@ -112,18 +115,13 @@ This checks:
 - Agent-neutral handoff wording in examples.
 - OpenCode command and skill frontmatter.
 - CLI adapter initialization into target repositories in text and JSON.
-- CLI adapter installation checks in text and JSON.
 - CLI draft bundle scaffolding in text and JSON.
-- CLI import preflight checks in text and JSON.
-- CLI export readiness checks for draft placeholders in text and JSON.
-- CLI repository-state verification against bundle metadata in text and JSON.
-- CLI bundle validation behavior through text and JSON output.
-- CLI bundle inspection output for text and JSON reports.
 - CLI redaction output for common token and key/value patterns in text and JSON.
-- CLI share output for redacted archive preparation.
+- CLI share output for redacted archive preparation in text and JSON.
 - CLI pack output and refusal to archive invalid bundles in text and JSON.
-- CLI unpack output and validation of unpacked bundles.
-- CLI render output for Markdown review reports.
+- CLI unpack output and validation of unpacked bundles in text and JSON.
+- CLI render output for Markdown review reports in text and JSON.
+- End-to-end CLI workflow from draft bundle through rendered review report.
 
 The script intentionally uses only the Python standard library.
 
@@ -289,6 +287,7 @@ Create a redacted review bundle and zip archive in one command:
 
 ```bash
 ./cli/waybill share examples/claude-to-codex --output /tmp/waybill-share.zip --force
+./cli/waybill share examples/claude-to-codex --output /tmp/waybill-share.zip --force --json
 ```
 
 Expected result:
@@ -298,6 +297,8 @@ Expected result:
 - The command creates a zip archive from the redacted bundle.
 - Existing output is refused unless `--force` is provided.
 - Invalid redacted bundles are refused and no archive is written.
+- JSON output parses as valid JSON and includes source, redacted output,
+  archive, redaction, validation, and pack details.
 
 ## CLI Pack Smoke Test
 
@@ -324,6 +325,7 @@ Unpack a valid archive:
 
 ```bash
 ./cli/waybill unpack /tmp/waybill-example.zip --output /tmp/waybill-unpacked --force
+./cli/waybill unpack /tmp/waybill-example.zip --output /tmp/waybill-unpacked --force --json
 ```
 
 Expected result:
@@ -333,6 +335,8 @@ Expected result:
 - Absolute paths and `..` paths are rejected.
 - The unpacked bundle is validated after extraction.
 - Existing output is refused unless `--force` is provided.
+- JSON output parses as valid JSON and includes archive root, bundle path,
+  validation status, file count, byte count, and unpacked file details.
 
 ## CLI Render Smoke Test
 
@@ -340,6 +344,7 @@ Render a bundle report:
 
 ```bash
 ./cli/waybill render examples/claude-to-codex --output /tmp/waybill-report.md --force
+./cli/waybill render examples/claude-to-codex --output /tmp/waybill-report.md --force --json
 ```
 
 Expected result:
@@ -348,6 +353,8 @@ Expected result:
 - The report includes metadata, artifact status, validation status, and
   `WAYBILL.md` content.
 - Rendering to stdout also works when `--output` is omitted.
+- JSON output requires `--output` and reports bundle, output, byte count, and
+  validation status.
 - Existing output is refused unless `--force` is provided.
 - Output inside the source bundle is refused.
 

@@ -27,6 +27,7 @@ from waybill_core.install import (  # noqa: E402
 from waybill_core.packing import (  # noqa: E402
     PackReport,
     PackedFile,
+    UnpackReport,
     pack_bundle,
     unpack_bundle,
 )
@@ -51,7 +52,7 @@ from waybill_core.repo import (  # noqa: E402
 )
 from waybill_core.rendering import render_bundle  # noqa: E402
 from waybill_core.scaffold import DraftBundleReport, create_draft_bundle  # noqa: E402
-from waybill_core.sharing import share_bundle  # noqa: E402
+from waybill_core.sharing import ShareReport, share_bundle  # noqa: E402
 from waybill_core.validation import (  # noqa: E402
     ValidationIssue,
     has_errors,
@@ -184,6 +185,51 @@ def build_pack_report(
         "byte_count": report.byte_count,
         "validation": validation,
         "files": [packed_file_to_dict(file) for file in report.files],
+    }
+
+
+def build_share_report(report: ShareReport) -> dict[str, object]:
+    validation = build_validation_report(report.redacted, report.validation_issues)
+    return {
+        "source": str(report.source),
+        "redacted": str(report.redacted),
+        "archive": str(report.archive),
+        "success": True,
+        "redaction": build_redaction_report(report.redaction),
+        "validation": validation,
+        "pack": build_pack_report(report.pack, validation),
+    }
+
+
+def build_unpack_report(
+    report: UnpackReport,
+    validation: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "source": str(report.source),
+        "output": str(report.output),
+        "bundle": str(report.bundle),
+        "archive_root": report.archive_root,
+        "success": True,
+        "file_count": report.file_count,
+        "byte_count": report.byte_count,
+        "validation": validation,
+        "files": [packed_file_to_dict(file) for file in report.files],
+    }
+
+
+def build_render_report(
+    bundle: str | Path,
+    output: str | Path,
+    rendered: str,
+    validation: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "bundle": str(bundle),
+        "output": str(output),
+        "success": True,
+        "bytes": len(rendered.encode()),
+        "validation": validation,
     }
 
 
@@ -641,12 +687,19 @@ def cmd_share(args: argparse.Namespace) -> int:
         ValueError,
         OSError,
     ) as exc:
+        if args.json:
+            print(json.dumps({"success": False, "error": str(exc)}, indent=2))
+            return 1
         print(f"FAIL {exc}", file=sys.stderr)
         return 1
 
     warnings = [
         issue for issue in report.validation_issues if issue.severity == "warning"
     ]
+    if args.json:
+        print(json.dumps(build_share_report(report), indent=2))
+        return 0
+
     print(f"Source bundle: {report.source}")
     print(f"Redacted review bundle: {report.redacted}")
     print(f"Archive: {report.archive}")
@@ -671,8 +724,28 @@ def cmd_unpack(args: argparse.Namespace) -> int:
         ValueError,
         OSError,
     ) as exc:
+        if args.json:
+            print(json.dumps({"success": False, "error": str(exc)}, indent=2))
+            return 1
         print(f"FAIL {exc}", file=sys.stderr)
         return 1
+
+    issues = validate_bundle(report.bundle)
+    if args.json:
+        validation = build_validation_report(report.bundle, issues)
+        if has_errors(issues):
+            failure = build_unpack_report(report, validation)
+            failure["success"] = False
+            failure["error"] = "unpacked bundle is invalid"
+            print(
+                json.dumps(
+                    failure,
+                    indent=2,
+                )
+            )
+            return 1
+        print(json.dumps(build_unpack_report(report, validation), indent=2))
+        return 0
 
     print(f"Unpacked archive: {report.source}")
     print(f"Output directory: {report.output}")
@@ -681,7 +754,6 @@ def cmd_unpack(args: argparse.Namespace) -> int:
     print(f"Files unpacked: {report.file_count}")
     print(f"Bytes unpacked: {report.byte_count}")
 
-    issues = validate_bundle(report.bundle)
     if issues:
         for issue in issues:
             output = sys.stderr if issue.severity == "error" else sys.stdout
@@ -698,7 +770,22 @@ def cmd_render(args: argparse.Namespace) -> int:
     try:
         rendered = render_bundle(args.bundle)
     except (FileNotFoundError, NotADirectoryError, OSError) as exc:
+        if args.json:
+            print(json.dumps({"success": False, "error": str(exc)}, indent=2))
+            return 1
         print(f"FAIL {exc}", file=sys.stderr)
+        return 1
+
+    if args.json and not args.output:
+        print(
+            json.dumps(
+                {
+                    "success": False,
+                    "error": "--json requires --output for render",
+                },
+                indent=2,
+            )
+        )
         return 1
 
     if not args.output:
@@ -708,15 +795,47 @@ def cmd_render(args: argparse.Namespace) -> int:
     output = Path(args.output)
     bundle = Path(args.bundle)
     if bundle.resolve() in output.resolve().parents:
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "success": False,
+                        "error": "output path must not be inside the source bundle",
+                    },
+                    indent=2,
+                )
+            )
+            return 1
         print("FAIL output path must not be inside the source bundle", file=sys.stderr)
         return 1
 
     if output.exists() and not args.force:
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "success": False,
+                        "error": f"output path already exists: {output}",
+                    },
+                    indent=2,
+                )
+            )
+            return 1
         print(f"FAIL output path already exists: {output}", file=sys.stderr)
         return 1
 
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(rendered)
+    if args.json:
+        validation = build_validation_report(args.bundle, validate_bundle(args.bundle))
+        print(
+            json.dumps(
+                build_render_report(args.bundle, output, rendered, validation),
+                indent=2,
+            )
+        )
+        return 0
+
     print(f"Rendered bundle report: {output}")
     print("Review the report before sharing it.")
     return 0
@@ -920,6 +1039,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="replace existing redacted output or zip file",
     )
+    share.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
+    )
     share.set_defaults(func=cmd_share)
 
     unpack = subparsers.add_parser("unpack", help="unzip and validate a Waybill Bundle")
@@ -934,6 +1058,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="replace the output directory if it already exists",
     )
+    unpack.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
+    )
     unpack.set_defaults(func=cmd_unpack)
 
     render = subparsers.add_parser("render", help="render a bundle review report")
@@ -946,6 +1075,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
         help="replace the output file if it already exists",
+    )
+    render.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON; requires --output",
     )
     render.set_defaults(func=cmd_render)
 

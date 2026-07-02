@@ -632,6 +632,308 @@ def validate_cli_pack() -> None:
             fail("pack must not write an archive for invalid bundles")
 
 
+def validate_cli_share() -> None:
+    with tempfile.TemporaryDirectory(prefix="waybill-share-") as parent:
+        parent_path = Path(parent)
+        output = parent_path / "waybill-share.zip"
+
+        text_result = run_waybill(
+            "share",
+            "examples/claude-to-codex",
+            "--output",
+            str(output),
+            "--force",
+        )
+        if text_result.returncode != 0:
+            fail(f"share text command failed: {text_result.stderr.strip()}")
+        if "Archive:" not in text_result.stdout:
+            fail("share text output must report the archive path")
+
+        json_result = run_waybill(
+            "share",
+            "examples/claude-to-codex",
+            "--output",
+            str(output),
+            "--force",
+            "--json",
+        )
+        if json_result.returncode != 0:
+            fail(f"share JSON command failed: {json_result.stderr.strip()}")
+        try:
+            report = json.loads(json_result.stdout)
+        except json.JSONDecodeError as exc:
+            fail(f"share JSON output is invalid: {exc}")
+
+        if report.get("success") is not True:
+            fail("share JSON output must set success true")
+        if report.get("source") != "examples/claude-to-codex":
+            fail("share JSON output must include the source bundle path")
+        if report.get("archive") != str(output):
+            fail("share JSON output must include the archive path")
+        for section in ["redaction", "validation", "pack"]:
+            if not isinstance(report.get(section), dict):
+                fail(f"share JSON output must include {section} details")
+        if report["validation"].get("valid") is not True:
+            fail("share JSON validation details must be valid")
+        if report["pack"].get("file_count") != len(STANDARD_FILES):
+            fail("share JSON pack details must include file count")
+        if not output.is_file():
+            fail("share must create the output zip archive")
+        redacted = Path(str(report.get("redacted")))
+        if not redacted.is_dir():
+            fail("share must create a redacted review bundle")
+
+        exists_result = run_waybill(
+            "share",
+            "examples/claude-to-codex",
+            "--output",
+            str(output),
+            "--json",
+        )
+        if exists_result.returncode == 0:
+            fail("share JSON error command must fail when output exists without --force")
+        try:
+            exists_report = json.loads(exists_result.stdout)
+        except json.JSONDecodeError as exc:
+            fail(f"share JSON existing-output error is invalid: {exc}")
+        if exists_report.get("success") is not False:
+            fail("share JSON existing-output error must set success false")
+        if "already exists" not in str(exists_report.get("error", "")):
+            fail("share JSON existing-output error must include the failure reason")
+
+
+def validate_cli_unpack() -> None:
+    with tempfile.TemporaryDirectory(prefix="waybill-unpack-") as parent:
+        parent_path = Path(parent)
+        archive = parent_path / "waybill-example.zip"
+        output = parent_path / "unpacked"
+
+        pack_result = run_waybill(
+            "pack",
+            "examples/claude-to-codex",
+            "--output",
+            str(archive),
+            "--force",
+        )
+        if pack_result.returncode != 0:
+            fail(f"unpack setup pack command failed: {pack_result.stderr.strip()}")
+
+        text_result = run_waybill(
+            "unpack",
+            str(archive),
+            "--output",
+            str(output),
+            "--force",
+        )
+        if text_result.returncode != 0:
+            fail(f"unpack text command failed: {text_result.stderr.strip()}")
+        if "PASS valid Waybill Bundle:" not in text_result.stdout:
+            fail("unpack text output must report valid bundle status")
+
+        json_result = run_waybill(
+            "unpack",
+            str(archive),
+            "--output",
+            str(output),
+            "--force",
+            "--json",
+        )
+        if json_result.returncode != 0:
+            fail(f"unpack JSON command failed: {json_result.stderr.strip()}")
+        try:
+            report = json.loads(json_result.stdout)
+        except json.JSONDecodeError as exc:
+            fail(f"unpack JSON output is invalid: {exc}")
+
+        if report.get("success") is not True:
+            fail("unpack JSON output must set success true")
+        if report.get("source") != str(archive):
+            fail("unpack JSON output must include the archive path")
+        if report.get("output") != str(output):
+            fail("unpack JSON output must include the output path")
+        if report.get("archive_root") != "claude-to-codex":
+            fail("unpack JSON output must include the archive root")
+        if report.get("file_count") != len(STANDARD_FILES):
+            fail("unpack JSON output must include file count")
+        validation = report.get("validation")
+        if not isinstance(validation, dict) or validation.get("valid") is not True:
+            fail("unpack JSON output must include passing validation details")
+        files = report.get("files")
+        if not isinstance(files, list) or len(files) != len(STANDARD_FILES):
+            fail("unpack JSON output must include unpacked file details")
+        if not (output / "claude-to-codex" / "WAYBILL.md").is_file():
+            fail("unpack must extract the bundle files")
+
+        exists_result = run_waybill(
+            "unpack",
+            str(archive),
+            "--output",
+            str(output),
+            "--json",
+        )
+        if exists_result.returncode == 0:
+            fail("unpack JSON error command must fail when output exists without --force")
+        try:
+            exists_report = json.loads(exists_result.stdout)
+        except json.JSONDecodeError as exc:
+            fail(f"unpack JSON existing-output error is invalid: {exc}")
+        if exists_report.get("success") is not False:
+            fail("unpack JSON existing-output error must set success false")
+
+
+def validate_cli_render() -> None:
+    with tempfile.TemporaryDirectory(prefix="waybill-render-") as parent:
+        parent_path = Path(parent)
+        output = parent_path / "waybill-report.md"
+
+        text_result = run_waybill(
+            "render",
+            "examples/claude-to-codex",
+            "--output",
+            str(output),
+            "--force",
+        )
+        if text_result.returncode != 0:
+            fail(f"render text command failed: {text_result.stderr.strip()}")
+        if "Rendered bundle report:" not in text_result.stdout:
+            fail("render text output must report the output report path")
+        if "# Waybill Bundle Report" not in output.read_text():
+            fail("render must write a Markdown report")
+
+        json_result = run_waybill(
+            "render",
+            "examples/claude-to-codex",
+            "--output",
+            str(output),
+            "--force",
+            "--json",
+        )
+        if json_result.returncode != 0:
+            fail(f"render JSON command failed: {json_result.stderr.strip()}")
+        try:
+            report = json.loads(json_result.stdout)
+        except json.JSONDecodeError as exc:
+            fail(f"render JSON output is invalid: {exc}")
+
+        if report.get("success") is not True:
+            fail("render JSON output must set success true")
+        if report.get("bundle") != "examples/claude-to-codex":
+            fail("render JSON output must include the bundle path")
+        if report.get("output") != str(output):
+            fail("render JSON output must include the output path")
+        if not isinstance(report.get("bytes"), int) or report["bytes"] <= 0:
+            fail("render JSON output must include byte count")
+        validation = report.get("validation")
+        if not isinstance(validation, dict) or validation.get("valid") is not True:
+            fail("render JSON output must include passing validation details")
+
+        stdout_result = run_waybill("render", "examples/claude-to-codex")
+        if stdout_result.returncode != 0:
+            fail(f"render stdout command failed: {stdout_result.stderr.strip()}")
+        if "# Waybill Bundle Report" not in stdout_result.stdout:
+            fail("render stdout output must include the report")
+
+        json_stdout_result = run_waybill(
+            "render",
+            "examples/claude-to-codex",
+            "--json",
+        )
+        if json_stdout_result.returncode == 0:
+            fail("render JSON without --output must fail")
+        try:
+            json_stdout_report = json.loads(json_stdout_result.stdout)
+        except json.JSONDecodeError as exc:
+            fail(f"render JSON without output error is invalid: {exc}")
+        if json_stdout_report.get("success") is not False:
+            fail("render JSON without output error must set success false")
+
+
+def validate_cli_end_to_end() -> None:
+    with tempfile.TemporaryDirectory(prefix="waybill-e2e-") as parent:
+        parent_path = Path(parent)
+        draft = parent_path / "draft"
+        redacted = parent_path / "redacted"
+        archive = parent_path / "handoff.zip"
+        unpacked = parent_path / "unpacked"
+        report = parent_path / "report.md"
+
+        new_result = run_waybill(
+            "new",
+            "--output",
+            str(draft),
+            "--repo",
+            str(ROOT),
+            "--force",
+            "--json",
+        )
+        if new_result.returncode != 0:
+            fail(f"end-to-end new command failed: {new_result.stderr.strip()}")
+
+        redact_result = run_waybill(
+            "redact",
+            str(draft),
+            "--output",
+            str(redacted),
+            "--force",
+            "--json",
+        )
+        if redact_result.returncode != 0:
+            fail(f"end-to-end redact command failed: {redact_result.stderr.strip()}")
+
+        pack_result = run_waybill(
+            "pack",
+            str(redacted),
+            "--output",
+            str(archive),
+            "--force",
+            "--json",
+        )
+        if pack_result.returncode != 0:
+            fail(f"end-to-end pack command failed: {pack_result.stderr.strip()}")
+
+        unpack_result = run_waybill(
+            "unpack",
+            str(archive),
+            "--output",
+            str(unpacked),
+            "--force",
+            "--json",
+        )
+        if unpack_result.returncode != 0:
+            fail(f"end-to-end unpack command failed: {unpack_result.stderr.strip()}")
+        try:
+            unpack_report = json.loads(unpack_result.stdout)
+        except json.JSONDecodeError as exc:
+            fail(f"end-to-end unpack JSON is invalid: {exc}")
+
+        bundle = unpack_report.get("bundle")
+        if not isinstance(bundle, str):
+            fail("end-to-end unpack JSON must include bundle path")
+
+        validate_result = run_waybill("validate", bundle, "--json")
+        if validate_result.returncode != 0:
+            fail(f"end-to-end validate command failed: {validate_result.stderr.strip()}")
+        try:
+            validate_report = json.loads(validate_result.stdout)
+        except json.JSONDecodeError as exc:
+            fail(f"end-to-end validate JSON is invalid: {exc}")
+        if validate_report.get("valid") is not True:
+            fail("end-to-end unpacked bundle must validate")
+
+        render_result = run_waybill(
+            "render",
+            bundle,
+            "--output",
+            str(report),
+            "--force",
+            "--json",
+        )
+        if render_result.returncode != 0:
+            fail(f"end-to-end render command failed: {render_result.stderr.strip()}")
+        if not report.is_file():
+            fail("end-to-end render must write a report")
+
+
 def main() -> int:
     checks = [
         ("structure", validate_structure),
@@ -645,6 +947,10 @@ def main() -> int:
         ("CLI new", validate_cli_new),
         ("CLI redact", validate_cli_redact),
         ("CLI pack", validate_cli_pack),
+        ("CLI share", validate_cli_share),
+        ("CLI unpack", validate_cli_unpack),
+        ("CLI render", validate_cli_render),
+        ("CLI end-to-end", validate_cli_end_to_end),
     ]
 
     try:

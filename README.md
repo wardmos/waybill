@@ -111,6 +111,7 @@ Redact, validate, and pack a shareable archive:
 
 ```bash
 ./cli/waybill share .waybill --output waybill.zip
+./cli/waybill share .waybill --output waybill.zip --json
 ```
 
 Pack a validated bundle into a zip archive:
@@ -124,12 +125,14 @@ Unpack and validate a zip archive:
 
 ```bash
 ./cli/waybill unpack waybill.zip --output /tmp/waybill-unpacked
+./cli/waybill unpack waybill.zip --output /tmp/waybill-unpacked --json
 ```
 
 Render a Markdown review report:
 
 ```bash
 ./cli/waybill render .waybill-redacted --output waybill-report.md
+./cli/waybill render .waybill-redacted --output waybill-report.md --json
 ```
 
 The CLI is intentionally small and uses only the Python standard library.
