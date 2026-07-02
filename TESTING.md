@@ -115,6 +115,7 @@ This checks:
 - Agent-neutral handoff wording in examples.
 - OpenCode command and skill frontmatter.
 - Cursor rule frontmatter and handoff safety rules.
+- Gemini CLI skill frontmatter and handoff safety rules.
 - CLI adapter initialization into target repositories in text and JSON.
 - CLI draft bundle scaffolding in text and JSON.
 - CLI redaction output for common token and key/value patterns in text and JSON.
@@ -140,10 +141,12 @@ Expected result:
 - Claude Code skills are copied into `.claude/skills/`.
 - OpenCode commands and skills are copied into `.opencode/`.
 - Cursor rules are copied into `.cursor/rules/`.
+- Gemini CLI skills are copied into `.gemini/skills/`.
 - `.gitignore` includes `.waybill/`.
 - Existing adapter files are refused unless `--force` is provided.
 - `--adapter opencode` installs only OpenCode files.
 - `--adapter cursor` installs only Cursor rule files.
+- `--adapter gemini-cli` installs only Gemini CLI skill files.
 - JSON output parses as valid JSON and includes installed adapter actions.
 
 ## CLI Doctor Smoke Test
@@ -157,12 +160,14 @@ Check an initialized repository:
 
 Expected result:
 
-- Installed Claude Code, OpenCode, and Cursor files are reported as `OK`.
+- Installed Claude Code, OpenCode, Cursor, and Gemini CLI files are reported as
+  `OK`.
 - `.gitignore` with `.waybill/` is reported as `OK`.
 - JSON output parses as valid JSON and includes adapter check details.
 - A partial installation returns a non-zero exit code and reports missing files.
 - `--adapter opencode` checks only OpenCode files.
 - `--adapter cursor` checks only Cursor rule files.
+- `--adapter gemini-cli` checks only Gemini CLI skill files.
 
 ## CLI New Smoke Test
 
@@ -578,6 +583,37 @@ Expected result:
 - Cursor checks the current repository state.
 - Cursor reports that the example bundle references a different app repo.
 - Cursor does not apply `diff.patch`.
+
+## Gemini CLI Smoke Test
+
+This repository includes project-scoped Gemini CLI skills:
+
+```text
+.gemini/skills/handoff/SKILL.md
+.gemini/skills/waybill/SKILL.md
+```
+
+To smoke test them in read-only plan mode:
+
+```bash
+gemini --skip-trust --approval-mode plan --model gemini-3.1-flash-lite -p \
+  "handoff import examples/claude-to-codex. Do not modify files; only read the bundle, verify repository state, and summarize the handoff."
+```
+
+For scriptable output:
+
+```bash
+gemini --skip-trust --approval-mode plan --model gemini-3.1-flash-lite --output-format json -p \
+  "handoff import examples/claude-to-codex. Do not modify files; only summarize."
+```
+
+Expected result:
+
+- Gemini CLI discovers the workspace `handoff` skill.
+- Gemini CLI reads the example bundle artifacts.
+- Gemini CLI checks the current repository state.
+- Gemini CLI reports that the example bundle references a different app repo.
+- Gemini CLI does not apply `diff.patch`.
 
 ## Expected Result
 

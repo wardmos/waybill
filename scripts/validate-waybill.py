@@ -48,6 +48,8 @@ REQUIRED_FILES = [
     ".opencode/skills/waybill/SKILL.md",
     ".cursor/rules/handoff.mdc",
     ".cursor/rules/waybill.mdc",
+    ".gemini/skills/handoff/SKILL.md",
+    ".gemini/skills/waybill/SKILL.md",
     "adapters/claude-code/README.md",
     "adapters/claude-code/commands/handoff-export.md",
     "adapters/claude-code/commands/handoff-import.md",
@@ -57,6 +59,9 @@ REQUIRED_FILES = [
     "adapters/cursor/README.md",
     "adapters/cursor/rules/handoff.mdc",
     "adapters/cursor/rules/waybill.mdc",
+    "adapters/gemini-cli/README.md",
+    "adapters/gemini-cli/skills/handoff/SKILL.md",
+    "adapters/gemini-cli/skills/waybill/SKILL.md",
     "adapters/opencode/README.md",
     "adapters/opencode/commands/handoff.md",
     "adapters/opencode/commands/waybill.md",
@@ -310,6 +315,44 @@ def validate_cursor_adapter() -> None:
             fail(f"Cursor README must mention {expected}")
 
 
+def validate_gemini_cli_adapter() -> None:
+    skill_paths = {
+        "handoff": ROOT / ".gemini/skills/handoff/SKILL.md",
+        "waybill": ROOT / ".gemini/skills/waybill/SKILL.md",
+        "adapter handoff": ROOT / "adapters/gemini-cli/skills/handoff/SKILL.md",
+        "adapter waybill": ROOT / "adapters/gemini-cli/skills/waybill/SKILL.md",
+    }
+    for name, path in skill_paths.items():
+        text = path.read_text()
+        if not text.startswith("---\n"):
+            fail(f"Gemini CLI skill {name} must start with frontmatter")
+        expected = "name: handoff" if "handoff" in name else "name: waybill"
+        if expected not in text:
+            fail(f"Gemini CLI skill {name} must declare {expected}")
+        if "description:" not in text:
+            fail(f"Gemini CLI skill {name} must declare a description")
+        if "export" not in text or "import" not in text:
+            fail(f"Gemini CLI skill {name} must cover export and import")
+        if "Do not automatically apply `diff.patch`" not in text:
+            fail(f"Gemini CLI skill {name} must forbid automatic patch application")
+        if ".waybill/" not in text:
+            fail(f"Gemini CLI skill {name} must mention .waybill/")
+        if name.endswith("handoff") and not has_command_classification_rule(text):
+            fail("Gemini CLI handoff skill must require command log action classification")
+        if "source_agent" in text and "gemini-cli" not in text:
+            fail(f"Gemini CLI skill {name} must use source_agent gemini-cli")
+
+    readme = (ROOT / "adapters/gemini-cli/README.md").read_text()
+    for expected in [
+        ".gemini/skills/<name>/SKILL.md",
+        "gemini -p",
+        "--approval-mode plan",
+        "--output-format json",
+    ]:
+        if expected not in readme:
+            fail(f"Gemini CLI README must mention {expected}")
+
+
 def validate_example(example_dir: Path) -> None:
     issues = validate_bundle(example_dir)
     errors = [issue for issue in issues if issue.severity == "error"]
@@ -345,7 +388,12 @@ def validate_cli_init() -> None:
             fail("init JSON output must set success true")
         if report.get("target") != str(target_path):
             fail("init JSON output must include the target path")
-        if report.get("adapters") != ["claude-code", "opencode", "cursor"]:
+        if report.get("adapters") != [
+            "claude-code",
+            "opencode",
+            "cursor",
+            "gemini-cli",
+        ]:
             fail("init JSON output must include selected adapters")
 
         actions = report.get("actions")
@@ -364,6 +412,7 @@ def validate_cli_init() -> None:
             ".opencode/commands/handoff.md",
             ".opencode/skills/handoff/SKILL.md",
             ".cursor/rules/handoff.mdc",
+            ".gemini/skills/handoff/SKILL.md",
             ".gitignore",
         ]:
             if not (target_path / expected).is_file():
@@ -986,6 +1035,7 @@ def main() -> int:
         ("Claude skills", validate_claude_skills),
         ("OpenCode adapter", validate_opencode_adapter),
         ("Cursor adapter", validate_cursor_adapter),
+        ("Gemini CLI adapter", validate_gemini_cli_adapter),
         ("examples", validate_examples),
         ("CLI init", validate_cli_init),
         ("CLI new", validate_cli_new),

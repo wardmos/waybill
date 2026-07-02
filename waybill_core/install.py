@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-SUPPORTED_ADAPTERS = ["claude-code", "opencode", "cursor"]
+SUPPORTED_ADAPTERS = ["claude-code", "opencode", "cursor", "gemini-cli"]
 
 
 @dataclass(frozen=True)
@@ -114,6 +114,18 @@ def _adapter_files(adapter: str) -> list[tuple[str, str]]:
             (
                 ".cursor/rules/waybill.mdc",
                 ".cursor/rules/waybill.mdc",
+            ),
+        ]
+
+    if adapter == "gemini-cli":
+        return [
+            (
+                ".gemini/skills/handoff/SKILL.md",
+                ".gemini/skills/handoff/SKILL.md",
+            ),
+            (
+                ".gemini/skills/waybill/SKILL.md",
+                ".gemini/skills/waybill/SKILL.md",
             ),
         ]
 

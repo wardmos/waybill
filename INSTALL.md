@@ -1,8 +1,9 @@
 # Install Waybill
 
 Waybill ships as Markdown instructions for Claude Code, a local Codex plugin,
-OpenCode commands and skills, Cursor project rules, and a small Python
-standard-library CLI. No package manager install is required.
+OpenCode commands and skills, Cursor project rules, Gemini CLI workspace
+skills, and a small Python standard-library CLI. No package manager install is
+required.
 
 ## Codex
 
@@ -189,6 +190,36 @@ Reusable adapter files are available in:
 adapters/cursor/
 ```
 
+## Gemini CLI
+
+This repository includes project-scoped Gemini CLI skills:
+
+```text
+.gemini/skills/
+```
+
+To smoke test them in read-only plan mode:
+
+```bash
+gemini --skip-trust --approval-mode plan --model gemini-3.1-flash-lite -p "handoff import examples/claude-to-codex. Do not modify files; only read the bundle, verify repository state, and summarize the handoff."
+```
+
+For scriptable output:
+
+```bash
+gemini --skip-trust --approval-mode plan --model gemini-3.1-flash-lite --output-format json -p "handoff import examples/claude-to-codex. Do not modify files; only summarize."
+```
+
+Expected result: Gemini CLI reads the example bundle, checks the repository
+state, summarizes the original task, and does not automatically apply
+`diff.patch`.
+
+Reusable adapter files are available in:
+
+```text
+adapters/gemini-cli/
+```
+
 ## Smoke Test
 
 After installing the adapters you need, run the static repository validation:
@@ -197,7 +228,8 @@ After installing the adapters you need, run the static repository validation:
 python3 scripts/validate-waybill.py
 ```
 
-Install Claude Code, OpenCode, and Cursor project files into another repository:
+Install Claude Code, OpenCode, Cursor, and Gemini CLI project files into another
+repository:
 
 ```bash
 ./cli/waybill init --target /path/to/repo

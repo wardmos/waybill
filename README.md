@@ -16,7 +16,7 @@ Continue it in Codex:
 
 Waybill keeps handoffs agent-neutral, local-first, and portable across coding agents.
 Waybill started with Claude Code and Codex. The current adapter set also
-includes OpenCode and Cursor CLI.
+includes OpenCode, Cursor CLI, and Gemini CLI.
 
 ## What Waybill Creates
 
@@ -44,8 +44,8 @@ Recommended files:
 
 ## CLI
 
-Install project-local Claude Code, OpenCode, and Cursor adapter files into
-another repo:
+Install project-local Claude Code, OpenCode, Cursor, and Gemini CLI adapter
+files into another repo:
 
 ```bash
 ./cli/waybill init --target /path/to/repo
@@ -210,6 +210,20 @@ Reusable adapter files are available in:
 adapters/cursor/
 ```
 
+### Gemini CLI
+
+Use the Gemini CLI workspace skills in:
+
+```text
+.gemini/skills/
+```
+
+Reusable adapter files are available in:
+
+```text
+adapters/gemini-cli/
+```
+
 ## Safety Defaults
 
 - `.waybill/` is ignored by default.
@@ -243,6 +257,8 @@ handoff test plans.
   are required yet.
 - Cursor support uses project rules loaded by Cursor Agent and Cursor CLI; no
   Cursor plugin hook is required yet.
+- Gemini CLI support uses workspace skills loaded by Gemini CLI; no extension
+  install is required yet.
 
 ## Roadmap
 
