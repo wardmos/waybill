@@ -24,6 +24,7 @@ from waybill_core.install import (  # noqa: E402
     InstallReport,
     install_adapters,
 )
+from waybill_core.limits import MAX_DIFF_BYTES  # noqa: E402
 from waybill_core.packing import (  # noqa: E402
     PackReport,
     PackedFile,
@@ -451,6 +452,7 @@ def cmd_new(args: argparse.Namespace) -> int:
             source_agent=args.source_agent,
             goal=args.goal,
             force=args.force,
+            max_diff_bytes=args.max_diff_bytes,
         )
     except (
         FileExistsError,
@@ -768,7 +770,8 @@ def cmd_unpack(args: argparse.Namespace) -> int:
 
 def cmd_render(args: argparse.Namespace) -> int:
     try:
-        rendered = render_bundle(args.bundle)
+        issues = validate_bundle(args.bundle)
+        rendered = render_bundle(args.bundle, validation_issues=issues)
     except (FileNotFoundError, NotADirectoryError, OSError) as exc:
         if args.json:
             print(json.dumps({"success": False, "error": str(exc)}, indent=2))
@@ -827,7 +830,7 @@ def cmd_render(args: argparse.Namespace) -> int:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(rendered)
     if args.json:
-        validation = build_validation_report(args.bundle, validate_bundle(args.bundle))
+        validation = build_validation_report(args.bundle, issues)
         print(
             json.dumps(
                 build_render_report(args.bundle, output, rendered, validation),
@@ -931,6 +934,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
         help="replace existing standard Waybill files in the output directory",
+    )
+    new.add_argument(
+        "--max-diff-bytes",
+        type=int,
+        default=MAX_DIFF_BYTES,
+        help=f"maximum git diff bytes to capture; defaults to {MAX_DIFF_BYTES}",
     )
     new.add_argument(
         "--json",

@@ -7,6 +7,14 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from .limits import (
+    MAX_BUNDLE_BYTES,
+    MAX_BUNDLE_FILE_BYTES,
+    MAX_BUNDLE_FILES,
+    format_bytes,
+    list_bundle_files,
+)
+
 
 @dataclass(frozen=True)
 class PackedFile:
@@ -68,6 +76,8 @@ def pack_bundle(
     if source_resolved in output_resolved.parents:
         raise ValueError("output path must not be inside the source bundle")
 
+    source_files = list_bundle_files(source)
+
     if output.exists():
         if not force:
             raise FileExistsError(f"output path already exists: {output}")
@@ -81,13 +91,10 @@ def pack_bundle(
     files: list[PackedFile] = []
 
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for source_file in sorted(path for path in source.rglob("*") if path.is_file()):
-            relative = source_file.relative_to(source)
-            archive_path = Path(archive_root) / relative
-            archive.write(source_file, archive_path.as_posix())
-            files.append(
-                PackedFile(archive_path.as_posix(), source_file.stat().st_size)
-            )
+        for source_file in source_files:
+            archive_path = Path(archive_root) / source_file.relative_path
+            archive.write(source_file.path, archive_path.as_posix())
+            files.append(PackedFile(archive_path.as_posix(), source_file.size))
 
     return PackReport(source, output, archive_root, files)
 
@@ -113,6 +120,7 @@ def unpack_bundle(
             infos = [info for info in archive.infolist() if not info.is_dir()]
             if not infos:
                 raise ValueError("archive does not contain files")
+            _validate_archive_limits(infos)
 
             roots = {_safe_archive_path(info.filename).parts[0] for info in infos}
             if len(roots) != 1:
@@ -151,6 +159,26 @@ def unpack_bundle(
         raise ValueError("archive is not a valid zip file") from exc
 
     return UnpackReport(source, output, output / archive_root, archive_root, files)
+
+
+def _validate_archive_limits(infos: list[zipfile.ZipInfo]) -> None:
+    if len(infos) > MAX_BUNDLE_FILES:
+        raise ValueError(f"archive contains more than {MAX_BUNDLE_FILES} files")
+
+    total_bytes = 0
+    for info in infos:
+        if info.file_size > MAX_BUNDLE_FILE_BYTES:
+            raise ValueError(
+                f"archive file is too large: {info.filename} is "
+                f"{format_bytes(info.file_size)}, limit is "
+                f"{format_bytes(MAX_BUNDLE_FILE_BYTES)}"
+            )
+        total_bytes += info.file_size
+        if total_bytes > MAX_BUNDLE_BYTES:
+            raise ValueError(
+                f"archive unpacks to {format_bytes(total_bytes)}, "
+                f"limit is {format_bytes(MAX_BUNDLE_BYTES)}"
+            )
 
 
 def _safe_archive_path(name: str) -> Path:

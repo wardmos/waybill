@@ -61,6 +61,8 @@ Expected result:
 - `metadata.json` records branch, dirty state, and artifact paths.
 - `diff.patch`, `commands.log`, and `test-summary.md` are included when useful
   context is available.
+- Very large diffs are omitted from `diff.patch` with an explanatory note; add
+  only the relevant changes before sharing.
 
 ## 3. Import A Handoff
 

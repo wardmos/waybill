@@ -9,9 +9,16 @@ from typing import Any
 from .validation import ValidationIssue, validate_bundle
 
 
-def render_bundle(bundle_path: str | Path) -> str:
+def render_bundle(
+    bundle_path: str | Path,
+    validation_issues: list[ValidationIssue] | None = None,
+) -> str:
     bundle = Path(bundle_path)
-    issues = validate_bundle(bundle)
+    issues = (
+        validation_issues
+        if validation_issues is not None
+        else validate_bundle(bundle)
+    )
     errors = [issue for issue in issues if issue.severity == "error"]
     warnings = [issue for issue in issues if issue.severity == "warning"]
 

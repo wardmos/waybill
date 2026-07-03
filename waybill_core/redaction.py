@@ -7,6 +7,8 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from .limits import list_bundle_files
+
 
 REDACTION_PLACEHOLDER = "[REDACTED]"
 
@@ -101,6 +103,8 @@ def redact_bundle(
     if source_resolved in output_resolved.parents:
         raise ValueError("output path must not be inside the source bundle")
 
+    source_files = list_bundle_files(source)
+
     if output.exists():
         if not force:
             raise FileExistsError(f"output path already exists: {output}")
@@ -112,21 +116,21 @@ def redact_bundle(
     output.mkdir(parents=True)
     files: list[RedactedFile] = []
 
-    for source_file in sorted(path for path in source.rglob("*") if path.is_file()):
-        relative = source_file.relative_to(source)
+    for source_file in source_files:
+        relative = source_file.relative_path
         output_file = output / relative
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            text = source_file.read_text()
+            text = source_file.path.read_text()
         except UnicodeDecodeError:
-            shutil.copy2(source_file, output_file)
+            shutil.copy2(source_file.path, output_file)
             files.append(RedactedFile(str(relative), 0, copied_binary=True))
             continue
 
         redacted, replacements = redact_text(text)
         output_file.write_text(redacted)
-        shutil.copystat(source_file, output_file)
+        shutil.copystat(source_file.path, output_file)
         files.append(RedactedFile(str(relative), replacements))
 
     return RedactionReport(source, output, files)

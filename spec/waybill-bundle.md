@@ -32,6 +32,21 @@ Recommended:
 Adapters may include additional files, but importers must not require them for
 basic handoff.
 
+## Resource Limits
+
+Waybill Bundles are intended to be small handoff artifacts, not full repository
+snapshots. The CLI enforces default local limits before reading, redacting,
+packing, or unpacking bundle content:
+
+- `git diff --binary` capture in `waybill new`: 1,000,000 bytes.
+- Bundle files: 100 files total.
+- Single bundle file: 5,000,000 bytes.
+- Total bundle size: 10,000,000 bytes.
+
+When the diff exceeds the draft limit, `diff.patch` contains an omission note
+instead of the full patch. Review the repository directly and include only the
+relevant changes before sharing.
+
 ## Command Names
 
 The primary command is:

@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 
@@ -15,6 +16,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from waybill_core.limits import (  # noqa: E402
+    BundleLimitError,
+    MAX_BUNDLE_FILE_BYTES,
+    list_bundle_files,
+)
 from waybill_core.scaffold import STANDARD_FILES  # noqa: E402
 from waybill_core.validation import validate_bundle  # noqa: E402
 
@@ -32,6 +38,7 @@ REQUIRED_FILES = [
     "waybill_core/__init__.py",
     "waybill_core/doctor.py",
     "waybill_core/install.py",
+    "waybill_core/limits.py",
     "waybill_core/packing.py",
     "waybill_core/preflight.py",
     "waybill_core/readiness.py",
@@ -109,6 +116,15 @@ def run_waybill(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [str(ROOT / "cli/waybill"), *args],
         cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+
+
+def run_git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=cwd,
         text=True,
         capture_output=True,
     )
@@ -1066,6 +1082,87 @@ def validate_cli_end_to_end() -> None:
             fail("end-to-end render must write a report")
 
 
+def validate_resource_limits() -> None:
+    with tempfile.TemporaryDirectory(prefix="waybill-limits-") as parent:
+        parent_path = Path(parent)
+
+        limited_bundle = parent_path / "limited"
+        limited_bundle.mkdir()
+        (limited_bundle / "large.txt").write_text("too large")
+        try:
+            list_bundle_files(limited_bundle, max_file_bytes=4)
+        except BundleLimitError:
+            pass
+        else:
+            fail("bundle file listing must enforce per-file limits")
+
+        repo = parent_path / "repo"
+        repo.mkdir()
+        init_result = run_git(repo, "init")
+        if init_result.returncode != 0:
+            fail(f"resource limit git init failed: {init_result.stderr.strip()}")
+        tracked = repo / "tracked.txt"
+        tracked.write_text("base\n")
+        add_result = run_git(repo, "add", "tracked.txt")
+        if add_result.returncode != 0:
+            fail(f"resource limit git add failed: {add_result.stderr.strip()}")
+        commit_result = run_git(
+            repo,
+            "-c",
+            "user.name=Waybill",
+            "-c",
+            "user.email=" + "waybill" + "@" + "example.invalid",
+            "commit",
+            "-m",
+            "init",
+        )
+        if commit_result.returncode != 0:
+            fail(f"resource limit git commit failed: {commit_result.stderr.strip()}")
+
+        tracked.write_text("x" * 4096)
+        draft = parent_path / "draft"
+        new_result = run_waybill(
+            "new",
+            "--output",
+            str(draft),
+            "--repo",
+            str(repo),
+            "--force",
+            "--max-diff-bytes",
+            "128",
+            "--json",
+        )
+        if new_result.returncode != 0:
+            fail(f"resource limit new command failed: {new_result.stderr.strip()}")
+        if "Diff omitted" not in (draft / "diff.patch").read_text():
+            fail("new must omit diffs that exceed --max-diff-bytes")
+
+        archive = parent_path / "large.zip"
+        with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zip_file:
+            zip_file.writestr(
+                "bundle/large.txt",
+                "x" * (MAX_BUNDLE_FILE_BYTES + 1),
+            )
+
+        unpack_result = run_waybill(
+            "unpack",
+            str(archive),
+            "--output",
+            str(parent_path / "unpacked"),
+            "--json",
+        )
+        if unpack_result.returncode == 0:
+            fail("unpack must reject archives with oversized files")
+        try:
+            unpack_report = json.loads(unpack_result.stdout)
+        except json.JSONDecodeError as exc:
+            fail(f"oversized unpack JSON error is invalid: {exc}")
+        if unpack_report.get("success") is not False:
+            fail("oversized unpack JSON error must set success false")
+        if "too large" not in str(unpack_report.get("error", "")):
+            fail("oversized unpack JSON error must explain the size limit")
+
+
 def main() -> int:
     checks = [
         ("structure", validate_structure),
@@ -1085,6 +1182,7 @@ def main() -> int:
         ("CLI unpack", validate_cli_unpack),
         ("CLI render", validate_cli_render),
         ("CLI end-to-end", validate_cli_end_to_end),
+        ("resource limits", validate_resource_limits),
     ]
 
     try:

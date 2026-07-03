@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .limits import BundleLimitError, list_bundle_files
+
 
 REQUIRED_BUNDLE_FILES = ["WAYBILL.md", "metadata.json"]
 
@@ -84,6 +86,9 @@ def validate_bundle(bundle_path: str | Path) -> list[ValidationIssue]:
     if not bundle.is_dir():
         return [ValidationIssue("error", "bundle path is not a directory", str(bundle))]
 
+    if not _validate_bundle_limits(bundle, issues):
+        return issues
+
     _validate_required_files(bundle, issues)
     metadata = _validate_metadata(bundle, issues)
     _validate_artifacts(bundle, metadata, issues)
@@ -97,6 +102,15 @@ def validate_bundle(bundle_path: str | Path) -> list[ValidationIssue]:
 
 def has_errors(issues: list[ValidationIssue]) -> bool:
     return any(issue.severity == "error" for issue in issues)
+
+
+def _validate_bundle_limits(bundle: Path, issues: list[ValidationIssue]) -> bool:
+    try:
+        list_bundle_files(bundle)
+    except BundleLimitError as exc:
+        issues.append(ValidationIssue("error", str(exc), str(bundle)))
+        return False
+    return True
 
 
 def _validate_required_files(bundle: Path, issues: list[ValidationIssue]) -> None:

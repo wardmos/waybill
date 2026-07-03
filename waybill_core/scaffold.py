@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from .limits import MAX_DIFF_BYTES, format_bytes
+
 
 STANDARD_FILES = [
     "WAYBILL.md",
@@ -34,6 +36,7 @@ def create_draft_bundle(
     source_agent: str = "waybill-cli",
     goal: str | None = None,
     force: bool = False,
+    max_diff_bytes: int = MAX_DIFF_BYTES,
 ) -> DraftBundleReport:
     output = Path(output_path)
     repo = Path(repo_path)
@@ -44,6 +47,8 @@ def create_draft_bundle(
         raise NotADirectoryError(f"repo path is not a directory: {repo}")
     if not source_agent.strip():
         raise ValueError("source agent must be non-empty")
+    if max_diff_bytes < 1:
+        raise ValueError("max diff bytes must be positive")
     if _git_value(repo, "rev-parse", "--is-inside-work-tree") != "true":
         raise ValueError(f"repo path is not a git work tree: {repo}")
 
@@ -60,7 +65,7 @@ def create_draft_bundle(
     files = {
         "WAYBILL.md": _waybill_text(goal, git),
         "metadata.json": _metadata_text(source_agent, now, repo, git),
-        "diff.patch": _diff_text(repo),
+        "diff.patch": _diff_text(repo, max_diff_bytes),
         "commands.log": _commands_log_text(repo, output, git),
         "test-summary.md": _test_summary_text(),
     }
@@ -96,8 +101,18 @@ def _read_git_state(repo: Path) -> dict[str, str]:
     }
 
 
-def _diff_text(repo: Path) -> str:
-    diff = _git_value(repo, "diff", "--binary")
+def _diff_text(repo: Path, max_diff_bytes: int) -> str:
+    diff, truncated = _git_value_limited(repo, max_diff_bytes, "diff", "--binary")
+    if truncated:
+        return (
+            "# Diff omitted.\n"
+            "#\n"
+            "# `git diff --binary` exceeded the Waybill draft limit of "
+            f"{format_bytes(max_diff_bytes)}.\n"
+            "# Review the repository directly and capture only the relevant changes\n"
+            "# before sharing this bundle.\n"
+        )
+
     if diff:
         return diff if diff.endswith("\n") else f"{diff}\n"
 
@@ -265,3 +280,26 @@ def _git_value(repo: Path, *args: str) -> str:
     if result.returncode != 0:
         return "unknown"
     return result.stdout.strip()
+
+
+def _git_value_limited(
+    repo: Path,
+    max_bytes: int,
+    *args: str,
+) -> tuple[str, bool]:
+    process = subprocess.Popen(
+        ["git", "-C", str(repo), *args],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    assert process.stdout is not None
+    output = process.stdout.read(max_bytes + 1)
+    if len(output) > max_bytes:
+        process.kill()
+        process.wait()
+        return "", True
+
+    process.wait()
+    if process.returncode != 0:
+        return "unknown", False
+    return output.decode(errors="replace").strip(), False
