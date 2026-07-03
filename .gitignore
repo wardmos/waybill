@@ -1,5 +1,11 @@
 .waybill/
 
+# Local OpenCode package installs
+.opencode/node_modules/
+.opencode/package.json
+.opencode/package-lock.json
+.opencode/bun.lock
+
 # Local editor and OS files
 .DS_Store
 .idea/
