@@ -17,6 +17,9 @@ package manager install is required.
 
 ## 1. Install Adapters Into A Repo
 
+Install the file-based project adapters for Claude Code, OpenCode, Cursor CLI,
+and Gemini CLI:
+
 From the Waybill repository:
 
 ```bash
@@ -26,7 +29,6 @@ From the Waybill repository:
 Install only one adapter when needed:
 
 ```bash
-./cli/waybill init --target /path/to/your/repo --adapter codex
 ./cli/waybill init --target /path/to/your/repo --adapter claude-code
 ./cli/waybill init --target /path/to/your/repo --adapter opencode
 ./cli/waybill init --target /path/to/your/repo --adapter cursor
@@ -38,6 +40,15 @@ Check the installation:
 ```bash
 ./cli/waybill doctor --target /path/to/your/repo
 ```
+
+Codex is installed separately as a local plugin from this repository:
+
+```bash
+codex plugin marketplace add .
+codex plugin add waybill@waybill-local
+```
+
+See `INSTALL.md` for the full Codex plugin flow.
 
 ## 2. Export A Handoff
 

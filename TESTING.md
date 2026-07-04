@@ -56,6 +56,10 @@ Install project-local adapters into a target repository:
 ./cli/waybill init --target /tmp/waybill-init-target --force --json
 ```
 
+`init` and `doctor` cover the file-based project adapters:
+`claude-code`, `opencode`, `cursor`, and `gemini-cli`. The Codex adapter is a
+local plugin installed from the repo marketplace, not an `init` target.
+
 Check adapter installation:
 
 ```bash
@@ -162,6 +166,8 @@ This checks:
 - CLI unpack output and validation of unpacked bundles in text and JSON.
 - CLI render output for Markdown review reports in text and JSON.
 - End-to-end CLI workflow from draft bundle through rendered review report.
+- Resource limits for diff capture, bundle file count, single-file size, and
+  total bundle size.
 
 The script intentionally uses only the Python standard library.
 
@@ -182,9 +188,11 @@ Expected result:
 - Gemini CLI skills are copied into `.gemini/skills/`.
 - `.gitignore` includes `.waybill/`.
 - Existing adapter files are refused unless `--force` is provided.
+- `--adapter claude-code` installs only Claude Code skill files.
 - `--adapter opencode` installs only OpenCode files.
 - `--adapter cursor` installs only Cursor rule files.
 - `--adapter gemini-cli` installs only Gemini CLI skill files.
+- Codex plugin files are not installed by `init`; see `INSTALL.md`.
 - JSON output parses as valid JSON and includes installed adapter actions.
 
 ## CLI Doctor Smoke Test
@@ -203,9 +211,12 @@ Expected result:
 - `.gitignore` with `.waybill/` is reported as `OK`.
 - JSON output parses as valid JSON and includes adapter check details.
 - A partial installation returns a non-zero exit code and reports missing files.
+- `--adapter claude-code` checks only Claude Code skill files.
 - `--adapter opencode` checks only OpenCode files.
 - `--adapter cursor` checks only Cursor rule files.
 - `--adapter gemini-cli` checks only Gemini CLI skill files.
+- Codex plugin files are checked by static repository validation, not
+  `doctor --adapter`.
 
 ## CLI New Smoke Test
 

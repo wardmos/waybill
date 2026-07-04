@@ -38,6 +38,10 @@ The agent should run:
 ./cli/waybill doctor --target /path/to/your/repo
 ```
 
+`init` installs file-based project adapters for Claude Code, OpenCode, Cursor,
+and Gemini CLI. Codex uses the local plugin marketplace described in
+`INSTALL.md`.
+
 ## What Waybill Creates
 
 A Waybill Bundle is a local directory in the current repository:
@@ -161,6 +165,16 @@ It currently supports adapter initialization checks, draft bundle scaffolding,
 import preflight checks, repository-state verification, bundle validation,
 export readiness checks, inspection, redacted copies, shareable archive
 preparation, Markdown rendering, zip packing, and zip unpacking.
+
+### Adapter Matrix
+
+| Agent CLI | Project entrypoint | Installed by `init` | Smoke coverage |
+| --- | --- | --- | --- |
+| Claude Code | `.claude/skills/` | Yes | Read-only import smoke |
+| Codex | `adapters/codex/` plugin | No | Read-only import smoke |
+| OpenCode | `.opencode/commands/`, `.opencode/skills/` | Yes | Read-only import smoke |
+| Cursor CLI | `.cursor/rules/` | Yes | Read-only import smoke |
+| Gemini CLI | `.gemini/skills/` | Yes | Read-only import smoke |
 
 ## Commands
 
@@ -295,6 +309,9 @@ handoff test plans.
 
 ## Roadmap
 
-- Claude Code and Codex handoff plugins, spec, templates, and examples.
-- Thin CLI for validation, packing, rendering, and redaction.
-- More adapters and compatibility fixtures.
+- Keep the draft bundle format small and stable while real handoffs exercise it.
+- Add more compatibility fixtures and documented cross-agent walkthroughs.
+- Add more adapters where the target CLI has a lightweight project instruction
+  mechanism.
+- Keep automatic patch application, transcript parsing, daemon behavior, cloud
+  sync, and Web UI out of scope until the handoff format has more usage.
