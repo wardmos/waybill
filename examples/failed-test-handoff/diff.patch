@@ -1,0 +1,33 @@
+diff --git a/src/inventory/reservations.ts b/src/inventory/reservations.ts
+index 5555555..6666666 100644
+--- a/src/inventory/reservations.ts
++++ b/src/inventory/reservations.ts
+@@ -18,9 +18,12 @@ export function releaseReservation(reservation: Reservation, stock: Stock): Stoc
+   if (reservation.status === "fulfilled") {
+     return stock;
+   }
++
++  reservation.status = "released";
+ 
+   if (reservation.status === "cancelled") {
+     return {
+       ...stock,
+       available: stock.available + reservation.quantity,
+     };
+   }
+diff --git a/tests/inventory-reservations.test.ts b/tests/inventory-reservations.test.ts
+index 7777777..8888888 100644
+--- a/tests/inventory-reservations.test.ts
++++ b/tests/inventory-reservations.test.ts
+@@ -24,6 +24,14 @@ test("fulfilled reservations are not released twice", () => {
+   expect(result.available).toBe(10);
+ });
+ 
++test("cancelled reservations restore available quantity", () => {
++  const stock = { sku: "demo-sku", available: 10 };
++  const reservation = { status: "cancelled", quantity: 2 };
++
++  const result = releaseReservation(reservation, stock);
++
++  expect(result.available).toBe(12);
++});

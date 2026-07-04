@@ -1,0 +1,18 @@
+{
+  "schema_version": "draft",
+  "source_agent": "opencode",
+  "created_at": "2026-07-04T16:30:00Z",
+  "repo_root": ".",
+  "git": {
+    "branch": "fix/inventory-release",
+    "base_ref": "main",
+    "head_sha": "unknown",
+    "dirty": true
+  },
+  "artifacts": {
+    "waybill": "WAYBILL.md",
+    "diff": "diff.patch",
+    "commands": "commands.log",
+    "test_summary": "test-summary.md"
+  }
+}

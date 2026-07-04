@@ -81,6 +81,7 @@ REQUIRED_FILES = [
 EXAMPLES = [
     "examples/claude-to-codex",
     "examples/codex-to-claude",
+    "examples/failed-test-handoff",
 ]
 
 COMMAND_CLASSIFICATION_TERMS = [

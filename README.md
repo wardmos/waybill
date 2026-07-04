@@ -22,6 +22,18 @@ includes OpenCode, Cursor CLI, and Gemini CLI.
 
 For the shortest setup path, see `QUICKSTART.md`.
 
+## Validated Handoffs
+
+Waybill has been exercised with real cross-agent handoffs in both directions:
+
+- Claude Code exported an unfinished coding task, and Codex imported the bundle,
+  verified repository state, finished the focused fix, and ran tests.
+- Codex exported an unfinished coding task, and Claude Code imported the bundle,
+  verified repository state, finished the focused fix, and ran tests.
+
+Import remains non-destructive: the next agent reads the bundle and checks the
+current repository state before deciding what to do.
+
 ## Agent-Assisted Install
 
 Give your coding agent this repository URL and ask:
@@ -65,6 +77,19 @@ Recommended files:
 - `diff.patch`
 - `commands.log`
 - `test-summary.md`
+
+## Examples
+
+Synthetic example bundles are available in:
+
+```text
+examples/claude-to-codex/
+examples/codex-to-claude/
+examples/failed-test-handoff/
+```
+
+`failed-test-handoff` shows a focused failing-test handoff with a partial patch,
+command log, and test summary.
 
 ## CLI
 

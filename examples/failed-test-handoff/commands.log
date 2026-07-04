@@ -1,0 +1,29 @@
+# Commands Log
+
+## Read-Only Inspection Commands
+
+```text
+git status --short
+git branch --show-current
+git rev-parse HEAD
+git diff
+```
+
+## Verification Commands
+
+```text
+pnpm test inventory-reservations
+```
+
+Result: failing.
+
+## Bundle-Writing Actions
+
+```text
+mkdir -p .waybill
+write .waybill/WAYBILL.md
+write .waybill/metadata.json
+write .waybill/diff.patch
+write .waybill/commands.log
+write .waybill/test-summary.md
+```
