@@ -14,11 +14,29 @@ Continue it in Codex:
 /handoff import .waybill
 ```
 
-Waybill keeps handoffs agent-neutral, local-first, and portable across coding agents.
+Waybill helps continue unfinished coding work across different agents. Native
+`resume` commands usually continue sessions inside one agent CLI.
+Waybill keeps handoffs agent-neutral and portable across coding agents.
 Waybill started with Claude Code and Codex. The current adapter set also
 includes OpenCode, Cursor CLI, and Gemini CLI.
 
 For the shortest setup path, see `QUICKSTART.md`.
+
+## Agent-Assisted Install
+
+Give your coding agent this repository URL and ask:
+
+```text
+Use https://github.com/wardmos/waybill to install Waybill adapters into this
+repo. Follow QUICKSTART.md, then run the doctor check.
+```
+
+The agent should run:
+
+```bash
+./cli/waybill init --target /path/to/your/repo
+./cli/waybill doctor --target /path/to/your/repo
+```
 
 ## What Waybill Creates
 
