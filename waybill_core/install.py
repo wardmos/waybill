@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+TEMPLATE_ROOT = Path(__file__).resolve().parent / "templates"
 SUPPORTED_ADAPTERS = ["claude-code", "opencode", "cursor", "gemini-cli"]
 
 
@@ -46,7 +47,7 @@ def install_adapters(
     for adapter in selected:
         for source_rel, target_rel in _adapter_files(adapter):
             _copy_file(
-                source / source_rel,
+                _adapter_source_file(source, source_rel),
                 target / target_rel,
                 target,
                 force,
@@ -134,6 +135,18 @@ def _adapter_files(adapter: str) -> list[tuple[str, str]]:
 
 def adapter_target_files(adapter: str) -> list[str]:
     return [target for _source, target in _adapter_files(adapter)]
+
+
+def _adapter_source_file(source_root: Path, source_rel: str) -> Path:
+    source = source_root / source_rel
+    if source.is_file():
+        return source
+
+    packaged = TEMPLATE_ROOT / source_rel
+    if packaged.is_file():
+        return packaged
+
+    return source
 
 
 def _copy_file(

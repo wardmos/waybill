@@ -1,5 +1,7 @@
 """Waybill shared helpers."""
 
+__version__ = "0.1.1"
+
 from .doctor import DoctorCheck, DoctorReport, doctor_repository
 from .install import InstallAction, InstallReport, install_adapters
 from .packing import (
@@ -39,6 +41,7 @@ __all__ = [
     "ShareReport",
     "UnpackReport",
     "ValidationIssue",
+    "__version__",
     "check_export_readiness",
     "create_draft_bundle",
     "doctor_repository",

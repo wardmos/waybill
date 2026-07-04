@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import tomllib
 import zipfile
 from pathlib import Path
 
@@ -28,6 +29,9 @@ REQUIRED_FILES = [
     "README.md",
     "QUICKSTART.md",
     ".gitignore",
+    ".github/workflows/publish-pypi.yml",
+    "MANIFEST.in",
+    "pyproject.toml",
     "INSTALL.md",
     "TESTING.md",
     "spec/waybill-bundle.md",
@@ -36,6 +40,7 @@ REQUIRED_FILES = [
     "cli/waybill",
     "scripts/smoke-agents.sh",
     "waybill_core/__init__.py",
+    "waybill_core/cli.py",
     "waybill_core/doctor.py",
     "waybill_core/install.py",
     "waybill_core/limits.py",
@@ -48,6 +53,16 @@ REQUIRED_FILES = [
     "waybill_core/scaffold.py",
     "waybill_core/sharing.py",
     "waybill_core/validation.py",
+    "waybill_core/templates/.claude/skills/handoff/SKILL.md",
+    "waybill_core/templates/.claude/skills/waybill/SKILL.md",
+    "waybill_core/templates/.opencode/commands/handoff.md",
+    "waybill_core/templates/.opencode/commands/waybill.md",
+    "waybill_core/templates/.opencode/skills/handoff/SKILL.md",
+    "waybill_core/templates/.opencode/skills/waybill/SKILL.md",
+    "waybill_core/templates/.cursor/rules/handoff.mdc",
+    "waybill_core/templates/.cursor/rules/waybill.mdc",
+    "waybill_core/templates/.gemini/skills/handoff/SKILL.md",
+    "waybill_core/templates/.gemini/skills/waybill/SKILL.md",
     ".agents/plugins/marketplace.json",
     ".claude/skills/handoff/SKILL.md",
     ".claude/skills/waybill/SKILL.md",
@@ -395,6 +410,62 @@ def validate_gemini_cli_adapter() -> None:
     ]:
         if expected not in readme:
             fail(f"Gemini CLI README must mention {expected}")
+
+
+def validate_python_package() -> None:
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    project = pyproject.get("project", {})
+    version = str(project.get("version", ""))
+    if project.get("name") != "agent-waybill":
+        fail("pyproject project.name must be agent-waybill")
+    if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+        fail("pyproject project.version must be strict semver")
+    init_text = (ROOT / "waybill_core" / "__init__.py").read_text()
+    version_match = re.search(r'^__version__ = "([^"]+)"$', init_text, re.MULTILINE)
+    if not version_match or version_match.group(1) != version:
+        fail("waybill_core.__version__ must match pyproject project.version")
+    if project.get("requires-python") != ">=3.10":
+        fail("pyproject requires-python must be >=3.10")
+
+    scripts = project.get("scripts", {})
+    if scripts.get("waybill") != "waybill_core.cli:main":
+        fail("pyproject must expose waybill console script")
+
+    setuptools = pyproject.get("tool", {}).get("setuptools", {})
+    if setuptools.get("packages") != ["waybill_core"]:
+        fail("pyproject setuptools packages must include waybill_core")
+
+    package_data = setuptools.get("package-data", {})
+    if "templates/**" not in package_data.get("waybill_core", []):
+        fail("pyproject must include packaged adapter templates")
+
+
+def validate_pypi_publish_workflow() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "publish-pypi.yml").read_text()
+    required = [
+        "name: Publish to PyPI",
+        "push:",
+        "tags:",
+        '- "v*"',
+        "workflow_dispatch:",
+        "python3 scripts/validate-waybill.py",
+        "python3 -m py_compile cli/waybill waybill_core/*.py scripts/validate-waybill.py",
+        "Check tag matches package version",
+        "tag = os.environ['GITHUB_REF_NAME']",
+        "tag {tag} does not match package version v{version}",
+        "scripts/smoke-agents.sh --dry-run",
+        "python3 -m build",
+        "if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')",
+        "name: pypi",
+        "url: https://pypi.org/p/agent-waybill",
+        "id-token: write",
+        "pypa/gh-action-pypi-publish@release/v1",
+    ]
+    for expected in required:
+        if expected not in workflow:
+            fail(f"PyPI publish workflow must include {expected}")
+    if re.search(r"branches:\s*\n\s*-", workflow):
+        fail("PyPI publish workflow must not publish from branch pushes")
 
 
 def validate_example(example_dir: Path) -> None:
@@ -1174,6 +1245,8 @@ def main() -> int:
         ("OpenCode adapter", validate_opencode_adapter),
         ("Cursor adapter", validate_cursor_adapter),
         ("Gemini CLI adapter", validate_gemini_cli_adapter),
+        ("Python package", validate_python_package),
+        ("PyPI publish workflow", validate_pypi_publish_workflow),
         ("examples", validate_examples),
         ("CLI init", validate_cli_init),
         ("CLI new", validate_cli_new),

@@ -1,0 +1,1120 @@
+#!/usr/bin/env python3
+"""Waybill command line interface."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from waybill_core import __version__  # noqa: E402
+from waybill_core.doctor import (  # noqa: E402
+    DoctorCheck,
+    DoctorReport,
+    doctor_repository,
+)
+from waybill_core.install import (  # noqa: E402
+    InstallAction,
+    InstallReport,
+    install_adapters,
+)
+from waybill_core.limits import MAX_DIFF_BYTES  # noqa: E402
+from waybill_core.packing import (  # noqa: E402
+    PackReport,
+    PackedFile,
+    UnpackReport,
+    pack_bundle,
+    unpack_bundle,
+)
+from waybill_core.preflight import (  # noqa: E402
+    ImportPreflightReport,
+    run_import_preflight,
+)
+from waybill_core.readiness import (  # noqa: E402
+    ExportReadinessReport,
+    ReadinessCheck,
+    check_export_readiness,
+)
+from waybill_core.redaction import (  # noqa: E402
+    RedactedFile,
+    RedactionReport,
+    redact_bundle,
+)
+from waybill_core.repo import (  # noqa: E402
+    RepoCheck,
+    RepoVerificationReport,
+    verify_repo_state,
+)
+from waybill_core.rendering import render_bundle  # noqa: E402
+from waybill_core.scaffold import DraftBundleReport, create_draft_bundle  # noqa: E402
+from waybill_core.sharing import ShareReport, share_bundle  # noqa: E402
+from waybill_core.validation import (  # noqa: E402
+    ValidationIssue,
+    has_errors,
+    validate_bundle,
+)
+
+
+def read_metadata(bundle: Path) -> tuple[dict[str, Any] | None, str | None]:
+    path = bundle / "metadata.json"
+    if not path.is_file():
+        return None, "metadata.json is missing"
+    try:
+        metadata = json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        return None, f"metadata.json is invalid JSON: {exc}"
+    if not isinstance(metadata, dict):
+        return None, "metadata.json must contain an object"
+    return metadata, None
+
+
+def print_field(label: str, value: object) -> None:
+    if value is None or value == "":
+        value = "unknown"
+    print(f"{label}: {value}")
+
+
+def issue_to_dict(issue: ValidationIssue) -> dict[str, object]:
+    return {
+        "severity": issue.severity,
+        "message": issue.message,
+        "path": issue.path,
+    }
+
+
+def build_validation_report(
+    bundle: str | Path,
+    issues: list[ValidationIssue],
+) -> dict[str, object]:
+    errors = [issue for issue in issues if issue.severity == "error"]
+    warnings = [issue for issue in issues if issue.severity == "warning"]
+    return {
+        "bundle": str(bundle),
+        "valid": len(errors) == 0,
+        "errors": len(errors),
+        "warnings": len(warnings),
+        "issues": [issue_to_dict(issue) for issue in issues],
+    }
+
+
+def doctor_check_to_dict(check: DoctorCheck) -> dict[str, object]:
+    return {
+        "name": check.name,
+        "status": check.status,
+        "message": check.message,
+    }
+
+
+def build_doctor_report(report: DoctorReport) -> dict[str, object]:
+    return {
+        "target": str(report.target),
+        "adapters": report.adapters,
+        "valid": not report.has_errors,
+        "checks": [doctor_check_to_dict(check) for check in report.checks],
+    }
+
+
+def install_action_to_dict(action: InstallAction) -> dict[str, object]:
+    return {
+        "path": action.path,
+        "action": action.action,
+    }
+
+
+def build_install_report(report: InstallReport) -> dict[str, object]:
+    return {
+        "target": str(report.target),
+        "adapters": report.adapters,
+        "success": True,
+        "actions": [install_action_to_dict(action) for action in report.actions],
+    }
+
+
+def build_draft_report(report: DraftBundleReport) -> dict[str, object]:
+    return {
+        "output": str(report.output),
+        "repo": str(report.repo),
+        "source_agent": report.source_agent,
+        "dirty": report.dirty,
+        "success": True,
+        "files": report.files,
+    }
+
+
+def redacted_file_to_dict(file: RedactedFile) -> dict[str, object]:
+    return {
+        "path": file.path,
+        "replacements": file.replacements,
+        "copied_binary": file.copied_binary,
+    }
+
+
+def build_redaction_report(report: RedactionReport) -> dict[str, object]:
+    return {
+        "source": str(report.source),
+        "output": str(report.output),
+        "success": True,
+        "files_processed": len(report.files),
+        "replacements": report.replacement_count,
+        "files": [redacted_file_to_dict(file) for file in report.files],
+    }
+
+
+def packed_file_to_dict(file: PackedFile) -> dict[str, object]:
+    return {
+        "path": file.path,
+        "size": file.size,
+    }
+
+
+def build_pack_report(
+    report: PackReport,
+    validation: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "source": str(report.source),
+        "output": str(report.output),
+        "archive_root": report.archive_root,
+        "success": True,
+        "file_count": report.file_count,
+        "byte_count": report.byte_count,
+        "validation": validation,
+        "files": [packed_file_to_dict(file) for file in report.files],
+    }
+
+
+def build_share_report(report: ShareReport) -> dict[str, object]:
+    validation = build_validation_report(report.redacted, report.validation_issues)
+    return {
+        "source": str(report.source),
+        "redacted": str(report.redacted),
+        "archive": str(report.archive),
+        "success": True,
+        "redaction": build_redaction_report(report.redaction),
+        "validation": validation,
+        "pack": build_pack_report(report.pack, validation),
+    }
+
+
+def build_unpack_report(
+    report: UnpackReport,
+    validation: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "source": str(report.source),
+        "output": str(report.output),
+        "bundle": str(report.bundle),
+        "archive_root": report.archive_root,
+        "success": True,
+        "file_count": report.file_count,
+        "byte_count": report.byte_count,
+        "validation": validation,
+        "files": [packed_file_to_dict(file) for file in report.files],
+    }
+
+
+def build_render_report(
+    bundle: str | Path,
+    output: str | Path,
+    rendered: str,
+    validation: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "bundle": str(bundle),
+        "output": str(output),
+        "success": True,
+        "bytes": len(rendered.encode()),
+        "validation": validation,
+    }
+
+
+def repo_check_to_dict(check: RepoCheck) -> dict[str, object]:
+    return {
+        "name": check.name,
+        "status": check.status,
+        "expected": check.expected,
+        "actual": check.actual,
+        "message": check.message,
+    }
+
+
+def build_repo_report(report: RepoVerificationReport) -> dict[str, object]:
+    return {
+        "bundle": str(report.bundle),
+        "repo": str(report.repo),
+        "valid": not report.has_errors,
+        "checks": [repo_check_to_dict(check) for check in report.checks],
+    }
+
+
+def build_preflight_report(report: ImportPreflightReport) -> dict[str, object]:
+    validation = build_validation_report(
+        report.bundle,
+        report.validation_issues,
+    )
+    return {
+        "bundle": str(report.bundle),
+        "repo": str(report.repo),
+        "valid": not report.has_errors,
+        "validation": validation,
+        "repo_checks": [
+            repo_check_to_dict(check) for check in report.repo_report.checks
+        ],
+    }
+
+
+def readiness_check_to_dict(check: ReadinessCheck) -> dict[str, object]:
+    return {
+        "name": check.name,
+        "status": check.status,
+        "message": check.message,
+        "path": check.path,
+    }
+
+
+def build_readiness_report(report: ExportReadinessReport) -> dict[str, object]:
+    validation = build_validation_report(
+        report.bundle,
+        report.validation_issues,
+    )
+    return {
+        "bundle": str(report.bundle),
+        "repo": str(report.repo),
+        "valid": not report.has_errors,
+        "validation": validation,
+        "repo_checks": [
+            repo_check_to_dict(check) for check in report.repo_report.checks
+        ],
+        "content_checks": [
+            readiness_check_to_dict(check) for check in report.content_checks
+        ],
+    }
+
+
+def build_inspect_report(
+    bundle: Path,
+    metadata: dict[str, Any] | None,
+    metadata_error: str | None,
+    issues: list[ValidationIssue],
+) -> dict[str, object]:
+    errors = [issue for issue in issues if issue.severity == "error"]
+    warnings = [issue for issue in issues if issue.severity == "warning"]
+    artifacts = []
+    artifact_metadata = (
+        metadata.get("artifacts")
+        if isinstance(metadata, dict) and isinstance(metadata.get("artifacts"), dict)
+        else {}
+    )
+
+    for name, artifact in artifact_metadata.items():
+        if not isinstance(artifact, str):
+            artifacts.append(
+                {
+                    "name": name,
+                    "path": None,
+                    "status": "invalid",
+                    "bytes": 0,
+                }
+            )
+            continue
+
+        path = bundle / artifact
+        present = path.is_file()
+        artifacts.append(
+            {
+                "name": name,
+                "path": artifact,
+                "status": "present" if present else "missing",
+                "bytes": path.stat().st_size if present else 0,
+            }
+        )
+
+    return {
+        "bundle": str(bundle),
+        "valid": len(errors) == 0,
+        "metadata": metadata,
+        "metadata_error": metadata_error,
+        "artifacts": artifacts,
+        "validation": {
+            "errors": len(errors),
+            "warnings": len(warnings),
+            "issues": [issue_to_dict(issue) for issue in issues],
+        },
+    }
+
+
+def cmd_validate(args: argparse.Namespace) -> int:
+    issues = validate_bundle(args.bundle)
+    if args.json:
+        print(json.dumps(build_validation_report(args.bundle, issues), indent=2))
+        return 1 if has_errors(issues) else 0
+
+    if issues:
+        for issue in issues:
+            output = sys.stderr if issue.severity == "error" else sys.stdout
+            print(issue.format(), file=output)
+    if has_errors(issues):
+        print(f"FAIL invalid Waybill Bundle: {args.bundle}", file=sys.stderr)
+        return 1
+    print(f"PASS valid Waybill Bundle: {args.bundle}")
+    return 0
+
+
+def cmd_init(args: argparse.Namespace) -> int:
+    try:
+        report = install_adapters(
+            REPO_ROOT,
+            args.target,
+            args.adapter or ["all"],
+            force=args.force,
+        )
+    except (
+        FileExistsError,
+        FileNotFoundError,
+        NotADirectoryError,
+        ValueError,
+        OSError,
+    ) as exc:
+        if args.json:
+            print(json.dumps({"success": False, "error": str(exc)}, indent=2))
+            return 1
+        print(f"FAIL {exc}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(json.dumps(build_install_report(report), indent=2))
+        return 0
+
+    print(f"Initialized Waybill adapters in: {report.target}")
+    print(f"Adapters: {', '.join(report.adapters)}")
+    for action in report.actions:
+        print(f"  - {action.action}: {action.path}")
+    return 0
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    try:
+        report = doctor_repository(args.target, args.adapter or ["all"])
+    except ValueError as exc:
+        print(f"FAIL {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(build_doctor_report(report), indent=2))
+        return 1 if report.has_errors else 0
+
+    print(f"Waybill doctor target: {report.target}")
+    print(f"Adapters: {', '.join(report.adapters)}")
+    for check in report.checks:
+        print(f"  - {check.status.upper()}: {check.name}: {check.message}")
+
+    if report.has_errors:
+        print("FAIL Waybill adapter installation has problems", file=sys.stderr)
+        return 1
+
+    print("PASS Waybill adapter installation looks ready")
+    return 0
+
+
+def cmd_verify_repo(args: argparse.Namespace) -> int:
+    report = verify_repo_state(args.bundle, args.repo)
+    if args.json:
+        print(json.dumps(build_repo_report(report), indent=2))
+        return 1 if report.has_errors else 0
+
+    print(f"Bundle: {report.bundle}")
+    print(f"Repo: {report.repo}")
+    for check in report.checks:
+        print(
+            f"  - {check.status.upper()}: {check.name}: "
+            f"expected={check.expected!r} actual={check.actual!r} - {check.message}"
+        )
+
+    if report.has_errors:
+        sys.stdout.flush()
+        print("FAIL bundle repo state does not match current repo", file=sys.stderr)
+        return 1
+
+    print("PASS bundle repo state matches current repo")
+    return 0
+
+
+def cmd_new(args: argparse.Namespace) -> int:
+    try:
+        report = create_draft_bundle(
+            args.output,
+            args.repo,
+            source_agent=args.source_agent,
+            goal=args.goal,
+            force=args.force,
+            max_diff_bytes=args.max_diff_bytes,
+        )
+    except (
+        FileExistsError,
+        FileNotFoundError,
+        NotADirectoryError,
+        ValueError,
+        OSError,
+    ) as exc:
+        if args.json:
+            print(json.dumps({"success": False, "error": str(exc)}, indent=2))
+            return 1
+        print(f"FAIL {exc}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(json.dumps(build_draft_report(report), indent=2))
+        return 0
+
+    print(f"Draft bundle: {report.output}")
+    print(f"Repo: {report.repo}")
+    print(f"Source agent: {report.source_agent}")
+    print(f"Dirty: {report.dirty}")
+    print("Files:")
+    for file in report.files:
+        print(f"  - {file}")
+    print("Review and edit the draft bundle before importing it elsewhere.")
+    return 0
+
+
+def cmd_preflight(args: argparse.Namespace) -> int:
+    report = run_import_preflight(args.bundle, args.repo)
+    errors = report.validation_errors
+    warnings = report.validation_warnings
+    if args.json:
+        print(json.dumps(build_preflight_report(report), indent=2))
+        return 1 if report.has_errors else 0
+
+    print(f"Bundle: {report.bundle}")
+    print(f"Repo: {report.repo}")
+    print(f"Validation: {len(errors)} error(s), {len(warnings)} warning(s)")
+    for issue in report.validation_issues:
+        print(f"  - {issue.format()}")
+
+    print("Repo checks:")
+    for check in report.repo_report.checks:
+        print(
+            f"  - {check.status.upper()}: {check.name}: "
+            f"expected={check.expected!r} actual={check.actual!r} - {check.message}"
+        )
+
+    if report.has_errors:
+        sys.stdout.flush()
+        print("FAIL import preflight found blocking issues", file=sys.stderr)
+        return 1
+
+    print("PASS import preflight passed")
+    return 0
+
+
+def cmd_ready(args: argparse.Namespace) -> int:
+    report = check_export_readiness(args.bundle, args.repo)
+    errors = [
+        issue for issue in report.validation_issues if issue.severity == "error"
+    ]
+    warnings = [
+        issue for issue in report.validation_issues if issue.severity == "warning"
+    ]
+    if args.json:
+        print(json.dumps(build_readiness_report(report), indent=2))
+        return 1 if report.has_errors else 0
+
+    print(f"Bundle: {report.bundle}")
+    print(f"Repo: {report.repo}")
+    print(f"Validation: {len(errors)} error(s), {len(warnings)} warning(s)")
+    for issue in report.validation_issues:
+        print(f"  - {issue.format()}")
+
+    print("Repo checks:")
+    for check in report.repo_report.checks:
+        print(
+            f"  - {check.status.upper()}: {check.name}: "
+            f"expected={check.expected!r} actual={check.actual!r} - {check.message}"
+        )
+
+    print("Content checks:")
+    for check in report.content_checks:
+        path = f" {check.path}" if check.path else ""
+        print(f"  - {check.status.upper()}: {check.name}{path}: {check.message}")
+
+    if report.has_errors:
+        sys.stdout.flush()
+        print("FAIL bundle is not ready for handoff", file=sys.stderr)
+        return 1
+
+    print("PASS bundle is ready for handoff")
+    return 0
+
+
+def cmd_inspect(args: argparse.Namespace) -> int:
+    bundle = Path(args.bundle)
+    issues = validate_bundle(bundle)
+    errors = [issue for issue in issues if issue.severity == "error"]
+    warnings = [issue for issue in issues if issue.severity == "warning"]
+    metadata, metadata_error = read_metadata(bundle)
+
+    if args.json:
+        report = build_inspect_report(bundle, metadata, metadata_error, issues)
+        print(json.dumps(report, indent=2))
+        return 1 if errors else 0
+
+    print(f"Bundle: {bundle}")
+
+    if metadata_error:
+        print(f"Metadata: {metadata_error}")
+    elif metadata is not None:
+        git = metadata.get("git") if isinstance(metadata.get("git"), dict) else {}
+        artifacts = (
+            metadata.get("artifacts")
+            if isinstance(metadata.get("artifacts"), dict)
+            else {}
+        )
+
+        print_field("Source agent", metadata.get("source_agent"))
+        print_field("Created at", metadata.get("created_at"))
+        print_field("Repo root", metadata.get("repo_root"))
+        print_field("Git branch", git.get("branch"))
+        print_field("Git base ref", git.get("base_ref"))
+        print_field("Git head SHA", git.get("head_sha"))
+        print_field("Git dirty", git.get("dirty"))
+
+        print("Artifacts:")
+        for name, artifact in artifacts.items():
+            if not isinstance(artifact, str):
+                print(f"  - {name}: invalid path")
+                continue
+            status = "present" if (bundle / artifact).is_file() else "missing"
+            print(f"  - {name}: {artifact} ({status})")
+
+    print(f"Validation: {len(errors)} error(s), {len(warnings)} warning(s)")
+    for issue in issues:
+        print(f"  - {issue.format()}")
+
+    return 1 if errors else 0
+
+
+def cmd_redact(args: argparse.Namespace) -> int:
+    try:
+        report = redact_bundle(args.bundle, args.output, force=args.force)
+    except (FileExistsError, FileNotFoundError, NotADirectoryError, ValueError) as exc:
+        if args.json:
+            print(json.dumps({"success": False, "error": str(exc)}, indent=2))
+            return 1
+        print(f"FAIL {exc}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(json.dumps(build_redaction_report(report), indent=2))
+        return 0
+
+    print(f"Redacted bundle: {report.output}")
+    print(f"Source bundle: {report.source}")
+    print(f"Files processed: {len(report.files)}")
+    print(f"Replacements: {report.replacement_count}")
+
+    for file in report.files:
+        suffix = " copied binary" if file.copied_binary else ""
+        print(f"  - {file.path}: {file.replacements} replacement(s){suffix}")
+
+    print("Review the redacted bundle before sharing it.")
+    return 0
+
+
+def cmd_pack(args: argparse.Namespace) -> int:
+    issues = validate_bundle(args.bundle)
+    if has_errors(issues):
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "success": False,
+                        "error": "bundle is invalid; refusing to pack",
+                        "validation": build_validation_report(args.bundle, issues),
+                    },
+                    indent=2,
+                )
+            )
+            return 1
+        for issue in issues:
+            if issue.severity == "error":
+                print(issue.format(), file=sys.stderr)
+        print("FAIL bundle is invalid; refusing to pack", file=sys.stderr)
+        return 1
+
+    warnings = [issue for issue in issues if issue.severity == "warning"]
+    if not args.json:
+        for warning in warnings:
+            print(warning.format())
+
+    try:
+        report = pack_bundle(args.bundle, args.output, force=args.force)
+    except (FileExistsError, FileNotFoundError, NotADirectoryError, ValueError) as exc:
+        if args.json:
+            print(json.dumps({"success": False, "error": str(exc)}, indent=2))
+            return 1
+        print(f"FAIL {exc}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        validation = build_validation_report(args.bundle, issues)
+        print(json.dumps(build_pack_report(report, validation), indent=2))
+        return 0
+
+    print(f"Packed bundle: {report.output}")
+    print(f"Source bundle: {report.source}")
+    print(f"Archive root: {report.archive_root}")
+    print(f"Files packed: {report.file_count}")
+    print(f"Bytes packed: {report.byte_count}")
+    print("Review the archive before sharing it.")
+    return 0
+
+
+def cmd_share(args: argparse.Namespace) -> int:
+    try:
+        report = share_bundle(
+            args.bundle,
+            args.output,
+            redacted_output=args.redacted_output,
+            force=args.force,
+        )
+    except (
+        FileExistsError,
+        FileNotFoundError,
+        NotADirectoryError,
+        ValueError,
+        OSError,
+    ) as exc:
+        if args.json:
+            print(json.dumps({"success": False, "error": str(exc)}, indent=2))
+            return 1
+        print(f"FAIL {exc}", file=sys.stderr)
+        return 1
+
+    warnings = [
+        issue for issue in report.validation_issues if issue.severity == "warning"
+    ]
+    if args.json:
+        print(json.dumps(build_share_report(report), indent=2))
+        return 0
+
+    print(f"Source bundle: {report.source}")
+    print(f"Redacted review bundle: {report.redacted}")
+    print(f"Archive: {report.archive}")
+    print(f"Redaction replacements: {report.redaction.replacement_count}")
+    print(f"Files packed: {report.pack.file_count}")
+    print(f"Bytes packed: {report.pack.byte_count}")
+    if warnings:
+        print("Validation warnings:")
+        for warning in warnings:
+            print(f"  - {warning.format()}")
+    print("Review the redacted bundle and archive before sharing them.")
+    return 0
+
+
+def cmd_unpack(args: argparse.Namespace) -> int:
+    try:
+        report = unpack_bundle(args.archive, args.output, force=args.force)
+    except (
+        FileExistsError,
+        FileNotFoundError,
+        NotADirectoryError,
+        ValueError,
+        OSError,
+    ) as exc:
+        if args.json:
+            print(json.dumps({"success": False, "error": str(exc)}, indent=2))
+            return 1
+        print(f"FAIL {exc}", file=sys.stderr)
+        return 1
+
+    issues = validate_bundle(report.bundle)
+    if args.json:
+        validation = build_validation_report(report.bundle, issues)
+        if has_errors(issues):
+            failure = build_unpack_report(report, validation)
+            failure["success"] = False
+            failure["error"] = "unpacked bundle is invalid"
+            print(
+                json.dumps(
+                    failure,
+                    indent=2,
+                )
+            )
+            return 1
+        print(json.dumps(build_unpack_report(report, validation), indent=2))
+        return 0
+
+    print(f"Unpacked archive: {report.source}")
+    print(f"Output directory: {report.output}")
+    print(f"Bundle path: {report.bundle}")
+    print(f"Archive root: {report.archive_root}")
+    print(f"Files unpacked: {report.file_count}")
+    print(f"Bytes unpacked: {report.byte_count}")
+
+    if issues:
+        for issue in issues:
+            output = sys.stderr if issue.severity == "error" else sys.stdout
+            print(issue.format(), file=output)
+    if has_errors(issues):
+        print("FAIL unpacked bundle is invalid", file=sys.stderr)
+        return 1
+
+    print(f"PASS valid Waybill Bundle: {report.bundle}")
+    return 0
+
+
+def cmd_render(args: argparse.Namespace) -> int:
+    try:
+        issues = validate_bundle(args.bundle)
+        rendered = render_bundle(args.bundle, validation_issues=issues)
+    except (FileNotFoundError, NotADirectoryError, OSError) as exc:
+        if args.json:
+            print(json.dumps({"success": False, "error": str(exc)}, indent=2))
+            return 1
+        print(f"FAIL {exc}", file=sys.stderr)
+        return 1
+
+    if args.json and not args.output:
+        print(
+            json.dumps(
+                {
+                    "success": False,
+                    "error": "--json requires --output for render",
+                },
+                indent=2,
+            )
+        )
+        return 1
+
+    if not args.output:
+        print(rendered, end="")
+        return 0
+
+    output = Path(args.output)
+    bundle = Path(args.bundle)
+    if bundle.resolve() in output.resolve().parents:
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "success": False,
+                        "error": "output path must not be inside the source bundle",
+                    },
+                    indent=2,
+                )
+            )
+            return 1
+        print("FAIL output path must not be inside the source bundle", file=sys.stderr)
+        return 1
+
+    if output.exists() and not args.force:
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "success": False,
+                        "error": f"output path already exists: {output}",
+                    },
+                    indent=2,
+                )
+            )
+            return 1
+        print(f"FAIL output path already exists: {output}", file=sys.stderr)
+        return 1
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(rendered)
+    if args.json:
+        validation = build_validation_report(args.bundle, issues)
+        print(
+            json.dumps(
+                build_render_report(args.bundle, output, rendered, validation),
+                indent=2,
+            )
+        )
+        return 0
+
+    print(f"Rendered bundle report: {output}")
+    print("Review the report before sharing it.")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="waybill",
+        description="Work with local Waybill Bundles.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"waybill {__version__}",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    validate = subparsers.add_parser("validate", help="validate a Waybill Bundle")
+    validate.add_argument("bundle", help="path to a Waybill Bundle directory")
+    validate.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
+    )
+    validate.set_defaults(func=cmd_validate)
+
+    init = subparsers.add_parser("init", help="install Waybill adapter files")
+    init.add_argument(
+        "--target",
+        default=".",
+        help="target repository directory; defaults to the current directory",
+    )
+    add_adapter_argument(init, "install")
+    init.add_argument(
+        "--force",
+        action="store_true",
+        help="replace existing adapter files",
+    )
+    init.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
+    )
+    init.set_defaults(func=cmd_init)
+
+    doctor = subparsers.add_parser("doctor", help="check Waybill adapter files")
+    doctor.add_argument(
+        "--target",
+        default=".",
+        help="target repository directory; defaults to the current directory",
+    )
+    add_adapter_argument(doctor, "check")
+    doctor.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
+    )
+    doctor.set_defaults(func=cmd_doctor)
+
+    verify_repo = subparsers.add_parser(
+        "verify-repo",
+        help="compare bundle metadata with a repository",
+    )
+    verify_repo.add_argument("bundle", help="path to a Waybill Bundle directory")
+    verify_repo.add_argument(
+        "--repo",
+        default=".",
+        help="repository directory to compare; defaults to the current directory",
+    )
+    verify_repo.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
+    )
+    verify_repo.set_defaults(func=cmd_verify_repo)
+
+    new = subparsers.add_parser("new", help="create a draft Waybill Bundle")
+    new.add_argument(
+        "--output",
+        default=".waybill",
+        help="bundle directory to write; defaults to .waybill",
+    )
+    new.add_argument(
+        "--repo",
+        default=".",
+        help="repository directory to inspect; defaults to the current directory",
+    )
+    new.add_argument(
+        "--source-agent",
+        default="waybill-cli",
+        help="metadata source_agent value; defaults to waybill-cli",
+    )
+    new.add_argument(
+        "--goal",
+        help="optional original goal text to place in WAYBILL.md",
+    )
+    new.add_argument(
+        "--force",
+        action="store_true",
+        help="replace existing standard Waybill files in the output directory",
+    )
+    new.add_argument(
+        "--max-diff-bytes",
+        type=int,
+        default=MAX_DIFF_BYTES,
+        help=f"maximum git diff bytes to capture; defaults to {MAX_DIFF_BYTES}",
+    )
+    new.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
+    )
+    new.set_defaults(func=cmd_new)
+
+    preflight = subparsers.add_parser(
+        "preflight",
+        help="validate a bundle and compare repository state before import",
+    )
+    preflight.add_argument("bundle", help="path to a Waybill Bundle directory")
+    preflight.add_argument(
+        "--repo",
+        default=".",
+        help="repository directory to compare; defaults to the current directory",
+    )
+    preflight.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
+    )
+    preflight.set_defaults(func=cmd_preflight)
+
+    ready = subparsers.add_parser(
+        "ready",
+        help="check whether a bundle is ready for handoff",
+    )
+    ready.add_argument("bundle", help="path to a Waybill Bundle directory")
+    ready.add_argument(
+        "--repo",
+        default=".",
+        help="repository directory to compare; defaults to the current directory",
+    )
+    ready.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
+    )
+    ready.set_defaults(func=cmd_ready)
+
+    inspect = subparsers.add_parser("inspect", help="summarize a Waybill Bundle")
+    inspect.add_argument("bundle", help="path to a Waybill Bundle directory")
+    inspect.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
+    )
+    inspect.set_defaults(func=cmd_inspect)
+
+    redact = subparsers.add_parser("redact", help="copy a bundle with secrets redacted")
+    redact.add_argument("bundle", help="path to a Waybill Bundle directory")
+    redact.add_argument(
+        "--output",
+        required=True,
+        help="directory to write the redacted bundle into",
+    )
+    redact.add_argument(
+        "--force",
+        action="store_true",
+        help="replace the output directory if it already exists",
+    )
+    redact.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
+    )
+    redact.set_defaults(func=cmd_redact)
+
+    pack = subparsers.add_parser("pack", help="validate and zip a Waybill Bundle")
+    pack.add_argument("bundle", help="path to a Waybill Bundle directory")
+    pack.add_argument(
+        "--output",
+        required=True,
+        help="zip file to write",
+    )
+    pack.add_argument(
+        "--force",
+        action="store_true",
+        help="replace the output file if it already exists",
+    )
+    pack.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
+    )
+    pack.set_defaults(func=cmd_pack)
+
+    share = subparsers.add_parser(
+        "share",
+        help="redact, validate, and zip a Waybill Bundle",
+    )
+    share.add_argument("bundle", help="path to a Waybill Bundle directory")
+    share.add_argument(
+        "--output",
+        required=True,
+        help="zip file to write",
+    )
+    share.add_argument(
+        "--redacted-output",
+        help="directory for the redacted review bundle; defaults near output",
+    )
+    share.add_argument(
+        "--force",
+        action="store_true",
+        help="replace existing redacted output or zip file",
+    )
+    share.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
+    )
+    share.set_defaults(func=cmd_share)
+
+    unpack = subparsers.add_parser("unpack", help="unzip and validate a Waybill Bundle")
+    unpack.add_argument("archive", help="path to a Waybill Bundle zip archive")
+    unpack.add_argument(
+        "--output",
+        required=True,
+        help="directory to unpack the archive into",
+    )
+    unpack.add_argument(
+        "--force",
+        action="store_true",
+        help="replace the output directory if it already exists",
+    )
+    unpack.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
+    )
+    unpack.set_defaults(func=cmd_unpack)
+
+    render = subparsers.add_parser("render", help="render a bundle review report")
+    render.add_argument("bundle", help="path to a Waybill Bundle directory")
+    render.add_argument(
+        "--output",
+        help="Markdown file to write; defaults to stdout",
+    )
+    render.add_argument(
+        "--force",
+        action="store_true",
+        help="replace the output file if it already exists",
+    )
+    render.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON; requires --output",
+    )
+    render.set_defaults(func=cmd_render)
+
+    return parser
+
+
+def add_adapter_argument(parser: argparse.ArgumentParser, verb: str) -> None:
+    parser.add_argument(
+        "--adapter",
+        action="append",
+        choices=["all", "claude-code", "opencode", "cursor", "gemini-cli"],
+        help=f"adapter to {verb}; may be repeated",
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

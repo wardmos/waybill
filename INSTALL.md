@@ -223,6 +223,29 @@ Reusable adapter files are available in:
 adapters/gemini-cli/
 ```
 
+## Python Support Package
+
+The Python package provides the support CLI as a `waybill` command. It is useful
+for validation, inspection, redaction, packing, rendering, and adapter
+installation from outside a repository clone.
+
+The package does not replace the agent-native `/handoff` and `/waybill`
+commands. Those still come from the project adapter files installed into a
+target repository.
+
+After the package is published, install or run the support CLI with:
+
+```bash
+pipx install agent-waybill
+waybill --help
+```
+
+or:
+
+```bash
+uvx agent-waybill --help
+```
+
 ## Smoke Test
 
 After installing the adapters you need, run the static repository validation:

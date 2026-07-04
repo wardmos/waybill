@@ -1,0 +1,13 @@
+include README.md
+include LICENSE
+include QUICKSTART.md
+include INSTALL.md
+include TESTING.md
+recursive-include spec *.md *.json
+recursive-include examples *.md *.json *.patch *.log
+graft waybill_core/templates
+prune .waybill
+prune .waybill-redacted
+prune .opencode/node_modules
+global-exclude __pycache__/*
+global-exclude *.py[cod]

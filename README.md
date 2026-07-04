@@ -153,6 +153,10 @@ The Python CLI is a small support tool for installing file-based adapters,
 validating bundles, checking repository state, redacting, packing, unpacking,
 and rendering review reports. It uses only the Python standard library.
 
+When installed from the `agent-waybill` Python package, it provides the
+`waybill` support command. Agent adapters are still installed into project
+repositories.
+
 | Command | Purpose |
 | --- | --- |
 | `init` | Install file-based project adapters into a target repo |
