@@ -2,6 +2,9 @@
 
 Portable handover bundles for agents, starting with coding agents.
 
+When an agent gets stuck, runs out of context, or needs to hand work to another
+tool, Waybill gives the next agent a local, reviewable handoff bundle.
+
 Export an unfinished task from Claude Code:
 
 ```text
@@ -21,6 +24,28 @@ Waybill started with Claude Code and Codex. The current adapter set also
 includes OpenCode, Cursor CLI, and Gemini CLI.
 
 For the shortest setup path, see `QUICKSTART.md`.
+
+## At A Glance
+
+| Area | Status |
+| --- | --- |
+| Bundle format | Draft `.waybill/` directory |
+| CLI | Python standard library, no package manager install |
+| Adapters | Claude Code, Codex, OpenCode, Cursor CLI, Gemini CLI |
+| Data model | Local-first files in the target repository |
+| Import behavior | Non-destructive; patches are not applied automatically |
+| Sharing | Best-effort redaction, validation, render, pack, and unpack |
+
+## When To Use Waybill
+
+Use Waybill when:
+
+- An agent session is running out of context and another agent needs to continue.
+- You want to switch tools, models, or agent CLIs without losing task state.
+- A human reviewer needs a compact summary of current progress, failed attempts,
+  tests, diffs, and risks.
+- You want a local handoff artifact that can be validated, redacted, rendered,
+  packed, and shared intentionally.
 
 ## Validated Handoffs
 
@@ -91,105 +116,51 @@ examples/failed-test-handoff/
 `failed-test-handoff` shows a focused failing-test handoff with a partial patch,
 command log, and test summary.
 
+Try one locally:
+
+```bash
+./cli/waybill validate examples/failed-test-handoff
+./cli/waybill inspect examples/failed-test-handoff
+./cli/waybill render examples/failed-test-handoff
+```
+
 ## CLI
 
-Install project-local Claude Code, OpenCode, Cursor, and Gemini CLI adapter
-files into another repo:
+Common commands:
 
 ```bash
 ./cli/waybill init --target /path/to/repo
-./cli/waybill init --target /path/to/repo --json
-```
-
-Check a target repo's adapter installation:
-
-```bash
 ./cli/waybill doctor --target /path/to/repo
-./cli/waybill doctor --target /path/to/repo --json
-```
-
-Create a draft bundle from the current repo:
-
-```bash
 ./cli/waybill new --output .waybill --repo .
-./cli/waybill new --output .waybill --repo . --json
-```
-
-Compare bundle metadata with the current repo:
-
-```bash
-./cli/waybill verify-repo .waybill --repo .
-./cli/waybill verify-repo .waybill --repo . --json
-```
-
-Run the full import preflight check:
-
-```bash
 ./cli/waybill preflight .waybill --repo .
-./cli/waybill preflight .waybill --repo . --json
-```
-
-Check whether a bundle is ready for handoff:
-
-```bash
 ./cli/waybill ready .waybill --repo .
-./cli/waybill ready .waybill --repo . --json
-```
-
-Validate a bundle:
-
-```bash
 ./cli/waybill validate .waybill
-./cli/waybill validate .waybill --json
-```
-
-Inspect bundle metadata and validation status:
-
-```bash
 ./cli/waybill inspect .waybill
-./cli/waybill inspect .waybill --json
-```
-
-Create a redacted copy for review before sharing:
-
-```bash
 ./cli/waybill redact .waybill --output .waybill-redacted
-./cli/waybill redact .waybill --output .waybill-redacted --json
-```
-
-Redact, validate, and pack a shareable archive:
-
-```bash
 ./cli/waybill share .waybill --output waybill.zip
-./cli/waybill share .waybill --output waybill.zip --json
-```
-
-Pack a validated bundle into a zip archive:
-
-```bash
-./cli/waybill pack .waybill-redacted --output waybill.zip
-./cli/waybill pack .waybill-redacted --output waybill.zip --json
-```
-
-Unpack and validate a zip archive:
-
-```bash
-./cli/waybill unpack waybill.zip --output /tmp/waybill-unpacked
-./cli/waybill unpack waybill.zip --output /tmp/waybill-unpacked --json
-```
-
-Render a Markdown review report:
-
-```bash
 ./cli/waybill render .waybill-redacted --output waybill-report.md
-./cli/waybill render .waybill-redacted --output waybill-report.md --json
 ```
 
 The CLI is intentionally small and uses only the Python standard library.
-It currently supports adapter initialization checks, draft bundle scaffolding,
-import preflight checks, repository-state verification, bundle validation,
-export readiness checks, inspection, redacted copies, shareable archive
-preparation, Markdown rendering, zip packing, and zip unpacking.
+
+| Command | Purpose |
+| --- | --- |
+| `init` | Install file-based project adapters into a target repo |
+| `doctor` | Check adapter installation and `.waybill/` ignore setup |
+| `new` | Create a draft Waybill Bundle from a repo |
+| `validate` | Validate bundle structure, metadata, artifacts, and obvious secrets |
+| `inspect` | Summarize metadata, artifacts, and validation status |
+| `verify-repo` | Compare bundle metadata with the current repo state |
+| `preflight` | Run validation plus repository-state checks before import |
+| `ready` | Check whether a bundle is ready for handoff |
+| `redact` | Create a redacted review copy |
+| `share` | Redact, validate, and pack a shareable archive |
+| `pack` | Validate and zip a bundle |
+| `unpack` | Unzip and validate a bundle archive |
+| `render` | Render a Markdown review report |
+
+Most commands support `--json` for scriptable workflows. See `QUICKSTART.md`
+and `TESTING.md` for full command examples.
 
 ### Adapter Matrix
 
@@ -334,9 +305,34 @@ handoff test plans.
 
 ## Roadmap
 
-- Keep the draft bundle format small and stable while real handoffs exercise it.
-- Add more compatibility fixtures and documented cross-agent walkthroughs.
+Near-term:
+
+- Add more compatibility fixtures and documented walkthroughs for failed tests,
+  code review, patch verification, and cross-agent handoff recovery.
+- Strengthen conformance checks for agent-generated bundles.
+
+Delegation:
+
+- Add delegation request and result templates for parent/child agent workflows.
+- Add parent/child examples such as Claude Code parent to Codex child, and Codex
+  parent to Claude Code child, using synthetic repositories and non-destructive
+  imports.
+- Explore optional delegation metadata such as `handoff.kind`.
+
+Orchestration Compatibility:
+
+- Keep Waybill usable as an agent-neutral task envelope that future
+  orchestrators can write and read.
+- Keep Waybill out of the business of scheduling, running, or supervising
+  agents.
+
+Adapters:
+
 - Add more adapters where the target CLI has a lightweight project instruction
-  mechanism.
-- Keep automatic patch application, transcript parsing, daemon behavior, cloud
-  sync, and Web UI out of scope until the handoff format has more usage.
+  mechanism, after the handoff and delegation formats stay stable.
+
+Non-goals for now:
+
+- Automatic patch application.
+- Automatic transcript parsing.
+- Daemon behavior, cloud sync, and Web UI.
