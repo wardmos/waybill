@@ -23,6 +23,9 @@ Waybill keeps handoffs agent-neutral and portable across coding agents.
 Waybill started with Claude Code and Codex. The current adapter set also
 includes OpenCode, Cursor CLI, and Gemini CLI.
 
+Waybill is not a replacement agent or a standalone workflow runner. It is a
+local handoff format plus thin adapters for existing coding agents.
+
 For the shortest setup path, see `QUICKSTART.md`.
 
 ## At A Glance
@@ -30,7 +33,8 @@ For the shortest setup path, see `QUICKSTART.md`.
 | Area | Status |
 | --- | --- |
 | Bundle format | Draft `.waybill/` directory |
-| CLI | Python standard library, no package manager install |
+| Primary entrypoint | Agent commands: `/handoff` and `/waybill` |
+| Support CLI | Python standard library, no package manager install |
 | Adapters | Claude Code, Codex, OpenCode, Cursor CLI, Gemini CLI |
 | Data model | Local-first files in the target repository |
 | Import behavior | Non-destructive; patches are not applied automatically |
@@ -103,6 +107,24 @@ Recommended files:
 - `commands.log`
 - `test-summary.md`
 
+## Agent Commands
+
+Waybill supports two command names with the same behavior inside supported
+agent CLIs:
+
+```text
+/handoff export
+/waybill export
+```
+
+```text
+/handoff import .waybill
+/waybill import .waybill
+```
+
+`/handoff` is the primary command because it describes the user action. `/waybill`
+is an alias for users who think in terms of the project name.
+
 ## Examples
 
 Synthetic example bundles are available in:
@@ -124,24 +146,12 @@ Try one locally:
 ./cli/waybill render examples/failed-test-handoff
 ```
 
-## CLI
+## Support CLI
 
-Common commands:
-
-```bash
-./cli/waybill init --target /path/to/repo
-./cli/waybill doctor --target /path/to/repo
-./cli/waybill new --output .waybill --repo .
-./cli/waybill preflight .waybill --repo .
-./cli/waybill ready .waybill --repo .
-./cli/waybill validate .waybill
-./cli/waybill inspect .waybill
-./cli/waybill redact .waybill --output .waybill-redacted
-./cli/waybill share .waybill --output waybill.zip
-./cli/waybill render .waybill-redacted --output waybill-report.md
-```
-
-The CLI is intentionally small and uses only the Python standard library.
+The primary user flow happens inside agent CLIs with `/handoff` and `/waybill`.
+The Python CLI is a small support tool for installing file-based adapters,
+validating bundles, checking repository state, redacting, packing, unpacking,
+and rendering review reports. It uses only the Python standard library.
 
 | Command | Purpose |
 | --- | --- |
@@ -171,23 +181,6 @@ and `TESTING.md` for full command examples.
 | OpenCode | `.opencode/commands/`, `.opencode/skills/` | Yes | Read-only import smoke |
 | Cursor CLI | `.cursor/rules/` | Yes | Read-only import smoke |
 | Gemini CLI | `.gemini/skills/` | Yes | Read-only import smoke |
-
-## Commands
-
-Waybill supports two command names with the same behavior:
-
-```text
-/handoff export
-/waybill export
-```
-
-```text
-/handoff import .waybill
-/waybill import .waybill
-```
-
-`/handoff` is the primary command because it describes the user action. `/waybill`
-is an alias for users who think in terms of the project name.
 
 ## Install
 
