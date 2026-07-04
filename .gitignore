@@ -1,4 +1,19 @@
 .waybill/
+.waybill-redacted/
+waybill.zip
+waybill-*.zip
+waybill-report.md
+
+# Local environment files
+.env
+.env.*
+CLAUDE.local.md
+
+# Local Codex/agent workspace state
+.agents/*
+!.agents/plugins/
+.agents/plugins/*
+!.agents/plugins/marketplace.json
 
 # Local OpenCode package installs
 .opencode/node_modules/
