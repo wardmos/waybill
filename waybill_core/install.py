@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-TEMPLATE_ROOT = Path(__file__).resolve().parent / "templates"
+TEMPLATE_ROOT = Path(__file__).resolve().parent / "template-files"
 SUPPORTED_ADAPTERS = ["claude-code", "opencode", "cursor", "gemini-cli"]
 
 

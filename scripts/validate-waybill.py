@@ -53,16 +53,16 @@ REQUIRED_FILES = [
     "waybill_core/scaffold.py",
     "waybill_core/sharing.py",
     "waybill_core/validation.py",
-    "waybill_core/templates/.claude/skills/handoff/SKILL.md",
-    "waybill_core/templates/.claude/skills/waybill/SKILL.md",
-    "waybill_core/templates/.opencode/commands/handoff.md",
-    "waybill_core/templates/.opencode/commands/waybill.md",
-    "waybill_core/templates/.opencode/skills/handoff/SKILL.md",
-    "waybill_core/templates/.opencode/skills/waybill/SKILL.md",
-    "waybill_core/templates/.cursor/rules/handoff.mdc",
-    "waybill_core/templates/.cursor/rules/waybill.mdc",
-    "waybill_core/templates/.gemini/skills/handoff/SKILL.md",
-    "waybill_core/templates/.gemini/skills/waybill/SKILL.md",
+    "waybill_core/template-files/.claude/skills/handoff/SKILL.md",
+    "waybill_core/template-files/.claude/skills/waybill/SKILL.md",
+    "waybill_core/template-files/.opencode/commands/handoff.md",
+    "waybill_core/template-files/.opencode/commands/waybill.md",
+    "waybill_core/template-files/.opencode/skills/handoff/SKILL.md",
+    "waybill_core/template-files/.opencode/skills/waybill/SKILL.md",
+    "waybill_core/template-files/.cursor/rules/handoff.mdc",
+    "waybill_core/template-files/.cursor/rules/waybill.mdc",
+    "waybill_core/template-files/.gemini/skills/handoff/SKILL.md",
+    "waybill_core/template-files/.gemini/skills/waybill/SKILL.md",
     ".agents/plugins/marketplace.json",
     ".claude/skills/handoff/SKILL.md",
     ".claude/skills/waybill/SKILL.md",
@@ -414,6 +414,10 @@ def validate_gemini_cli_adapter() -> None:
 
 def validate_python_package() -> None:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    build_system = pyproject.get("build-system", {})
+    if "setuptools>=77" not in build_system.get("requires", []):
+        fail("pyproject build-system must require setuptools>=77")
+
     project = pyproject.get("project", {})
     version = str(project.get("version", ""))
     if project.get("name") != "agent-waybill":
@@ -426,6 +430,15 @@ def validate_python_package() -> None:
         fail("waybill_core.__version__ must match pyproject project.version")
     if project.get("requires-python") != ">=3.10":
         fail("pyproject requires-python must be >=3.10")
+    if project.get("license") != "Apache-2.0":
+        fail("pyproject project.license must be Apache-2.0")
+    if project.get("license-files") != ["LICENSE"]:
+        fail("pyproject project.license-files must include LICENSE")
+    if any(
+        str(classifier).startswith("License ::")
+        for classifier in project.get("classifiers", [])
+    ):
+        fail("pyproject must use SPDX license metadata instead of license classifiers")
 
     scripts = project.get("scripts", {})
     if scripts.get("waybill") != "waybill_core.cli:main":
@@ -436,7 +449,7 @@ def validate_python_package() -> None:
         fail("pyproject setuptools packages must include waybill_core")
 
     package_data = setuptools.get("package-data", {})
-    if "templates/**" not in package_data.get("waybill_core", []):
+    if "template-files/**" not in package_data.get("waybill_core", []):
         fail("pyproject must include packaged adapter templates")
 
 
