@@ -54,6 +54,9 @@ Use these values when known:
 - `source_agent`: `claude-code`
 - `created_at`: current UTC timestamp
 - `repo_root`: `.`
+- `handoff.kind`: omit for ordinary handoffs, or use `delegation_request` /
+  `delegation_result` when the user is explicitly delegating a bounded child
+  task or returning a child-agent result
 - `git.branch`: current branch or `unknown`
 - `git.base_ref`: known base ref or `unknown`
 - `git.head_sha`: current HEAD SHA or `unknown`

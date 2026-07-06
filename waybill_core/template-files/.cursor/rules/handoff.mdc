@@ -46,7 +46,15 @@ Follow the repository spec when present:
 
 - `spec/waybill-bundle.md`
 - `spec/waybill-template.md`
+- `spec/delegation.md`
 - `spec/metadata.schema.json`
+
+Optional `metadata.json` handoff kinds:
+
+- `handoff`: ordinary task transfer; this is the default when absent.
+- `delegation_request`: parent agent asks a child agent to perform a bounded
+  subtask.
+- `delegation_result`: child agent returns work or findings for parent review.
 
 ## Export
 
@@ -134,15 +142,20 @@ Procedure:
    - `git branch --show-current`
    - `git rev-parse HEAD`
 5. Compare the current repository with bundle metadata.
-6. Summarize the handoff before editing:
+6. Check optional `metadata.json` `handoff.kind`. If it is
+   `delegation_request`, treat the bundle as a bounded child-agent task. If it
+   is `delegation_result`, treat the bundle as advisory output for parent-agent
+   review.
+7. Summarize the handoff before editing:
    - Original goal
+   - Handoff kind
    - Current status
    - Changed files
    - Test state
    - Failed attempts
    - Risks and unknowns
    - Next recommended step
-7. Continue only after grounding the next action in the bundle and current repo.
+8. Continue only after grounding the next action in the bundle and current repo.
 
 ## Safety
 
