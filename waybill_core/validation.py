@@ -15,6 +15,8 @@ REQUIRED_BUNDLE_FILES = ["WAYBILL.md", "metadata.json"]
 
 RECOMMENDED_BUNDLE_FILES = ["diff.patch", "commands.log", "test-summary.md"]
 
+HANDOFF_KINDS = ["handoff", "delegation_request", "delegation_result"]
+
 WAYBILL_SECTIONS = [
     "Original Goal",
     "Current Status",
@@ -28,6 +30,20 @@ WAYBILL_SECTIONS = [
     "Next Recommended Step",
     "Risks / Unknowns",
     "Instructions For Next Agent",
+]
+
+DELEGATION_REQUEST_SECTIONS = [
+    "Delegation Request",
+    "Child Agent Task",
+    "Acceptance Criteria",
+    "Return Instructions",
+]
+
+DELEGATION_RESULT_SECTIONS = [
+    "Delegation Result",
+    "Work Completed",
+    "Parent Review Notes",
+    "Parent Next Step",
 ]
 
 SECRET_PATTERNS = [
@@ -92,7 +108,7 @@ def validate_bundle(bundle_path: str | Path) -> list[ValidationIssue]:
     _validate_required_files(bundle, issues)
     metadata = _validate_metadata(bundle, issues)
     _validate_artifacts(bundle, metadata, issues)
-    _validate_waybill(bundle, issues)
+    _validate_waybill(bundle, issues, metadata)
     _validate_commands_log(bundle, issues)
     _validate_recommended_files(bundle, issues)
     _scan_for_sensitive_content(bundle, issues)
@@ -170,6 +186,40 @@ def _validate_metadata(bundle: Path, issues: list[ValidationIssue]) -> dict[str,
     return metadata
 
 
+def _handoff_kind(
+    metadata: dict[str, Any] | None,
+    metadata_path: Path,
+    issues: list[ValidationIssue],
+) -> str:
+    if not metadata or "handoff" not in metadata:
+        return "handoff"
+
+    handoff = metadata.get("handoff")
+    if not isinstance(handoff, dict):
+        issues.append(
+            ValidationIssue("error", "metadata handoff must be an object", str(metadata_path))
+        )
+        return "handoff"
+
+    kind = handoff.get("kind", "handoff")
+    if not isinstance(kind, str):
+        issues.append(
+            ValidationIssue("error", "metadata handoff.kind must be a string", str(metadata_path))
+        )
+        return "handoff"
+    if kind not in HANDOFF_KINDS:
+        allowed = ", ".join(HANDOFF_KINDS)
+        issues.append(
+            ValidationIssue(
+                "error",
+                f"metadata handoff.kind must be one of: {allowed}",
+                str(metadata_path),
+            )
+        )
+        return "handoff"
+    return kind
+
+
 def _validate_artifacts(
     bundle: Path,
     metadata: dict[str, Any] | None,
@@ -207,7 +257,11 @@ def _validate_artifacts(
             )
 
 
-def _validate_waybill(bundle: Path, issues: list[ValidationIssue]) -> None:
+def _validate_waybill(
+    bundle: Path,
+    issues: list[ValidationIssue],
+    metadata: dict[str, Any] | None = None,
+) -> None:
     path = bundle / "WAYBILL.md"
     if not path.is_file():
         return
@@ -219,9 +273,28 @@ def _validate_waybill(bundle: Path, issues: list[ValidationIssue]) -> None:
                 ValidationIssue("error", f"WAYBILL.md missing section: {section}", str(path))
             )
 
+    kind = _handoff_kind(metadata, bundle / "metadata.json", issues)
+    if kind == "delegation_request":
+        _validate_waybill_sections(text, DELEGATION_REQUEST_SECTIONS, path, issues)
+    elif kind == "delegation_result":
+        _validate_waybill_sections(text, DELEGATION_RESULT_SECTIONS, path, issues)
+
     for phrase in BAD_AGENT_PHRASES:
         if phrase in text:
             issues.append(ValidationIssue("error", f"agent-specific phrase found: {phrase}", str(path)))
+
+
+def _validate_waybill_sections(
+    text: str,
+    sections: list[str],
+    path: Path,
+    issues: list[ValidationIssue],
+) -> None:
+    for section in sections:
+        if f"## {section}" not in text:
+            issues.append(
+                ValidationIssue("error", f"WAYBILL.md missing section: {section}", str(path))
+            )
 
 
 def _validate_commands_log(bundle: Path, issues: list[ValidationIssue]) -> None:

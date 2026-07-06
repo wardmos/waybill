@@ -32,6 +32,31 @@ Recommended:
 Adapters may include additional files, but importers must not require them for
 basic handoff.
 
+## Handoff Kinds
+
+By default, a bundle is an ordinary agent-to-agent handoff. Compatible exporters
+may add optional metadata to describe more specific handoff semantics:
+
+```json
+{
+  "handoff": {
+    "kind": "handoff"
+  }
+}
+```
+
+Allowed `handoff.kind` values are:
+
+- `handoff`: Ordinary task transfer. This is the default when the field is
+  absent.
+- `delegation_request`: A parent agent asks a child agent to perform a bounded
+  subtask.
+- `delegation_result`: A child agent returns work, findings, or a proposed patch
+  for parent-agent review.
+
+Delegation-aware bundles still include the standard files and sections. See
+`spec/delegation.md` for the additional sections and import posture.
+
 ## Resource Limits
 
 Waybill Bundles are intended to be small handoff artifacts, not full repository

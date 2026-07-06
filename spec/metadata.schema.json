@@ -60,6 +60,26 @@
           "type": "string"
         }
       }
+    },
+    "handoff": {
+      "type": "object",
+      "description": "Optional handoff semantics for compatible importers.",
+      "additionalProperties": true,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["handoff", "delegation_request", "delegation_result"],
+          "description": "Use handoff for ordinary transfers, delegation_request for parent-to-child subtasks, and delegation_result for child-to-parent results."
+        },
+        "parent_agent": {
+          "type": "string",
+          "description": "Optional name of the parent agent role or adapter."
+        },
+        "child_agent": {
+          "type": "string",
+          "description": "Optional name of the child agent role or adapter."
+        }
+      }
     }
   }
 }
