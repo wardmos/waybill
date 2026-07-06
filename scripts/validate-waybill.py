@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -34,8 +35,12 @@ REQUIRED_FILES = [
     "pyproject.toml",
     "INSTALL.md",
     "TESTING.md",
+    "WALKTHROUGH.md",
     "spec/waybill-bundle.md",
     "spec/waybill-template.md",
+    "spec/delegation.md",
+    "spec/delegation-request-template.md",
+    "spec/delegation-result-template.md",
     "spec/metadata.schema.json",
     "cli/waybill",
     "scripts/smoke-agents.sh",
@@ -97,6 +102,8 @@ EXAMPLES = [
     "examples/claude-to-codex",
     "examples/codex-to-claude",
     "examples/failed-test-handoff",
+    "examples/claude-parent-codex-child",
+    "examples/codex-parent-claude-child",
 ]
 
 COMMAND_CLASSIFICATION_TERMS = [
@@ -172,9 +179,36 @@ def validate_structure() -> None:
         if term not in quickstart:
             fail(f"quickstart must include {term}")
 
+    walkthrough = (ROOT / "WALKTHROUGH.md").read_text()
+    for expected in [
+        "examples/claude-parent-codex-child",
+        "examples/codex-parent-claude-child",
+        "delegation_request",
+        "delegation_result",
+        "/handoff import examples/claude-parent-codex-child",
+        "/handoff import examples/codex-parent-claude-child",
+        "Import remains non-destructive",
+    ]:
+        if expected not in walkthrough:
+            fail(f"walkthrough must include {expected}")
+
     bundle_spec = (ROOT / "spec/waybill-bundle.md").read_text()
     if not has_command_classification_rule(bundle_spec):
         fail("bundle spec must require command log action classification")
+    for expected in ["handoff.kind", "delegation_request", "delegation_result"]:
+        if expected not in bundle_spec:
+            fail(f"bundle spec must document {expected}")
+
+    delegation_spec = (ROOT / "spec/delegation.md").read_text()
+    for expected in [
+        "delegation_request",
+        "delegation_result",
+        "Child Agent Task",
+        "Parent Next Step",
+        "must not automatically apply `diff.patch`",
+    ]:
+        if expected not in delegation_spec:
+            fail(f"delegation spec must include {expected}")
 
     smoke_path = ROOT / "scripts/smoke-agents.sh"
     smoke_script = smoke_path.read_text()
@@ -196,6 +230,10 @@ def validate_metadata_schema() -> None:
         fail("metadata schema required fields changed unexpectedly")
     if schema.get("properties", {}).get("schema_version", {}).get("const") != "draft":
         fail("metadata schema must require draft schema_version")
+    handoff = schema.get("properties", {}).get("handoff", {})
+    kind = handoff.get("properties", {}).get("kind", {})
+    if kind.get("enum") != ["handoff", "delegation_request", "delegation_result"]:
+        fail("metadata schema must define supported handoff.kind values")
 
 
 def validate_codex_plugin() -> None:
@@ -492,6 +530,45 @@ def validate_example(example_dir: Path) -> None:
 def validate_examples() -> None:
     for example in EXAMPLES:
         validate_example(ROOT / example)
+
+    expected_kinds = {
+        "examples/claude-parent-codex-child": "delegation_request",
+        "examples/codex-parent-claude-child": "delegation_result",
+    }
+    for example, expected_kind in expected_kinds.items():
+        metadata = read_json(ROOT / example / "metadata.json")
+        kind = metadata.get("handoff", {}).get("kind")
+        if kind != expected_kind:
+            fail(f"{example} must set handoff.kind to {expected_kind}")
+
+    validate_missing_delegation_section(
+        "examples/claude-parent-codex-child",
+        "Child Agent Task",
+    )
+    validate_missing_delegation_section(
+        "examples/codex-parent-claude-child",
+        "Parent Next Step",
+    )
+
+
+def validate_missing_delegation_section(example: str, section: str) -> None:
+    with tempfile.TemporaryDirectory(prefix="waybill-delegation-negative-") as parent:
+        source = ROOT / example
+        bundle = Path(parent) / source.name
+        shutil.copytree(source, bundle)
+
+        waybill = bundle / "WAYBILL.md"
+        marker = f"## {section}"
+        text = waybill.read_text()
+        if marker not in text:
+            fail(f"{example} must include {section} before negative validation")
+        waybill.write_text(text.replace(marker, f"## Missing {section}", 1))
+
+        issues = validate_bundle(bundle)
+        expected = f"WAYBILL.md missing section: {section}"
+        if not any(issue.severity == "error" and issue.message == expected for issue in issues):
+            formatted = "; ".join(issue.format() for issue in issues)
+            fail(f"{example} without {section} must fail validation: {formatted}")
 
 
 def validate_cli_init() -> None:

@@ -1,0 +1,16 @@
+diff --git a/src/queue/worker.ts b/src/queue/worker.ts
+index 2222222..3333333 100644
+--- a/src/queue/worker.ts
++++ b/src/queue/worker.ts
+@@ -41,8 +41,8 @@ async function handleFailure(job, error) {
+   if (isPermanent(error)) {
+     return markFailed(job);
+   }
+-  if (job.attempts >= job.retryLimit) {
+-    return markFailed(job);
+-  }
+-  return requeue(job);
++  const nextAttempts = job.attempts + 1;
++  await saveAttempts(job.id, nextAttempts);
++  return nextAttempts > job.retryLimit ? markFailed(job) : requeue(job);
+ }

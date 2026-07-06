@@ -1,0 +1,26 @@
+# Command Log
+
+Read-only inspection commands:
+
+```text
+git status --short
+git branch --show-current
+git rev-parse HEAD
+git diff
+```
+
+Test commands:
+
+```text
+pnpm test queue-worker -> passing
+```
+
+Bundle-writing actions:
+
+```text
+created examples/codex-parent-claude-child/WAYBILL.md
+created examples/codex-parent-claude-child/metadata.json
+created examples/codex-parent-claude-child/diff.patch
+created examples/codex-parent-claude-child/commands.log
+created examples/codex-parent-claude-child/test-summary.md
+```

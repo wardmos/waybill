@@ -153,6 +153,7 @@ This checks:
 - Codex plugin manifest shape.
 - Example artifact references.
 - Required `WAYBILL.md` sections.
+- Delegation request/result fixtures and missing-section negative validation.
 - Obvious secret-like strings in examples.
 - Agent-neutral handoff wording in examples.
 - OpenCode command and skill frontmatter.

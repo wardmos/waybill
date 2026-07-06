@@ -97,6 +97,10 @@ Expected result:
   next recommended step.
 - The agent does not automatically apply `diff.patch`.
 
+For parent/child delegation, see `WALKTHROUGH.md`. It shows how a
+`delegation_request` bundle is imported by a child agent and how a
+`delegation_result` bundle is reviewed by the parent agent.
+
 ## 4. Validate Before Continuing
 
 Use the CLI when you want a deterministic check outside an agent:

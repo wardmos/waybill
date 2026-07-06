@@ -38,6 +38,7 @@ For the shortest setup path, see `QUICKSTART.md`.
 | Adapters | Claude Code, Codex, OpenCode, Cursor CLI, Gemini CLI |
 | Data model | Local-first files in the target repository |
 | Import behavior | Non-destructive; patches are not applied automatically |
+| Delegation | Draft `handoff.kind` semantics for parent/child agent workflows |
 | Sharing | Best-effort redaction, validation, render, pack, and unpack |
 
 ## When To Use Waybill
@@ -133,10 +134,20 @@ Synthetic example bundles are available in:
 examples/claude-to-codex/
 examples/codex-to-claude/
 examples/failed-test-handoff/
+examples/claude-parent-codex-child/
+examples/codex-parent-claude-child/
 ```
 
 `failed-test-handoff` shows a focused failing-test handoff with a partial patch,
 command log, and test summary.
+
+The parent/child examples show draft delegation semantics:
+
+- `claude-parent-codex-child` is a `delegation_request`.
+- `codex-parent-claude-child` is a `delegation_result`.
+
+See `WALKTHROUGH.md` for an end-to-end parent/child delegation flow using these
+fixtures.
 
 Try one locally:
 
@@ -310,11 +321,12 @@ Near-term:
 
 Delegation:
 
-- Add delegation request and result templates for parent/child agent workflows.
-- Add parent/child examples such as Claude Code parent to Codex child, and Codex
-  parent to Claude Code child, using synthetic repositories and non-destructive
-  imports.
-- Explore optional delegation metadata such as `handoff.kind`.
+- Harden the draft delegation request and result format through real
+  parent/child handoff practice.
+- Add more synthetic parent/child examples only where they clarify import
+  behavior.
+- Keep delegation result import non-destructive; parent agents review child
+  output before accepting it.
 
 Orchestration Compatibility:
 
