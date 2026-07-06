@@ -269,6 +269,9 @@ adapters/gemini-cli/
 - Import instructions do not automatically apply patches.
 - Export instructions may run read-only git inspection commands.
 - Export instructions do not run tests unless the user asks.
+- Bundle validation, redaction, packing, and sharing reject symbolic links and
+  non-regular files.
+- Redaction, archive, and unpack output paths cannot overlap their source.
 - Users should review `.waybill/` before sharing it.
 
 `.waybill/` can contain prompts, paths, diffs, logs, test output, and secrets

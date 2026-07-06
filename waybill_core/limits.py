@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -42,8 +43,30 @@ def list_bundle_files(
     files: list[BundleFile] = []
     total_bytes = 0
 
-    for path in sorted(path for path in bundle.rglob("*") if path.is_file()):
+    if bundle.is_symlink():
+        raise BundleLimitError("bundle root must not be a symbolic link")
+
+    bundle_resolved = bundle.resolve()
+    for path in sorted(bundle.rglob("*")):
         relative = path.relative_to(bundle)
+        mode = path.lstat().st_mode
+        if stat.S_ISLNK(mode):
+            raise BundleLimitError(
+                f"bundle contains symbolic link: {relative}"
+            )
+        if stat.S_ISDIR(mode):
+            continue
+        if not stat.S_ISREG(mode):
+            raise BundleLimitError(
+                f"bundle contains unsupported file type: {relative}"
+            )
+
+        resolved = path.resolve()
+        if not resolved.is_relative_to(bundle_resolved):
+            raise BundleLimitError(
+                f"bundle file resolves outside bundle: {relative}"
+            )
+
         if len(files) + 1 > max_files:
             raise BundleLimitError(
                 f"bundle contains more than {max_files} files"

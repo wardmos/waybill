@@ -14,6 +14,7 @@ from .limits import (
     format_bytes,
     list_bundle_files,
 )
+from .paths import ensure_safe_output_path
 
 
 @dataclass(frozen=True)
@@ -71,10 +72,7 @@ def pack_bundle(
     if output.suffix.lower() != ".zip":
         raise ValueError("output path must end with .zip")
 
-    source_resolved = source.resolve()
-    output_resolved = output.resolve()
-    if source_resolved in output_resolved.parents:
-        raise ValueError("output path must not be inside the source bundle")
+    ensure_safe_output_path(source, output)
 
     source_files = list_bundle_files(source)
 
@@ -110,10 +108,14 @@ def unpack_bundle(
 
     if not source.exists():
         raise FileNotFoundError(f"archive path does not exist: {source}")
+    if source.is_symlink():
+        raise ValueError(f"archive path must not be a symbolic link: {source}")
     if not source.is_file():
         raise FileNotFoundError(f"archive path is not a file: {source}")
     if source.suffix.lower() != ".zip":
         raise ValueError("archive path must end with .zip")
+
+    ensure_safe_output_path(source, output)
 
     try:
         with zipfile.ZipFile(source) as archive:

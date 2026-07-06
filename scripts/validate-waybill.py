@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -50,6 +51,7 @@ REQUIRED_FILES = [
     "waybill_core/install.py",
     "waybill_core/limits.py",
     "waybill_core/packing.py",
+    "waybill_core/paths.py",
     "waybill_core/preflight.py",
     "waybill_core/readiness.py",
     "waybill_core/redaction.py",
@@ -1325,6 +1327,174 @@ def validate_resource_limits() -> None:
             fail("oversized unpack JSON error must explain the size limit")
 
 
+def validate_unsafe_bundle_paths() -> None:
+    with tempfile.TemporaryDirectory(prefix="waybill-unsafe-paths-") as parent:
+        parent_path = Path(parent)
+        outside = parent_path / "outside.txt"
+        outside.write_text("outside bundle data\n")
+
+        symlink_bundle = parent_path / "symlink-bundle"
+        shutil.copytree(ROOT / "examples/claude-to-codex", symlink_bundle)
+        (symlink_bundle / "outside-link.txt").symlink_to(outside)
+
+        commands = [
+            ("validate", str(symlink_bundle), "--json"),
+            (
+                "redact",
+                str(symlink_bundle),
+                "--output",
+                str(parent_path / "symlink-redacted"),
+                "--json",
+            ),
+            (
+                "pack",
+                str(symlink_bundle),
+                "--output",
+                str(parent_path / "symlink.zip"),
+                "--json",
+            ),
+            (
+                "share",
+                str(symlink_bundle),
+                "--output",
+                str(parent_path / "symlink-share.zip"),
+                "--json",
+            ),
+        ]
+        for command in commands:
+            result = run_waybill(*command)
+            if result.returncode == 0:
+                fail(f"{command[0]} must reject bundle file symbolic links")
+            combined = f"{result.stdout}\n{result.stderr}".lower()
+            if "symbolic link" not in combined:
+                fail(f"{command[0]} must explain bundle symbolic link rejection")
+
+        internal_symlink_bundle = parent_path / "internal-symlink-bundle"
+        shutil.copytree(
+            ROOT / "examples/claude-to-codex",
+            internal_symlink_bundle,
+        )
+        (internal_symlink_bundle / "waybill-link.md").symlink_to("WAYBILL.md")
+        internal_result = run_waybill(
+            "validate",
+            str(internal_symlink_bundle),
+            "--json",
+        )
+        if internal_result.returncode == 0:
+            fail("validate must reject bundle-internal symbolic links")
+
+        root_symlink = parent_path / "bundle-root-link"
+        root_symlink.symlink_to(
+            ROOT / "examples/claude-to-codex",
+            target_is_directory=True,
+        )
+        root_result = run_waybill("validate", str(root_symlink), "--json")
+        if root_result.returncode == 0:
+            fail("validate must reject a symbolic link bundle root")
+
+        if hasattr(os, "mkfifo"):
+            special_bundle = parent_path / "special-bundle"
+            shutil.copytree(ROOT / "examples/claude-to-codex", special_bundle)
+            os.mkfifo(special_bundle / "command-pipe")
+            special_result = run_waybill("validate", str(special_bundle), "--json")
+            if special_result.returncode == 0:
+                fail("validate must reject non-regular bundle files")
+            if "unsupported file type" not in special_result.stdout.lower():
+                fail("validate must explain non-regular bundle file rejection")
+
+        redact_container = parent_path / "redact-container"
+        redact_source = redact_container / "bundle"
+        shutil.copytree(ROOT / "examples/claude-to-codex", redact_source)
+        redact_result = run_waybill(
+            "redact",
+            str(redact_source),
+            "--output",
+            str(redact_container),
+            "--force",
+            "--json",
+        )
+        if redact_result.returncode == 0:
+            fail("redact must reject an output path containing the source bundle")
+        if not redact_source.is_dir():
+            fail("redact must not delete the source bundle through an ancestor output")
+
+        pack_container = parent_path / "pack-container.zip"
+        pack_source = pack_container / "bundle"
+        shutil.copytree(ROOT / "examples/claude-to-codex", pack_source)
+        pack_result = run_waybill(
+            "pack",
+            str(pack_source),
+            "--output",
+            str(pack_container),
+            "--force",
+            "--json",
+        )
+        if pack_result.returncode == 0:
+            fail("pack must reject an output path containing the source bundle")
+        if not pack_source.is_dir():
+            fail("pack must not delete the source bundle through an ancestor output")
+
+        unpack_container = parent_path / "unpack-container"
+        unpack_container.mkdir()
+        unpack_archive = unpack_container / "source.zip"
+        pack_result = run_waybill(
+            "pack",
+            "examples/claude-to-codex",
+            "--output",
+            str(unpack_archive),
+            "--json",
+        )
+        if pack_result.returncode != 0:
+            fail(f"unsafe unpack setup failed: {pack_result.stderr.strip()}")
+        unpack_result = run_waybill(
+            "unpack",
+            str(unpack_archive),
+            "--output",
+            str(unpack_container),
+            "--force",
+            "--json",
+        )
+        if unpack_result.returncode == 0:
+            fail("unpack must reject an output path containing the source archive")
+        if not unpack_archive.is_file():
+            fail("unpack must not delete the source archive through an ancestor output")
+
+        output_target = parent_path / "existing-output.zip"
+        output_target.write_text("keep this file\n")
+        output_symlink = parent_path / "output-link.zip"
+        output_symlink.symlink_to(output_target)
+        output_symlink_result = run_waybill(
+            "pack",
+            "examples/claude-to-codex",
+            "--output",
+            str(output_symlink),
+            "--force",
+            "--json",
+        )
+        if output_symlink_result.returncode == 0:
+            fail("pack must reject a symbolic link output path")
+        if output_target.read_text() != "keep this file\n":
+            fail("pack must not modify a symbolic link output target")
+
+        share_source = parent_path / "share-source"
+        share_redacted = parent_path / "share-redacted"
+        shutil.copytree(ROOT / "examples/claude-to-codex", share_source)
+        share_archive = share_source / "share.zip"
+        share_result = run_waybill(
+            "share",
+            str(share_source),
+            "--output",
+            str(share_archive),
+            "--redacted-output",
+            str(share_redacted),
+            "--json",
+        )
+        if share_result.returncode == 0:
+            fail("share must reject an archive path inside the source bundle")
+        if share_archive.exists():
+            fail("share must not write an archive inside the source bundle")
+
+
 def main() -> int:
     checks = [
         ("structure", validate_structure),
@@ -1347,6 +1517,7 @@ def main() -> int:
         ("CLI render", validate_cli_render),
         ("CLI end-to-end", validate_cli_end_to_end),
         ("resource limits", validate_resource_limits),
+        ("unsafe bundle paths", validate_unsafe_bundle_paths),
     ]
 
     try:

@@ -68,6 +68,11 @@ packing, or unpacking bundle content:
 - Single bundle file: 5,000,000 bytes.
 - Total bundle size: 10,000,000 bytes.
 
+Bundle directories may contain only directories and regular files. Symbolic
+links and special filesystem entries are rejected before Waybill reads,
+redacts, packs, or shares bundle content. Output paths for redaction, packing,
+sharing, and unpacking must not overlap or contain their source paths.
+
 When the diff exceeds the draft limit, `diff.patch` contains an omission note
 instead of the full patch. Review the repository directly and include only the
 relevant changes before sharing.

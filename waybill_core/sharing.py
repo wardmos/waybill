@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .packing import PackReport, pack_bundle
+from .paths import ensure_safe_output_path
 from .redaction import RedactionReport, redact_bundle
 from .validation import ValidationIssue, has_errors, validate_bundle
 
@@ -35,7 +36,7 @@ def share_bundle(
         else _default_redacted_output(archive)
     )
 
-    _check_archive_output(archive, force)
+    _check_archive_output(source, archive, force)
     redaction = redact_bundle(source, redacted, force=force)
     validation_issues = validate_bundle(redacted)
     if has_errors(validation_issues):
@@ -60,8 +61,9 @@ def _default_redacted_output(archive: Path) -> Path:
     return archive.with_name(f"{name}-redacted")
 
 
-def _check_archive_output(archive: Path, force: bool) -> None:
+def _check_archive_output(source: Path, archive: Path, force: bool) -> None:
     if archive.suffix.lower() != ".zip":
         raise ValueError("output path must end with .zip")
+    ensure_safe_output_path(source, archive)
     if archive.exists() and not force:
         raise FileExistsError(f"output path already exists: {archive}")

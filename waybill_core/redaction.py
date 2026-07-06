@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .limits import list_bundle_files
+from .paths import ensure_safe_output_path
 
 
 REDACTION_PLACEHOLDER = "[REDACTED]"
@@ -96,12 +97,7 @@ def redact_bundle(
     if not source.is_dir():
         raise NotADirectoryError(f"bundle path is not a directory: {source}")
 
-    source_resolved = source.resolve()
-    output_resolved = output.resolve()
-    if output_resolved == source_resolved:
-        raise ValueError("output path must be different from the source bundle")
-    if source_resolved in output_resolved.parents:
-        raise ValueError("output path must not be inside the source bundle")
+    ensure_safe_output_path(source, output)
 
     source_files = list_bundle_files(source)
 
