@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .schema_versions import schema_version_status
 from .validation import ValidationIssue, validate_bundle
 
 
@@ -64,7 +65,11 @@ def _render_metadata(
     metadata = metadata or {}
     git = metadata.get("git") if isinstance(metadata.get("git"), dict) else {}
     rows = [
-        ("Schema status", metadata.get("schema_version")),
+        ("Schema version", metadata.get("schema_version")),
+        (
+            "Schema version status",
+            schema_version_status(metadata.get("schema_version")),
+        ),
         ("Source agent", metadata.get("source_agent")),
         ("Created at", metadata.get("created_at")),
         ("Repo root", metadata.get("repo_root")),

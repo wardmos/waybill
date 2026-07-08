@@ -54,6 +54,7 @@ from waybill_core.repo import (  # noqa: E402
 )
 from waybill_core.rendering import render_bundle  # noqa: E402
 from waybill_core.scaffold import DraftBundleReport, create_draft_bundle  # noqa: E402
+from waybill_core.schema_versions import schema_version_status  # noqa: E402
 from waybill_core.sharing import ShareReport, share_bundle  # noqa: E402
 from waybill_core.validation import (  # noqa: E402
     ValidationIssue,
@@ -339,6 +340,11 @@ def build_inspect_report(
     return {
         "bundle": str(bundle),
         "valid": len(errors) == 0,
+        "schema_version_status": (
+            schema_version_status(metadata.get("schema_version"))
+            if metadata is not None
+            else "invalid"
+        ),
         "metadata": metadata,
         "metadata_error": metadata_error,
         "artifacts": artifacts,
@@ -565,6 +571,14 @@ def cmd_inspect(args: argparse.Namespace) -> int:
         return 1 if errors else 0
 
     print(f"Bundle: {bundle}")
+    print_field(
+        "Schema version status",
+        (
+            schema_version_status(metadata.get("schema_version"))
+            if metadata is not None
+            else "invalid"
+        ),
+    )
 
     if metadata_error:
         print(f"Metadata: {metadata_error}")
@@ -576,6 +590,7 @@ def cmd_inspect(args: argparse.Namespace) -> int:
             else {}
         )
 
+        print_field("Schema version", metadata.get("schema_version"))
         print_field("Source agent", metadata.get("source_agent"))
         print_field("Created at", metadata.get("created_at"))
         print_field("Repo root", metadata.get("repo_root"))

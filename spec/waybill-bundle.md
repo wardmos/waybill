@@ -2,8 +2,30 @@
 
 Schema status: `draft`
 
+Current schema version: `0.2`
+
 Waybill Bundle is a local, agent-neutral handoff directory for an unfinished
 task. It is designed to be readable by humans and usable by coding agents.
+
+## Schema Versions
+
+Bundle schema versions are independent from the Waybill Python package version.
+The current writer and current JSON Schema emit and describe `0.2`.
+
+Reader compatibility:
+
+- `0.2`: Current. Validate against the current bundle rules.
+- `draft`: Legacy alias used by earlier public Waybill releases. Continue
+  reading it with current bundle rules, but report a warning recommending
+  regeneration with `0.2`.
+- `0.1`: Recognized legacy format, but not interpreted as `0.2`. Report one
+  focused error telling the user to migrate or regenerate the bundle.
+- Any other value: Unsupported. Report the current supported version and do not
+  guess how to interpret version-specific artifacts or sections.
+
+Waybill does not automatically migrate bundles yet. Validation should still
+scan unsupported bundles for obvious sensitive content, but it should stop
+before applying current-version artifact and section rules.
 
 ## Directory
 

@@ -9,6 +9,11 @@ from pathlib import Path
 from typing import Any
 
 from .limits import BundleLimitError, list_bundle_files
+from .schema_versions import (
+    CURRENT_SCHEMA_VERSION,
+    KNOWN_UNSUPPORTED_SCHEMA_VERSIONS,
+    schema_version_status,
+)
 
 
 REQUIRED_BUNDLE_FILES = ["WAYBILL.md", "metadata.json"]
@@ -106,7 +111,12 @@ def validate_bundle(bundle_path: str | Path) -> list[ValidationIssue]:
         return issues
 
     _validate_required_files(bundle, issues)
-    metadata = _validate_metadata(bundle, issues)
+    metadata, version_status = _validate_metadata(bundle, issues)
+    if version_status in {"invalid", "unsupported"}:
+        _validate_recommended_files(bundle, issues)
+        _scan_for_sensitive_content(bundle, issues)
+        return issues
+
     _validate_artifacts(bundle, metadata, issues)
     _validate_waybill(bundle, issues, metadata)
     _validate_commands_log(bundle, issues)
@@ -145,24 +155,69 @@ def _validate_recommended_files(bundle: Path, issues: list[ValidationIssue]) -> 
             )
 
 
-def _validate_metadata(bundle: Path, issues: list[ValidationIssue]) -> dict[str, Any] | None:
+def _validate_metadata(
+    bundle: Path,
+    issues: list[ValidationIssue],
+) -> tuple[dict[str, Any] | None, str]:
     path = bundle / "metadata.json"
     if not path.is_file():
-        return None
+        return None, "invalid"
 
     try:
         metadata = json.loads(path.read_text())
     except json.JSONDecodeError as exc:
         issues.append(ValidationIssue("error", f"metadata.json is invalid JSON: {exc}", str(path)))
-        return None
+        return None, "invalid"
+
+    if not isinstance(metadata, dict):
+        issues.append(
+            ValidationIssue(
+                "error",
+                "metadata.json must contain an object",
+                str(path),
+            )
+        )
+        return None, "invalid"
 
     required = ["schema_version", "source_agent", "created_at", "repo_root", "git", "artifacts"]
     for key in required:
         if key not in metadata:
             issues.append(ValidationIssue("error", f"metadata.json missing {key}", str(path)))
 
-    if metadata.get("schema_version") != "draft":
-        issues.append(ValidationIssue("error", "metadata schema_version must be draft", str(path)))
+    version = metadata.get("schema_version")
+    version_status = schema_version_status(version)
+    if version_status == "invalid":
+        if "schema_version" in metadata:
+            issues.append(
+                ValidationIssue(
+                    "error",
+                    "metadata schema_version must be a non-empty string",
+                    str(path),
+                )
+            )
+        return metadata, version_status
+    if version_status == "legacy":
+        issues.append(
+            ValidationIssue(
+                "warning",
+                f"metadata schema_version {version} is legacy; "
+                f"current version is {CURRENT_SCHEMA_VERSION}",
+                str(path),
+            )
+        )
+    elif version_status == "unsupported":
+        if version in KNOWN_UNSUPPORTED_SCHEMA_VERSIONS:
+            message = (
+                f"metadata schema_version {version} is unsupported; migrate or "
+                f"regenerate the bundle with schema_version {CURRENT_SCHEMA_VERSION}"
+            )
+        else:
+            message = (
+                f"metadata schema_version {version} is unsupported; "
+                f"current version is {CURRENT_SCHEMA_VERSION}"
+            )
+        issues.append(ValidationIssue("error", message, str(path)))
+        return metadata, version_status
 
     if not isinstance(metadata.get("source_agent"), str) or not metadata.get("source_agent"):
         issues.append(ValidationIssue("error", "metadata source_agent must be a non-empty string", str(path)))
@@ -183,7 +238,7 @@ def _validate_metadata(bundle: Path, issues: list[ValidationIssue]) -> dict[str,
     elif artifacts.get("waybill") != "WAYBILL.md":
         issues.append(ValidationIssue("error", "metadata artifacts.waybill must be WAYBILL.md", str(path)))
 
-    return metadata
+    return metadata, version_status
 
 
 def _handoff_kind(

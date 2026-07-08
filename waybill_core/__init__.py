@@ -21,6 +21,7 @@ from .redaction import RedactionReport, redact_bundle, redact_text
 from .repo import RepoCheck, RepoVerificationReport, verify_repo_state
 from .rendering import render_bundle
 from .scaffold import DraftBundleReport, create_draft_bundle
+from .schema_versions import CURRENT_SCHEMA_VERSION, schema_version_status
 from .sharing import ShareReport, share_bundle
 from .validation import ValidationIssue, validate_bundle
 
@@ -41,6 +42,7 @@ __all__ = [
     "ShareReport",
     "UnpackReport",
     "ValidationIssue",
+    "CURRENT_SCHEMA_VERSION",
     "__version__",
     "check_export_readiness",
     "create_draft_bundle",
@@ -51,6 +53,7 @@ __all__ = [
     "redact_text",
     "render_bundle",
     "run_import_preflight",
+    "schema_version_status",
     "share_bundle",
     "unpack_bundle",
     "validate_bundle",

@@ -25,6 +25,7 @@ from waybill_core.limits import (  # noqa: E402
     list_bundle_files,
 )
 from waybill_core.scaffold import STANDARD_FILES  # noqa: E402
+from waybill_core.schema_versions import CURRENT_SCHEMA_VERSION  # noqa: E402
 from waybill_core.validation import validate_bundle  # noqa: E402
 
 REQUIRED_FILES = [
@@ -58,6 +59,7 @@ REQUIRED_FILES = [
     "waybill_core/repo.py",
     "waybill_core/rendering.py",
     "waybill_core/scaffold.py",
+    "waybill_core/schema_versions.py",
     "waybill_core/sharing.py",
     "waybill_core/validation.py",
     "waybill_core/template-files/.claude/skills/handoff/SKILL.md",
@@ -200,6 +202,14 @@ def validate_structure() -> None:
     for expected in ["handoff.kind", "delegation_request", "delegation_result"]:
         if expected not in bundle_spec:
             fail(f"bundle spec must document {expected}")
+    for expected in [
+        "Current schema version: `0.2`",
+        "`draft`: Legacy alias",
+        "`0.1`: Recognized legacy format",
+        "does not automatically migrate bundles",
+    ]:
+        if expected not in bundle_spec:
+            fail(f"bundle spec must document schema compatibility: {expected}")
 
     delegation_spec = (ROOT / "spec/delegation.md").read_text()
     for expected in [
@@ -230,12 +240,127 @@ def validate_metadata_schema() -> None:
     required = schema.get("required")
     if required != ["schema_version", "source_agent", "created_at", "repo_root", "git", "artifacts"]:
         fail("metadata schema required fields changed unexpectedly")
-    if schema.get("properties", {}).get("schema_version", {}).get("const") != "draft":
-        fail("metadata schema must require draft schema_version")
+    if CURRENT_SCHEMA_VERSION != "0.2":
+        fail("current schema version changed unexpectedly")
+    if (
+        schema.get("properties", {}).get("schema_version", {}).get("const")
+        != CURRENT_SCHEMA_VERSION
+    ):
+        fail("metadata schema must require the current schema_version")
     handoff = schema.get("properties", {}).get("handoff", {})
     kind = handoff.get("properties", {}).get("kind", {})
     if kind.get("enum") != ["handoff", "delegation_request", "delegation_result"]:
         fail("metadata schema must define supported handoff.kind values")
+
+
+def validate_schema_version_compatibility() -> None:
+    with tempfile.TemporaryDirectory(prefix="waybill-schema-versions-") as parent:
+        parent_path = Path(parent)
+
+        def versioned_bundle(name: str, version: object) -> Path:
+            bundle = parent_path / name
+            shutil.copytree(ROOT / "examples/claude-to-codex", bundle)
+            metadata_path = bundle / "metadata.json"
+            metadata = read_json(metadata_path)
+            metadata["schema_version"] = version
+            metadata_path.write_text(json.dumps(metadata, indent=2) + "\n")
+            return bundle
+
+        current = versioned_bundle("current", "0.2")
+        current_issues = validate_bundle(current)
+        if any("schema_version" in issue.message for issue in current_issues):
+            formatted = "; ".join(issue.format() for issue in current_issues)
+            fail(f"current schema version must validate cleanly: {formatted}")
+
+        legacy = versioned_bundle("legacy", "draft")
+        legacy_issues = validate_bundle(legacy)
+        if any(issue.severity == "error" for issue in legacy_issues):
+            formatted = "; ".join(issue.format() for issue in legacy_issues)
+            fail(f"legacy draft schema version must remain readable: {formatted}")
+        if not any(
+            issue.severity == "warning"
+            and "legacy" in issue.message
+            and "0.2" in issue.message
+            for issue in legacy_issues
+        ):
+            fail("legacy draft schema version must produce a migration warning")
+        legacy_archive = parent_path / "legacy.zip"
+        legacy_pack = run_waybill(
+            "pack",
+            str(legacy),
+            "--output",
+            str(legacy_archive),
+            "--json",
+        )
+        if legacy_pack.returncode != 0 or not legacy_archive.is_file():
+            fail(
+                "legacy draft schema version must remain packable: "
+                f"{legacy_pack.stderr.strip()}"
+            )
+
+        old = versioned_bundle("old", "0.1")
+        (old / "WAYBILL.md").write_text("# Legacy Waybill\n")
+        old_issues = validate_bundle(old)
+        old_errors = [issue for issue in old_issues if issue.severity == "error"]
+        if len(old_errors) != 1:
+            formatted = "; ".join(issue.format() for issue in old_issues)
+            fail(f"old schema version must produce one focused error: {formatted}")
+        if "migrate" not in old_errors[0].message or "0.2" not in old_errors[0].message:
+            fail("old schema version error must provide migration guidance")
+
+        unknown = versioned_bundle("unknown", "99.0")
+        unknown_issues = validate_bundle(unknown)
+        unknown_errors = [
+            issue for issue in unknown_issues if issue.severity == "error"
+        ]
+        if len(unknown_errors) != 1:
+            formatted = "; ".join(issue.format() for issue in unknown_issues)
+            fail(f"unknown schema version must produce one focused error: {formatted}")
+        if "unsupported" not in unknown_errors[0].message or "0.2" not in unknown_errors[0].message:
+            fail("unknown schema version error must identify the current version")
+
+        malformed = parent_path / "malformed"
+        shutil.copytree(ROOT / "examples/claude-to-codex", malformed)
+        (malformed / "metadata.json").write_text("[]\n")
+        malformed_issues = validate_bundle(malformed)
+        malformed_errors = [
+            issue for issue in malformed_issues if issue.severity == "error"
+        ]
+        if len(malformed_errors) != 1:
+            formatted = "; ".join(issue.format() for issue in malformed_issues)
+            fail(f"non-object metadata must produce one focused error: {formatted}")
+        if "must contain an object" not in malformed_errors[0].message:
+            fail("non-object metadata error must explain the required top-level type")
+
+        inspect_cases = [
+            (current, "current", 0),
+            (legacy, "legacy", 0),
+            (old, "unsupported", 1),
+            (unknown, "unsupported", 1),
+            (malformed, "invalid", 1),
+        ]
+        for bundle, expected_status, expected_exit in inspect_cases:
+            result = run_waybill("inspect", str(bundle), "--json")
+            if result.returncode != expected_exit:
+                fail(
+                    f"inspect schema status {expected_status} returned "
+                    f"{result.returncode}, expected {expected_exit}"
+                )
+            try:
+                report = json.loads(result.stdout)
+            except json.JSONDecodeError as exc:
+                fail(f"inspect schema status JSON is invalid: {exc}")
+            if report.get("schema_version_status") != expected_status:
+                fail(
+                    f"inspect must report schema status {expected_status}, "
+                    f"got {report.get('schema_version_status')}"
+                )
+
+        legacy_text = run_waybill("inspect", str(legacy))
+        if legacy_text.returncode != 0:
+            fail(f"legacy inspect text command failed: {legacy_text.stderr.strip()}")
+        if "Schema version status: legacy" not in legacy_text.stdout:
+            fail("inspect text output must report the legacy schema status")
 
 
 def validate_codex_plugin() -> None:
@@ -689,6 +814,9 @@ def validate_cli_new() -> None:
         for expected in STANDARD_FILES:
             if not (output / expected).is_file():
                 fail(f"new must write {expected}")
+        metadata = read_json(output / "metadata.json")
+        if metadata.get("schema_version") != "0.2":
+            fail("new must write the current schema version")
 
         error_result = run_waybill(
             "new",
@@ -1499,6 +1627,7 @@ def main() -> int:
     checks = [
         ("structure", validate_structure),
         ("metadata schema", validate_metadata_schema),
+        ("schema version compatibility", validate_schema_version_compatibility),
         ("Codex plugin", validate_codex_plugin),
         ("Codex marketplace", validate_codex_marketplace),
         ("Claude skills", validate_claude_skills),

@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .limits import MAX_DIFF_BYTES, format_bytes
+from .schema_versions import CURRENT_SCHEMA_VERSION
 
 
 STANDARD_FILES = [
@@ -131,7 +132,7 @@ def _metadata_text(
     git: dict[str, str],
 ) -> str:
     metadata = {
-        "schema_version": "draft",
+        "schema_version": CURRENT_SCHEMA_VERSION,
         "source_agent": source_agent,
         "created_at": created_at,
         "repo_root": ".",

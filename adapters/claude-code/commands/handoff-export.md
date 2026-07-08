@@ -50,7 +50,7 @@ Create a Waybill Bundle for the current unfinished task.
 
 Use these values when known:
 
-- `schema_version`: `draft`
+- `schema_version`: `0.2`
 - `source_agent`: `claude-code`
 - `created_at`: current UTC timestamp
 - `repo_root`: `.`

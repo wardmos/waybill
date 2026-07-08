@@ -106,7 +106,7 @@ Use this `metadata.json` shape:
 
 ```json
 {
-  "schema_version": "draft",
+  "schema_version": "0.2",
   "source_agent": "claude-code",
   "created_at": "2026-07-01T00:00:00Z",
   "repo_root": ".",

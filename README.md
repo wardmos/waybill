@@ -32,7 +32,7 @@ For the shortest setup path, see `QUICKSTART.md`.
 
 | Area | Status |
 | --- | --- |
-| Bundle format | Draft `.waybill/` directory |
+| Bundle format | Draft schema `0.2` in a `.waybill/` directory |
 | Primary entrypoint | Agent commands: `/handoff` and `/waybill` |
 | Support CLI | Python standard library, no package manager install |
 | Adapters | Claude Code, Codex, OpenCode, Cursor CLI, Gemini CLI |

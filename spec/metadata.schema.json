@@ -9,7 +9,8 @@
   "properties": {
     "schema_version": {
       "type": "string",
-      "const": "draft"
+      "const": "0.2",
+      "description": "The Waybill Bundle schema version. This schema describes the current 0.2 format."
     },
     "source_agent": {
       "type": "string",

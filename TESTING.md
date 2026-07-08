@@ -283,9 +283,11 @@ Inspect bundle metadata and validation status:
 
 Expected result:
 
-- Text output includes metadata, artifact status, and validation status.
+- Text output includes the schema version status, metadata, artifact status, and
+  validation status.
 - JSON output parses as valid JSON.
-- JSON output includes artifact status and validation issue counts.
+- JSON output includes `schema_version_status`, artifact status, and validation
+  issue counts.
 
 ## CLI Preflight Smoke Test
 
