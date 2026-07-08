@@ -157,6 +157,99 @@ def run_git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def parse_cli_json(
+    result: subprocess.CompletedProcess[str],
+    label: str,
+) -> dict:
+    try:
+        report = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        fail(f"{label} JSON output is invalid: {exc}")
+    if not isinstance(report, dict):
+        fail(f"{label} JSON output must be an object")
+    return report
+
+
+def require_git(cwd: Path, *args: str) -> str:
+    result = run_git(cwd, *args)
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        fail(f"git {' '.join(args)} failed: {detail}")
+    return result.stdout.strip()
+
+
+def create_test_repo(parent: Path) -> Path:
+    repo = parent / "repo"
+    repo.mkdir()
+    require_git(repo, "init")
+    (repo / "tracked.txt").write_text("base\n")
+    require_git(repo, "add", "tracked.txt")
+    require_git(
+        repo,
+        "-c",
+        "user.name=Waybill Test",
+        "-c",
+        "user.email=waybill@example.invalid",
+        "commit",
+        "-m",
+        "initial commit",
+    )
+    return repo
+
+
+def create_test_bundle(parent: Path, repo: Path, name: str = "bundle") -> Path:
+    bundle = parent / name
+    result = run_waybill(
+        "new",
+        "--output",
+        str(bundle),
+        "--repo",
+        str(repo),
+        "--force",
+        "--json",
+    )
+    if result.returncode != 0:
+        fail(f"could not create test bundle: {result.stderr.strip()}")
+    report = parse_cli_json(result, "test bundle creation")
+    if report.get("success") is not True:
+        fail("test bundle creation must report success")
+    return bundle
+
+
+def snapshot_tree(root: Path) -> dict[str, bytes]:
+    snapshot: dict[str, bytes] = {}
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root)
+        if ".git" in relative.parts:
+            continue
+        if path.is_dir():
+            snapshot[f"{relative}/"] = b""
+        elif path.is_file():
+            snapshot[str(relative)] = path.read_bytes()
+    return snapshot
+
+
+def require_tree_unchanged(
+    root: Path,
+    before: dict[str, bytes],
+    label: str,
+) -> None:
+    if snapshot_tree(root) != before:
+        fail(f"{label} must not modify {root}")
+
+
+def checks_by_name(report: dict, key: str) -> dict[str, dict]:
+    checks = report.get(key)
+    if not isinstance(checks, list) or not checks:
+        fail(f"JSON output must include non-empty {key}")
+    indexed: dict[str, dict] = {}
+    for check in checks:
+        if not isinstance(check, dict) or not isinstance(check.get("name"), str):
+            fail(f"JSON output {key} entries must be named objects")
+        indexed[check["name"]] = check
+    return indexed
+
+
 def has_command_classification_rule(text: str) -> bool:
     normalized = " ".join(text.split()).lower()
     return all(term in normalized for term in COMMAND_CLASSIFICATION_TERMS)
@@ -838,6 +931,468 @@ def validate_cli_new() -> None:
             fail("new JSON error output must include the failure reason")
 
 
+def validate_cli_doctor() -> None:
+    with tempfile.TemporaryDirectory(prefix="waybill-doctor-") as parent:
+        target = Path(parent) / "target"
+        target.mkdir()
+        init_result = run_waybill(
+            "init",
+            "--target",
+            str(target),
+            "--force",
+            "--json",
+        )
+        if init_result.returncode != 0:
+            fail(f"doctor fixture initialization failed: {init_result.stderr.strip()}")
+
+        before = snapshot_tree(target)
+        text_result = run_waybill("doctor", "--target", str(target))
+        if text_result.returncode != 0:
+            fail(f"doctor text command failed: {text_result.stderr.strip()}")
+        if "PASS Waybill adapter installation looks ready" not in text_result.stdout:
+            fail("doctor text output must report a ready installation")
+
+        json_result = run_waybill("doctor", "--target", str(target), "--json")
+        if json_result.returncode != 0:
+            fail(f"doctor JSON command failed: {json_result.stderr.strip()}")
+        report = parse_cli_json(json_result, "doctor")
+        if report.get("valid") is not True:
+            fail("doctor JSON output must mark a complete installation valid")
+        if report.get("target") != str(target):
+            fail("doctor JSON output must include the target path")
+        if report.get("adapters") != [
+            "claude-code",
+            "opencode",
+            "cursor",
+            "gemini-cli",
+        ]:
+            fail("doctor JSON output must include all adapters")
+        checks = checks_by_name(report, "checks")
+        if any(check.get("status") != "ok" for check in checks.values()):
+            fail("doctor JSON checks must pass for a complete installation")
+
+        filtered_result = run_waybill(
+            "doctor",
+            "--target",
+            str(target),
+            "--adapter",
+            "claude-code",
+            "--json",
+        )
+        if filtered_result.returncode != 0:
+            fail(f"filtered doctor command failed: {filtered_result.stderr.strip()}")
+        filtered_report = parse_cli_json(filtered_result, "filtered doctor")
+        if filtered_report.get("adapters") != ["claude-code"]:
+            fail("doctor adapter filter must report only the selected adapter")
+        filtered_checks = checks_by_name(filtered_report, "checks")
+        if any(name.startswith(".opencode/") for name in filtered_checks):
+            fail("doctor adapter filter must not check unselected adapters")
+        require_tree_unchanged(target, before, "doctor")
+
+        missing_adapter = ".claude/skills/handoff/SKILL.md"
+        (target / missing_adapter).unlink()
+        incomplete_before = snapshot_tree(target)
+
+        failure_text = run_waybill("doctor", "--target", str(target))
+        if failure_text.returncode == 0:
+            fail("doctor text command must fail for an incomplete installation")
+        if "FAIL Waybill adapter installation has problems" not in failure_text.stderr:
+            fail("doctor text failure must explain that the installation has problems")
+
+        failure_json = run_waybill(
+            "doctor",
+            "--target",
+            str(target),
+            "--json",
+        )
+        if failure_json.returncode == 0:
+            fail("doctor JSON command must fail for an incomplete installation")
+        failure_report = parse_cli_json(failure_json, "doctor failure")
+        if failure_report.get("valid") is not False:
+            fail("doctor JSON failure must mark the installation invalid")
+        failure_checks = checks_by_name(failure_report, "checks")
+        if failure_checks.get(missing_adapter, {}).get("status") != "error":
+            fail("doctor JSON failure must identify the missing adapter file")
+        require_tree_unchanged(target, incomplete_before, "doctor failure")
+
+        missing_target = Path(parent) / "missing"
+        missing_result = run_waybill(
+            "doctor",
+            "--target",
+            str(missing_target),
+            "--json",
+        )
+        if missing_result.returncode == 0:
+            fail("doctor must fail for a missing target directory")
+        missing_report = parse_cli_json(missing_result, "doctor missing target")
+        if missing_report.get("valid") is not False:
+            fail("doctor must mark a missing target invalid")
+        if checks_by_name(missing_report, "checks").get("target", {}).get("status") != "error":
+            fail("doctor must identify a missing target directory")
+
+
+def validate_cli_verify_repo() -> None:
+    with tempfile.TemporaryDirectory(prefix="waybill-verify-repo-") as parent:
+        parent_path = Path(parent)
+        repo = create_test_repo(parent_path)
+        bundle = create_test_bundle(parent_path, repo)
+        branch = require_git(repo, "branch", "--show-current")
+        bundle_before = snapshot_tree(bundle)
+        repo_before = snapshot_tree(repo)
+
+        text_result = run_waybill(
+            "verify-repo",
+            str(bundle),
+            "--repo",
+            str(repo),
+        )
+        if text_result.returncode != 0:
+            fail(f"verify-repo text command failed: {text_result.stderr.strip()}")
+        if "PASS bundle repo state matches current repo" not in text_result.stdout:
+            fail("verify-repo text output must report a matching repository")
+
+        json_result = run_waybill(
+            "verify-repo",
+            str(bundle),
+            "--repo",
+            str(repo),
+            "--json",
+        )
+        if json_result.returncode != 0:
+            fail(f"verify-repo JSON command failed: {json_result.stderr.strip()}")
+        report = parse_cli_json(json_result, "verify-repo")
+        if report.get("valid") is not True:
+            fail("verify-repo JSON output must mark matching state valid")
+        checks = checks_by_name(report, "checks")
+        for name in ["metadata", "repo", "branch", "head_sha", "dirty"]:
+            if checks.get(name, {}).get("status") != "ok":
+                fail(f"verify-repo must report an ok {name} check")
+        require_tree_unchanged(bundle, bundle_before, "verify-repo")
+        require_tree_unchanged(repo, repo_before, "verify-repo")
+
+        (repo / "tracked.txt").write_text("dirty\n")
+        dirty_before = snapshot_tree(repo)
+        dirty_text = run_waybill(
+            "verify-repo",
+            str(bundle),
+            "--repo",
+            str(repo),
+        )
+        if dirty_text.returncode == 0:
+            fail("verify-repo text command must fail for dirty-state mismatch")
+        if "FAIL bundle repo state does not match current repo" not in dirty_text.stderr:
+            fail("verify-repo text failure must report a repository mismatch")
+
+        dirty_json = run_waybill(
+            "verify-repo",
+            str(bundle),
+            "--repo",
+            str(repo),
+            "--json",
+        )
+        if dirty_json.returncode == 0:
+            fail("verify-repo JSON command must fail for dirty-state mismatch")
+        dirty_report = parse_cli_json(dirty_json, "verify-repo dirty mismatch")
+        if checks_by_name(dirty_report, "checks").get("dirty", {}).get("status") != "error":
+            fail("verify-repo must identify a dirty-state mismatch")
+        require_tree_unchanged(repo, dirty_before, "verify-repo dirty mismatch")
+
+        (repo / "tracked.txt").write_text("base\n")
+        require_git(repo, "branch", "-m", "mismatched-branch")
+        branch_json = run_waybill(
+            "verify-repo",
+            str(bundle),
+            "--repo",
+            str(repo),
+            "--json",
+        )
+        if branch_json.returncode == 0:
+            fail("verify-repo must fail for a branch mismatch")
+        branch_report = parse_cli_json(branch_json, "verify-repo branch mismatch")
+        if checks_by_name(branch_report, "checks").get("branch", {}).get("status") != "error":
+            fail("verify-repo must identify a branch mismatch")
+
+        require_git(repo, "branch", "-m", branch)
+        (repo / "tracked.txt").write_text("next\n")
+        require_git(repo, "add", "tracked.txt")
+        require_git(
+            repo,
+            "-c",
+            "user.name=Waybill Test",
+            "-c",
+            "user.email=waybill@example.invalid",
+            "commit",
+            "-m",
+            "next commit",
+        )
+        head_json = run_waybill(
+            "verify-repo",
+            str(bundle),
+            "--repo",
+            str(repo),
+            "--json",
+        )
+        if head_json.returncode == 0:
+            fail("verify-repo must fail for a HEAD mismatch")
+        head_report = parse_cli_json(head_json, "verify-repo HEAD mismatch")
+        if checks_by_name(head_report, "checks").get("head_sha", {}).get("status") != "error":
+            fail("verify-repo must identify a HEAD mismatch")
+
+
+def validate_cli_preflight() -> None:
+    with tempfile.TemporaryDirectory(prefix="waybill-preflight-") as parent:
+        parent_path = Path(parent)
+        repo = create_test_repo(parent_path)
+        bundle = create_test_bundle(parent_path, repo)
+        bundle_before = snapshot_tree(bundle)
+        repo_before = snapshot_tree(repo)
+
+        text_result = run_waybill(
+            "preflight",
+            str(bundle),
+            "--repo",
+            str(repo),
+        )
+        if text_result.returncode != 0:
+            fail(f"preflight text command failed: {text_result.stderr.strip()}")
+        if "PASS import preflight passed" not in text_result.stdout:
+            fail("preflight text output must report a passing import check")
+
+        json_result = run_waybill(
+            "preflight",
+            str(bundle),
+            "--repo",
+            str(repo),
+            "--json",
+        )
+        if json_result.returncode != 0:
+            fail(f"preflight JSON command failed: {json_result.stderr.strip()}")
+        report = parse_cli_json(json_result, "preflight")
+        if report.get("valid") is not True:
+            fail("preflight JSON output must mark a matching valid bundle ready")
+        validation = report.get("validation")
+        if not isinstance(validation, dict) or validation.get("valid") is not True:
+            fail("preflight JSON output must include passing bundle validation")
+        repo_checks = checks_by_name(report, "repo_checks")
+        if any(check.get("status") == "error" for check in repo_checks.values()):
+            fail("preflight JSON output must include passing repository checks")
+        require_tree_unchanged(bundle, bundle_before, "preflight")
+        require_tree_unchanged(repo, repo_before, "preflight")
+
+        (bundle / "WAYBILL.md").unlink()
+        (repo / "tracked.txt").write_text("dirty\n")
+        invalid_bundle_before = snapshot_tree(bundle)
+        dirty_repo_before = snapshot_tree(repo)
+
+        failure_text = run_waybill(
+            "preflight",
+            str(bundle),
+            "--repo",
+            str(repo),
+        )
+        if failure_text.returncode == 0:
+            fail("preflight text command must fail for blocking issues")
+        if "FAIL import preflight found blocking issues" not in failure_text.stderr:
+            fail("preflight text failure must report blocking issues")
+
+        failure_json = run_waybill(
+            "preflight",
+            str(bundle),
+            "--repo",
+            str(repo),
+            "--json",
+        )
+        if failure_json.returncode == 0:
+            fail("preflight JSON command must fail for blocking issues")
+        failure_report = parse_cli_json(failure_json, "preflight failure")
+        if failure_report.get("valid") is not False:
+            fail("preflight JSON failure must mark the report invalid")
+        failure_validation = failure_report.get("validation")
+        if not isinstance(failure_validation, dict) or failure_validation.get("valid") is not False:
+            fail("preflight must report invalid bundle content")
+        if checks_by_name(failure_report, "repo_checks").get("dirty", {}).get("status") != "error":
+            fail("preflight must report repository-state mismatches")
+        require_tree_unchanged(bundle, invalid_bundle_before, "preflight failure")
+        require_tree_unchanged(repo, dirty_repo_before, "preflight failure")
+
+
+def validate_cli_ready() -> None:
+    with tempfile.TemporaryDirectory(prefix="waybill-ready-") as parent:
+        parent_path = Path(parent)
+        repo = create_test_repo(parent_path)
+        bundle = create_test_bundle(parent_path, repo)
+        draft_before = snapshot_tree(bundle)
+
+        draft_text = run_waybill("ready", str(bundle), "--repo", str(repo))
+        if draft_text.returncode == 0:
+            fail("ready text command must reject an unfinished draft")
+        if "FAIL bundle is not ready for handoff" not in draft_text.stderr:
+            fail("ready text failure must report that the bundle is not ready")
+
+        draft_json = run_waybill(
+            "ready",
+            str(bundle),
+            "--repo",
+            str(repo),
+            "--json",
+        )
+        if draft_json.returncode == 0:
+            fail("ready JSON command must reject an unfinished draft")
+        draft_report = parse_cli_json(draft_json, "ready draft")
+        if draft_report.get("valid") is not False:
+            fail("ready JSON output must mark an unfinished draft invalid")
+        content_checks = checks_by_name(draft_report, "content_checks")
+        if not any(check.get("status") == "error" for check in content_checks.values()):
+            fail("ready must identify draft placeholders")
+        require_tree_unchanged(bundle, draft_before, "ready draft check")
+
+        completed_source = ROOT / "examples/claude-to-codex"
+        for name in ["WAYBILL.md", "commands.log", "test-summary.md"]:
+            shutil.copy2(completed_source / name, bundle / name)
+        completed_before = snapshot_tree(bundle)
+        repo_before = snapshot_tree(repo)
+
+        text_result = run_waybill("ready", str(bundle), "--repo", str(repo))
+        if text_result.returncode != 0:
+            fail(f"ready text command failed: {text_result.stderr.strip()}")
+        if "PASS bundle is ready for handoff" not in text_result.stdout:
+            fail("ready text output must report a completed bundle ready")
+
+        json_result = run_waybill(
+            "ready",
+            str(bundle),
+            "--repo",
+            str(repo),
+            "--json",
+        )
+        if json_result.returncode != 0:
+            fail(f"ready JSON command failed: {json_result.stderr.strip()}")
+        report = parse_cli_json(json_result, "ready")
+        if report.get("valid") is not True:
+            fail("ready JSON output must mark a completed bundle valid")
+        validation = report.get("validation")
+        if not isinstance(validation, dict) or validation.get("valid") is not True:
+            fail("ready JSON output must include passing validation")
+        if any(
+            check.get("status") == "error"
+            for check in checks_by_name(report, "repo_checks").values()
+        ):
+            fail("ready JSON output must include passing repository checks")
+        if any(
+            check.get("status") == "error"
+            for check in checks_by_name(report, "content_checks").values()
+        ):
+            fail("ready JSON output must include passing content checks")
+        require_tree_unchanged(bundle, completed_before, "ready")
+        require_tree_unchanged(repo, repo_before, "ready")
+
+        require_git(repo, "branch", "-m", "not-the-bundle-branch")
+        mismatch_json = run_waybill(
+            "ready",
+            str(bundle),
+            "--repo",
+            str(repo),
+            "--json",
+        )
+        if mismatch_json.returncode == 0:
+            fail("ready must reject a repository branch mismatch")
+        mismatch_report = parse_cli_json(mismatch_json, "ready branch mismatch")
+        if checks_by_name(mismatch_report, "repo_checks").get("branch", {}).get("status") != "error":
+            fail("ready must identify a repository branch mismatch")
+
+
+def validate_cli_inspect() -> None:
+    source = ROOT / "examples/claude-to-codex"
+    source_before = snapshot_tree(source)
+
+    text_result = run_waybill("inspect", str(source))
+    if text_result.returncode != 0:
+        fail(f"inspect text command failed: {text_result.stderr.strip()}")
+    if "Schema version status: current" not in text_result.stdout:
+        fail("inspect text output must report the current schema version")
+    if "Validation: 0 error(s)" not in text_result.stdout:
+        fail("inspect text output must summarize validation")
+
+    json_result = run_waybill("inspect", str(source), "--json")
+    if json_result.returncode != 0:
+        fail(f"inspect JSON command failed: {json_result.stderr.strip()}")
+    report = parse_cli_json(json_result, "inspect")
+    if report.get("valid") is not True:
+        fail("inspect JSON output must mark a valid bundle valid")
+    if report.get("schema_version_status") != "current":
+        fail("inspect JSON output must identify the current schema version")
+    artifacts = report.get("artifacts")
+    if not isinstance(artifacts, list) or not artifacts:
+        fail("inspect JSON output must list artifacts")
+    if any(
+        not isinstance(artifact, dict) or artifact.get("status") != "present"
+        for artifact in artifacts
+    ):
+        fail("inspect JSON output must mark existing artifacts present")
+    require_tree_unchanged(source, source_before, "inspect")
+
+    with tempfile.TemporaryDirectory(prefix="waybill-inspect-") as parent:
+        parent_path = Path(parent)
+        incomplete = parent_path / "incomplete"
+        shutil.copytree(source, incomplete)
+        (incomplete / "diff.patch").unlink()
+        incomplete_before = snapshot_tree(incomplete)
+
+        missing_text = run_waybill("inspect", str(incomplete))
+        if missing_text.returncode == 0:
+            fail("inspect text command must fail when an artifact is missing")
+        if "diff: diff.patch (missing)" not in missing_text.stdout:
+            fail("inspect text output must identify a missing artifact")
+
+        missing_json = run_waybill("inspect", str(incomplete), "--json")
+        if missing_json.returncode == 0:
+            fail("inspect JSON command must fail when an artifact is missing")
+        missing_report = parse_cli_json(missing_json, "inspect missing artifact")
+        if missing_report.get("valid") is not False:
+            fail("inspect JSON output must mark a missing artifact invalid")
+        missing_artifacts = missing_report.get("artifacts")
+        if not isinstance(missing_artifacts, list) or not any(
+            isinstance(artifact, dict)
+            and artifact.get("name") == "diff"
+            and artifact.get("status") == "missing"
+            for artifact in missing_artifacts
+        ):
+            fail("inspect JSON output must identify the missing diff artifact")
+        require_tree_unchanged(incomplete, incomplete_before, "inspect failure")
+
+        malformed_cases = [
+            ("non-object", "[]\n"),
+            ("invalid-json", "{\n"),
+        ]
+        for case_name, contents in malformed_cases:
+            malformed = parent_path / case_name
+            shutil.copytree(source, malformed)
+            (malformed / "metadata.json").write_text(contents)
+            malformed_before = snapshot_tree(malformed)
+            malformed_commands = [
+                ("validate", str(malformed), "--json"),
+                ("inspect", str(malformed), "--json"),
+                ("verify-repo", str(malformed), "--repo", str(ROOT), "--json"),
+                ("preflight", str(malformed), "--repo", str(ROOT), "--json"),
+                ("ready", str(malformed), "--repo", str(ROOT), "--json"),
+            ]
+            for args in malformed_commands:
+                result = run_waybill(*args)
+                label = args[0]
+                if result.returncode == 0:
+                    fail(f"{label} must reject {case_name} metadata")
+                report = parse_cli_json(result, f"{label} {case_name} metadata")
+                if report.get("valid") is not False:
+                    fail(f"{label} must mark {case_name} metadata invalid")
+                if "Traceback" in result.stdout or "Traceback" in result.stderr:
+                    fail(f"{label} must handle {case_name} metadata without a traceback")
+            require_tree_unchanged(
+                malformed,
+                malformed_before,
+                f"{case_name} metadata checks",
+            )
+
+
 def write_redaction_fixture(source: Path) -> None:
     source.mkdir()
     api_key_value = "test" + "-api-key"
@@ -1140,6 +1695,94 @@ def validate_cli_share() -> None:
             fail("share JSON existing-output error must set success false")
         if "already exists" not in str(exists_report.get("error", "")):
             fail("share JSON existing-output error must include the failure reason")
+
+        binary_source = parent_path / "binary-source"
+        shutil.copytree(ROOT / "examples/claude-to-codex", binary_source)
+        binary_name = "attachment.bin"
+        (binary_source / binary_name).write_bytes(
+            b"\xff\xfeunscannable test payload\n"
+        )
+        binary_source_before = snapshot_tree(binary_source)
+
+        local_redacted = parent_path / "local-binary-redacted"
+        redact_result = run_waybill(
+            "redact",
+            str(binary_source),
+            "--output",
+            str(local_redacted),
+            "--json",
+        )
+        if redact_result.returncode != 0:
+            fail(
+                "redact must preserve its local binary behavior: "
+                f"{redact_result.stderr.strip()}"
+            )
+        redact_report = parse_cli_json(redact_result, "binary redact")
+        redacted_files = redact_report.get("files")
+        if not isinstance(redacted_files, list) or not any(
+            isinstance(file, dict)
+            and file.get("path") == binary_name
+            and file.get("copied_binary") is True
+            for file in redacted_files
+        ):
+            fail("redact must report locally copied unscannable files")
+
+        binary_text_archive = parent_path / "binary-text.zip"
+        binary_text_redacted = parent_path / "binary-text-redacted"
+        binary_text = run_waybill(
+            "share",
+            str(binary_source),
+            "--output",
+            str(binary_text_archive),
+            "--redacted-output",
+            str(binary_text_redacted),
+        )
+        if binary_text.returncode == 0:
+            fail("share text command must reject unscannable files")
+        binary_text_error = binary_text.stderr.lower()
+        if (
+            binary_name not in binary_text_error
+            or "unscannable" not in binary_text_error
+        ):
+            fail("share text failure must identify the unscannable file")
+        if binary_text_archive.exists() or binary_text_redacted.exists():
+            fail("share must not create outputs for unscannable files")
+
+        binary_json_archive = parent_path / "binary-json.zip"
+        archive_sentinel = b"existing archive\n"
+        binary_json_archive.write_bytes(archive_sentinel)
+        binary_json_redacted = parent_path / "binary-json-redacted"
+        binary_json_redacted.mkdir()
+        redacted_sentinel = binary_json_redacted / "keep.txt"
+        redacted_sentinel.write_text("existing redacted output\n")
+
+        binary_json = run_waybill(
+            "share",
+            str(binary_source),
+            "--output",
+            str(binary_json_archive),
+            "--redacted-output",
+            str(binary_json_redacted),
+            "--force",
+            "--json",
+        )
+        if binary_json.returncode == 0:
+            fail("share JSON command must reject unscannable files")
+        binary_report = parse_cli_json(binary_json, "binary share")
+        if binary_report.get("success") is not False:
+            fail("share JSON binary failure must set success false")
+        binary_error = str(binary_report.get("error", "")).lower()
+        if binary_name not in binary_error or "unscannable" not in binary_error:
+            fail("share JSON binary failure must identify the unscannable file")
+        if binary_json_archive.read_bytes() != archive_sentinel:
+            fail("share --force must not overwrite an archive after a safety failure")
+        if redacted_sentinel.read_text() != "existing redacted output\n":
+            fail("share --force must not replace redacted output after a safety failure")
+        require_tree_unchanged(
+            binary_source,
+            binary_source_before,
+            "binary share checks",
+        )
 
 
 def validate_cli_unpack() -> None:
@@ -1638,7 +2281,12 @@ def main() -> int:
         ("PyPI publish workflow", validate_pypi_publish_workflow),
         ("examples", validate_examples),
         ("CLI init", validate_cli_init),
+        ("CLI doctor", validate_cli_doctor),
         ("CLI new", validate_cli_new),
+        ("CLI verify-repo", validate_cli_verify_repo),
+        ("CLI preflight", validate_cli_preflight),
+        ("CLI ready", validate_cli_ready),
+        ("CLI inspect", validate_cli_inspect),
         ("CLI redact", validate_cli_redact),
         ("CLI pack", validate_cli_pack),
         ("CLI share", validate_cli_share),
