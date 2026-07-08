@@ -95,6 +95,12 @@ links and special filesystem entries are rejected before Waybill reads,
 redacts, packs, or shares bundle content. Output paths for redaction, packing,
 sharing, and unpacking must not overlap or contain their source paths.
 
+Before creating or replacing share outputs, `share` requires every bundle file
+to decode as UTF-8 so the redaction scan can inspect it. Binary or non-UTF-8
+files fail the share operation with their relative paths. Local `redact` may
+still copy such files and reports them as `copied_binary`; this behavior does
+not make those files safe to share.
+
 When the diff exceeds the draft limit, `diff.patch` contains an omission note
 instead of the full patch. Review the repository directly and include only the
 relevant changes before sharing.

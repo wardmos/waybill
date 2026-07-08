@@ -160,9 +160,17 @@ This checks:
 - Cursor rule frontmatter and handoff safety rules.
 - Gemini CLI skill frontmatter and handoff safety rules.
 - CLI adapter initialization into target repositories in text and JSON.
+- CLI adapter diagnostics for complete, partial, and missing installations.
 - CLI draft bundle scaffolding in text and JSON.
+- CLI repository verification for matching and mismatched branch, HEAD, and
+  dirty state.
+- CLI import preflight for valid input and combined bundle/repository failures.
+- CLI export readiness for unfinished drafts, completed bundles, and repository
+  mismatches.
+- CLI inspection for artifact status, malformed metadata, and text/JSON output.
 - CLI redaction output for common token and key/value patterns in text and JSON.
-- CLI share output for redacted archive preparation in text and JSON.
+- CLI share output for redacted archive preparation and fail-closed handling of
+  unscannable files in text and JSON.
 - CLI pack output and refusal to archive invalid bundles in text and JSON.
 - CLI unpack output and validation of unpacked bundles in text and JSON.
 - CLI render output for Markdown review reports in text and JSON.
@@ -358,6 +366,8 @@ Expected result:
 - The command creates a zip archive from the redacted bundle.
 - Existing output is refused unless `--force` is provided.
 - Invalid redacted bundles are refused and no archive is written.
+- Binary or non-UTF-8 files are refused with their relative paths before any
+  share output is created or replaced, including with `--force`.
 - JSON output parses as valid JSON and includes source, redacted output,
   archive, redaction, validation, and pack details.
 

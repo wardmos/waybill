@@ -271,6 +271,8 @@ adapters/gemini-cli/
 - Export instructions do not run tests unless the user asks.
 - Bundle validation, redaction, packing, and sharing reject symbolic links and
   non-regular files.
+- Sharing refuses binary or non-UTF-8 files that cannot be scanned before it
+  writes or replaces redacted and archive outputs.
 - Redaction, archive, and unpack output paths cannot overlap their source.
 - Users should review `.waybill/` before sharing it.
 
@@ -305,8 +307,9 @@ handoff test plans.
 
 - No automatic patch application.
 - No automatic transcript parsing.
-- Secret redaction is best-effort pattern replacement; users still need to
-  review redacted bundles before sharing.
+- Secret redaction is best-effort pattern replacement; local `redact` output
+  can include reported binary copies, while `share` refuses unscannable files.
+  Users still need to review redacted bundles before sharing.
 - OpenCode support is file-based commands and skills; no OpenCode plugin hooks
   are required yet.
 - Cursor support uses project rules loaded by Cursor Agent and Cursor CLI; no

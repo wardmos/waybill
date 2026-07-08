@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from .limits import list_bundle_files
 from .packing import PackReport, pack_bundle
 from .paths import ensure_safe_output_path
 from .redaction import RedactionReport, redact_bundle
@@ -37,6 +38,7 @@ def share_bundle(
     )
 
     _check_archive_output(source, archive, force)
+    _check_scannable_files(source)
     redaction = redact_bundle(source, redacted, force=force)
     validation_issues = validate_bundle(redacted)
     if has_errors(validation_issues):
@@ -67,3 +69,19 @@ def _check_archive_output(source: Path, archive: Path, force: bool) -> None:
     ensure_safe_output_path(source, archive)
     if archive.exists() and not force:
         raise FileExistsError(f"output path already exists: {archive}")
+
+
+def _check_scannable_files(source: Path) -> None:
+    unscannable: list[str] = []
+    for file in list_bundle_files(source):
+        try:
+            file.path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            unscannable.append(file.relative_path.as_posix())
+
+    if unscannable:
+        paths = ", ".join(unscannable)
+        raise ValueError(
+            "cannot safely share unscannable binary or non-UTF-8 files: "
+            f"{paths}"
+        )
