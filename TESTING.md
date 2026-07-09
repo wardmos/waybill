@@ -11,6 +11,21 @@ Run:
 python3 scripts/validate-waybill.py
 ```
 
+## Continuous Integration
+
+The `CI` GitHub Actions workflow runs on every push and pull request with a
+Python 3.10, 3.11, and 3.12 matrix. Each job runs:
+
+```bash
+python3 scripts/validate-waybill.py
+python3 -m py_compile cli/waybill waybill_core/*.py scripts/validate-waybill.py
+scripts/smoke-agents.sh --dry-run
+```
+
+The repository validator checks the workflow triggers, read-only permissions,
+Python matrix, action versions, and command list. The validator itself uses
+only Python 3.10-compatible standard-library features.
+
 ## Repeatable Agent Smoke Tests
 
 When the local agent CLIs are installed and authenticated, run the read-only
@@ -159,6 +174,8 @@ This checks:
 - OpenCode command and skill frontmatter.
 - Cursor rule frontmatter and handoff safety rules.
 - Gemini CLI skill frontmatter and handoff safety rules.
+- Push and pull request CI coverage for Python 3.10, 3.11, and 3.12 with
+  read-only permissions.
 - CLI adapter initialization into target repositories in text and JSON.
 - CLI adapter diagnostics for complete, partial, and missing installations.
 - CLI draft bundle scaffolding in text and JSON.

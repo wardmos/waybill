@@ -287,6 +287,10 @@ Run the repository checks:
 python3 scripts/validate-waybill.py
 ```
 
+Pushes and pull requests run repository validation, Python compilation, and the
+agent smoke dry-run on Python 3.10, 3.11, and 3.12 through
+`.github/workflows/ci.yml`.
+
 Run repeatable local agent smoke tests when the relevant CLIs are installed:
 
 ```bash

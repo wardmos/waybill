@@ -10,7 +10,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import tomllib
 import zipfile
 from pathlib import Path
 
@@ -32,6 +31,7 @@ REQUIRED_FILES = [
     "README.md",
     "QUICKSTART.md",
     ".gitignore",
+    ".github/workflows/ci.yml",
     ".github/workflows/publish-pypi.yml",
     "MANIFEST.in",
     "pyproject.toml",
@@ -130,6 +130,35 @@ def read_json(path: Path) -> dict:
         return json.loads(path.read_text())
     except json.JSONDecodeError as exc:
         fail(f"{path.relative_to(ROOT)} is invalid JSON: {exc}")
+
+
+def toml_section(text: str, name: str) -> str:
+    match = re.search(
+        rf"^\[{re.escape(name)}\]\s*$\n(.*?)(?=^\[|\Z)",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    return match.group(1) if match else ""
+
+
+def toml_string(section: str, key: str) -> str:
+    match = re.search(
+        rf'^\s*{re.escape(key)}\s*=\s*"([^"]*)"\s*$',
+        section,
+        re.MULTILINE,
+    )
+    return match.group(1) if match else ""
+
+
+def toml_string_list(section: str, key: str) -> list[str]:
+    match = re.search(
+        rf"^\s*{re.escape(key)}\s*=\s*\[(.*?)\]",
+        section,
+        re.MULTILINE | re.DOTALL,
+    )
+    if not match:
+        return []
+    return re.findall(r'"([^"]*)"', match.group(1))
 
 
 def require_file(path: str) -> Path:
@@ -671,14 +700,14 @@ def validate_gemini_cli_adapter() -> None:
 
 
 def validate_python_package() -> None:
-    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
-    build_system = pyproject.get("build-system", {})
-    if "setuptools>=77" not in build_system.get("requires", []):
+    pyproject = (ROOT / "pyproject.toml").read_text()
+    build_system = toml_section(pyproject, "build-system")
+    if "setuptools>=77" not in toml_string_list(build_system, "requires"):
         fail("pyproject build-system must require setuptools>=77")
 
-    project = pyproject.get("project", {})
-    version = str(project.get("version", ""))
-    if project.get("name") != "agent-waybill":
+    project = toml_section(pyproject, "project")
+    version = toml_string(project, "version")
+    if toml_string(project, "name") != "agent-waybill":
         fail("pyproject project.name must be agent-waybill")
     if not re.fullmatch(r"\d+\.\d+\.\d+", version):
         fail("pyproject project.version must be strict semver")
@@ -686,28 +715,28 @@ def validate_python_package() -> None:
     version_match = re.search(r'^__version__ = "([^"]+)"$', init_text, re.MULTILINE)
     if not version_match or version_match.group(1) != version:
         fail("waybill_core.__version__ must match pyproject project.version")
-    if project.get("requires-python") != ">=3.10":
+    if toml_string(project, "requires-python") != ">=3.10":
         fail("pyproject requires-python must be >=3.10")
-    if project.get("license") != "Apache-2.0":
+    if toml_string(project, "license") != "Apache-2.0":
         fail("pyproject project.license must be Apache-2.0")
-    if project.get("license-files") != ["LICENSE"]:
+    if toml_string_list(project, "license-files") != ["LICENSE"]:
         fail("pyproject project.license-files must include LICENSE")
     if any(
-        str(classifier).startswith("License ::")
-        for classifier in project.get("classifiers", [])
+        classifier.startswith("License ::")
+        for classifier in toml_string_list(project, "classifiers")
     ):
         fail("pyproject must use SPDX license metadata instead of license classifiers")
 
-    scripts = project.get("scripts", {})
-    if scripts.get("waybill") != "waybill_core.cli:main":
+    scripts = toml_section(pyproject, "project.scripts")
+    if toml_string(scripts, "waybill") != "waybill_core.cli:main":
         fail("pyproject must expose waybill console script")
 
-    setuptools = pyproject.get("tool", {}).get("setuptools", {})
-    if setuptools.get("packages") != ["waybill_core"]:
+    setuptools = toml_section(pyproject, "tool.setuptools")
+    if toml_string_list(setuptools, "packages") != ["waybill_core"]:
         fail("pyproject setuptools packages must include waybill_core")
 
-    package_data = setuptools.get("package-data", {})
-    if "template-files/**" not in package_data.get("waybill_core", []):
+    package_data = toml_section(pyproject, "tool.setuptools.package-data")
+    if "template-files/**" not in toml_string_list(package_data, "waybill_core"):
         fail("pyproject must include packaged adapter templates")
 
 
@@ -737,6 +766,38 @@ def validate_pypi_publish_workflow() -> None:
             fail(f"PyPI publish workflow must include {expected}")
     if re.search(r"branches:\s*\n\s*-", workflow):
         fail("PyPI publish workflow must not publish from branch pushes")
+
+
+def validate_ci_workflow() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    validator = (ROOT / "scripts" / "validate-waybill.py").read_text()
+    required = [
+        "name: CI",
+        "push:",
+        "pull_request:",
+        "permissions:",
+        "contents: read",
+        "matrix:",
+        "python-version:",
+        '- "3.10"',
+        '- "3.11"',
+        '- "3.12"',
+        "actions/checkout@v4",
+        "actions/setup-python@v5",
+        "python-version: ${{ matrix.python-version }}",
+        "python3 scripts/validate-waybill.py",
+        "python3 -m py_compile cli/waybill waybill_core/*.py scripts/validate-waybill.py",
+        "scripts/smoke-agents.sh --dry-run",
+    ]
+    for expected in required:
+        if expected not in workflow:
+            fail(f"CI workflow must include {expected}")
+    if "pull_request_target:" in workflow:
+        fail("CI workflow must not run untrusted changes with pull_request_target")
+    if re.search(r"^\s+[a-z-]+:\s+write\s*$", workflow, re.MULTILINE):
+        fail("CI workflow must not grant write permissions")
+    if re.search(r"^import tomllib$", validator, re.MULTILINE):
+        fail("repository validator must not require Python 3.11-only tomllib")
 
 
 def validate_example(example_dir: Path) -> None:
@@ -2278,6 +2339,7 @@ def main() -> int:
         ("Cursor adapter", validate_cursor_adapter),
         ("Gemini CLI adapter", validate_gemini_cli_adapter),
         ("Python package", validate_python_package),
+        ("CI workflow", validate_ci_workflow),
         ("PyPI publish workflow", validate_pypi_publish_workflow),
         ("examples", validate_examples),
         ("CLI init", validate_cli_init),
