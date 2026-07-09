@@ -106,8 +106,8 @@ EXAMPLES = [
     "examples/claude-to-codex",
     "examples/codex-to-claude",
     "examples/failed-test-handoff",
-    "examples/claude-parent-codex-child",
-    "examples/codex-parent-claude-child",
+    "examples/claude-parent-codex-child-request",
+    "examples/claude-parent-codex-child-result",
 ]
 
 COMMAND_CLASSIFICATION_TERMS = [
@@ -307,12 +307,12 @@ def validate_structure() -> None:
 
     walkthrough = (ROOT / "WALKTHROUGH.md").read_text()
     for expected in [
-        "examples/claude-parent-codex-child",
-        "examples/codex-parent-claude-child",
+        "examples/claude-parent-codex-child-request",
+        "examples/claude-parent-codex-child-result",
         "delegation_request",
         "delegation_result",
-        "/handoff import examples/claude-parent-codex-child",
-        "/handoff import examples/codex-parent-claude-child",
+        "/handoff import examples/claude-parent-codex-child-request",
+        "/handoff import examples/claude-parent-codex-child-result",
         "Import remains non-destructive",
     ]:
         if expected not in walkthrough:
@@ -812,22 +812,42 @@ def validate_examples() -> None:
     for example in EXAMPLES:
         validate_example(ROOT / example)
 
-    expected_kinds = {
-        "examples/claude-parent-codex-child": "delegation_request",
-        "examples/codex-parent-claude-child": "delegation_result",
+    expected_delegation = {
+        "examples/claude-parent-codex-child-request": {
+            "kind": "delegation_request",
+            "source_agent": "claude-code",
+            "parent_agent": "claude-code",
+            "child_agent": "codex",
+        },
+        "examples/claude-parent-codex-child-result": {
+            "kind": "delegation_result",
+            "source_agent": "codex",
+            "parent_agent": "claude-code",
+            "child_agent": "codex",
+        },
     }
-    for example, expected_kind in expected_kinds.items():
+    roles: set[tuple[object, object]] = set()
+    for example, expected in expected_delegation.items():
         metadata = read_json(ROOT / example / "metadata.json")
-        kind = metadata.get("handoff", {}).get("kind")
-        if kind != expected_kind:
-            fail(f"{example} must set handoff.kind to {expected_kind}")
+        handoff = metadata.get("handoff")
+        if not isinstance(handoff, dict):
+            fail(f"{example} must include handoff metadata")
+        for field in ["kind", "parent_agent", "child_agent"]:
+            if handoff.get(field) != expected[field]:
+                fail(f"{example} must set handoff.{field} to {expected[field]}")
+        if metadata.get("source_agent") != expected["source_agent"]:
+            fail(f"{example} must set source_agent to {expected['source_agent']}")
+        roles.add((handoff.get("parent_agent"), handoff.get("child_agent")))
+
+    if roles != {("claude-code", "codex")}:
+        fail("paired delegation fixtures must preserve parent and child roles")
 
     validate_missing_delegation_section(
-        "examples/claude-parent-codex-child",
+        "examples/claude-parent-codex-child-request",
         "Child Agent Task",
     )
     validate_missing_delegation_section(
-        "examples/codex-parent-claude-child",
+        "examples/claude-parent-codex-child-result",
         "Parent Next Step",
     )
 

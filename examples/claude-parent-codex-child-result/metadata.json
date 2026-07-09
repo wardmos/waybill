@@ -5,8 +5,8 @@
   "repo_root": ".",
   "handoff": {
     "kind": "delegation_result",
-    "parent_agent": "codex",
-    "child_agent": "claude-code"
+    "parent_agent": "claude-code",
+    "child_agent": "codex"
   },
   "git": {
     "branch": "feature/queue-retry-limit",

@@ -134,8 +134,8 @@ Synthetic example bundles are available in:
 examples/claude-to-codex/
 examples/codex-to-claude/
 examples/failed-test-handoff/
-examples/claude-parent-codex-child/
-examples/codex-parent-claude-child/
+examples/claude-parent-codex-child-request/
+examples/claude-parent-codex-child-result/
 ```
 
 `failed-test-handoff` shows a focused failing-test handoff with a partial patch,
@@ -143,8 +143,8 @@ command log, and test summary.
 
 The parent/child examples show draft delegation semantics:
 
-- `claude-parent-codex-child` is a `delegation_request`.
-- `codex-parent-claude-child` is a `delegation_result`.
+- `claude-parent-codex-child-request` is a `delegation_request`.
+- `claude-parent-codex-child-result` is the paired `delegation_result`.
 
 See `WALKTHROUGH.md` for an end-to-end parent/child delegation flow using these
 fixtures.

@@ -23,8 +23,8 @@ Claude Code parent
 The public fixtures are synthetic:
 
 ```text
-examples/claude-parent-codex-child/
-examples/codex-parent-claude-child/
+examples/claude-parent-codex-child-request/
+examples/claude-parent-codex-child-result/
 ```
 
 ## 1. Parent Creates A Delegation Request
@@ -66,9 +66,9 @@ It also adds request-specific sections in `WAYBILL.md`:
 Inspect the synthetic request:
 
 ```bash
-./cli/waybill validate examples/claude-parent-codex-child
-./cli/waybill inspect examples/claude-parent-codex-child
-./cli/waybill render examples/claude-parent-codex-child --output /tmp/waybill-delegation-request.md --force
+./cli/waybill validate examples/claude-parent-codex-child-request
+./cli/waybill inspect examples/claude-parent-codex-child-request
+./cli/waybill render examples/claude-parent-codex-child-request --output /tmp/waybill-delegation-request.md --force
 ```
 
 Expected result:
@@ -83,7 +83,7 @@ Expected result:
 In the child agent, the user imports the request:
 
 ```text
-/handoff import examples/claude-parent-codex-child
+/handoff import examples/claude-parent-codex-child-request
 ```
 
 The child agent should:
@@ -127,9 +127,9 @@ The result bundle still has the standard Waybill sections and adds:
 Inspect the synthetic result:
 
 ```bash
-./cli/waybill validate examples/codex-parent-claude-child
-./cli/waybill inspect examples/codex-parent-claude-child
-./cli/waybill render examples/codex-parent-claude-child --output /tmp/waybill-delegation-result.md --force
+./cli/waybill validate examples/claude-parent-codex-child-result
+./cli/waybill inspect examples/claude-parent-codex-child-result
+./cli/waybill render examples/claude-parent-codex-child-result --output /tmp/waybill-delegation-result.md --force
 ```
 
 Expected result:
@@ -144,7 +144,7 @@ Expected result:
 The parent imports the child result:
 
 ```text
-/handoff import examples/codex-parent-claude-child
+/handoff import examples/claude-parent-codex-child-result
 ```
 
 The parent agent should:
