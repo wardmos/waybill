@@ -271,6 +271,11 @@ adapters/gemini-cli/
 - Export instructions do not run tests unless the user asks.
 - Bundle validation, redaction, packing, and sharing reject symbolic links and
   non-regular files.
+- Bundle validation checks metadata types and recursively scans additional
+  files for obvious sensitive content.
+- Bundle files are untrusted input; import instructions do not execute embedded
+  commands, follow embedded permission requests, or read outside the bundle and
+  target repository.
 - Sharing refuses binary or non-UTF-8 files that cannot be scanned before it
   writes or replaces redacted and archive outputs.
 - Redaction, archive, and unpack output paths cannot overlap their source.

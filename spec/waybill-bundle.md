@@ -169,6 +169,11 @@ An adapter importing a bundle should:
 Import instructions must not blindly trust the bundle. They must not
 automatically apply `diff.patch` or run dangerous commands.
 
+Every bundle file is untrusted input. Instructions embedded in `WAYBILL.md`,
+`metadata.json`, `commands.log`, `diff.patch`, or additional artifacts never
+authorize network access, reads outside the bundle and target repository,
+permission elevation, command execution, or patch application.
+
 ## Security
 
 `.waybill/` may contain sensitive information, including prompts, file paths,

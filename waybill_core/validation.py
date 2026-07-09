@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,12 @@ REQUIRED_BUNDLE_FILES = ["WAYBILL.md", "metadata.json"]
 RECOMMENDED_BUNDLE_FILES = ["diff.patch", "commands.log", "test-summary.md"]
 
 HANDOFF_KINDS = ["handoff", "delegation_request", "delegation_result"]
+
+RFC3339_DATE_TIME = re.compile(
+    r"^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}"
+    r"(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})$"
+)
+SHA256_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 WAYBILL_SECTIONS = [
     "Original Goal",
@@ -219,8 +226,30 @@ def _validate_metadata(
         issues.append(ValidationIssue("error", message, str(path)))
         return metadata, version_status
 
-    if not isinstance(metadata.get("source_agent"), str) or not metadata.get("source_agent"):
-        issues.append(ValidationIssue("error", "metadata source_agent must be a non-empty string", str(path)))
+    if "source_agent" in metadata and not _is_non_empty_string(metadata.get("source_agent")):
+        issues.append(
+            ValidationIssue(
+                "error",
+                "metadata source_agent must be a non-empty string",
+                str(path),
+            )
+        )
+    if "created_at" in metadata and not _is_rfc3339_date_time(metadata.get("created_at")):
+        issues.append(
+            ValidationIssue(
+                "error",
+                "metadata created_at must be an RFC 3339 date-time",
+                str(path),
+            )
+        )
+    if "repo_root" in metadata and not _is_non_empty_string(metadata.get("repo_root")):
+        issues.append(
+            ValidationIssue(
+                "error",
+                "metadata repo_root must be a non-empty string",
+                str(path),
+            )
+        )
 
     git = metadata.get("git")
     if not isinstance(git, dict):
@@ -229,48 +258,140 @@ def _validate_metadata(
         for key in ["branch", "base_ref", "head_sha", "dirty"]:
             if key not in git:
                 issues.append(ValidationIssue("error", f"metadata git missing {key}", str(path)))
+        for key in ["branch", "base_ref", "head_sha"]:
+            if key in git and not _is_non_empty_string(git.get(key)):
+                issues.append(
+                    ValidationIssue(
+                        "error",
+                        f"metadata git.{key} must be a non-empty string",
+                        str(path),
+                    )
+                )
         if "dirty" in git and not isinstance(git.get("dirty"), bool):
             issues.append(ValidationIssue("error", "metadata git.dirty must be boolean", str(path)))
+        for key in ["status_digest", "repo_state_digest"]:
+            if key in git and not _is_sha256_digest(git.get(key)):
+                issues.append(
+                    ValidationIssue(
+                        "error",
+                        f"metadata git.{key} must be a sha256 digest",
+                        str(path),
+                    )
+                )
 
     artifacts = metadata.get("artifacts")
     if not isinstance(artifacts, dict):
         issues.append(ValidationIssue("error", "metadata artifacts must be an object", str(path)))
-    elif artifacts.get("waybill") != "WAYBILL.md":
-        issues.append(ValidationIssue("error", "metadata artifacts.waybill must be WAYBILL.md", str(path)))
+    else:
+        if "waybill" not in artifacts:
+            issues.append(ValidationIssue("error", "metadata artifacts missing waybill", str(path)))
+        for name, artifact in artifacts.items():
+            if not _is_non_empty_string(artifact):
+                issues.append(
+                    ValidationIssue(
+                        "error",
+                        f"metadata artifacts.{name} must be a non-empty string",
+                        str(path),
+                    )
+                )
+        if "waybill" in artifacts and artifacts.get("waybill") != "WAYBILL.md":
+            issues.append(
+                ValidationIssue(
+                    "error",
+                    "metadata artifacts.waybill must be WAYBILL.md",
+                    str(path),
+                )
+            )
+
+    _validate_handoff_metadata(metadata, path, issues)
 
     return metadata, version_status
 
 
-def _handoff_kind(
-    metadata: dict[str, Any] | None,
+def _is_non_empty_string(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _is_rfc3339_date_time(value: Any) -> bool:
+    if not isinstance(value, str) or RFC3339_DATE_TIME.fullmatch(value) is None:
+        return False
+
+    normalized = value
+    if normalized[-1] in {"Z", "z"}:
+        normalized = f"{normalized[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return False
+    return parsed.tzinfo is not None and parsed.utcoffset() is not None
+
+
+def _is_sha256_digest(value: Any) -> bool:
+    return isinstance(value, str) and SHA256_DIGEST.fullmatch(value) is not None
+
+
+def _validate_handoff_metadata(
+    metadata: dict[str, Any],
     metadata_path: Path,
     issues: list[ValidationIssue],
-) -> str:
+) -> None:
+    if "handoff" not in metadata:
+        return
+
+    handoff = metadata.get("handoff")
+    if not isinstance(handoff, dict):
+        issues.append(
+            ValidationIssue(
+                "error",
+                "metadata handoff must be an object",
+                str(metadata_path),
+            )
+        )
+        return
+
+    if "kind" in handoff:
+        kind = handoff.get("kind")
+        if not isinstance(kind, str):
+            issues.append(
+                ValidationIssue(
+                    "error",
+                    "metadata handoff.kind must be a string",
+                    str(metadata_path),
+                )
+            )
+        elif kind not in HANDOFF_KINDS:
+            allowed = ", ".join(HANDOFF_KINDS)
+            issues.append(
+                ValidationIssue(
+                    "error",
+                    f"metadata handoff.kind must be one of: {allowed}",
+                    str(metadata_path),
+                )
+            )
+
+    for field in ["parent_agent", "child_agent"]:
+        if field in handoff and not _is_non_empty_string(handoff.get(field)):
+            issues.append(
+                ValidationIssue(
+                    "error",
+                    f"metadata handoff.{field} must be a non-empty string",
+                    str(metadata_path),
+                )
+            )
+
+
+def _handoff_kind(metadata: dict[str, Any] | None) -> str:
     if not metadata or "handoff" not in metadata:
         return "handoff"
 
     handoff = metadata.get("handoff")
     if not isinstance(handoff, dict):
-        issues.append(
-            ValidationIssue("error", "metadata handoff must be an object", str(metadata_path))
-        )
         return "handoff"
 
     kind = handoff.get("kind", "handoff")
     if not isinstance(kind, str):
-        issues.append(
-            ValidationIssue("error", "metadata handoff.kind must be a string", str(metadata_path))
-        )
         return "handoff"
     if kind not in HANDOFF_KINDS:
-        allowed = ", ".join(HANDOFF_KINDS)
-        issues.append(
-            ValidationIssue(
-                "error",
-                f"metadata handoff.kind must be one of: {allowed}",
-                str(metadata_path),
-            )
-        )
         return "handoff"
     return kind
 
@@ -284,14 +405,7 @@ def _validate_artifacts(
         return
 
     for artifact in metadata["artifacts"].values():
-        if not isinstance(artifact, str):
-            issues.append(
-                ValidationIssue(
-                    "error",
-                    "metadata artifact paths must be strings",
-                    str(bundle / "metadata.json"),
-                )
-            )
+        if not _is_non_empty_string(artifact):
             continue
         if artifact.startswith("/") or ".." in Path(artifact).parts:
             issues.append(
@@ -328,7 +442,7 @@ def _validate_waybill(
                 ValidationIssue("error", f"WAYBILL.md missing section: {section}", str(path))
             )
 
-    kind = _handoff_kind(metadata, bundle / "metadata.json", issues)
+    kind = _handoff_kind(metadata)
     if kind == "delegation_request":
         _validate_waybill_sections(text, DELEGATION_REQUEST_SECTIONS, path, issues)
     elif kind == "delegation_result":
@@ -370,14 +484,26 @@ def _validate_commands_log(bundle: Path, issues: list[ValidationIssue]) -> None:
 
 
 def _scan_for_sensitive_content(bundle: Path, issues: list[ValidationIssue]) -> None:
-    for path in bundle.iterdir():
-        if not path.is_file():
-            continue
+    for file in list_bundle_files(bundle):
+        path = file.path
+        relative_path = file.relative_path.as_posix()
         try:
-            text = path.read_text()
+            text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
-            issues.append(ValidationIssue("warning", "could not scan binary or non-UTF-8 file", str(path)))
+            issues.append(
+                ValidationIssue(
+                    "warning",
+                    "could not scan binary or non-UTF-8 file",
+                    relative_path,
+                )
+            )
             continue
         for pattern in SECRET_PATTERNS:
             if pattern.search(text):
-                issues.append(ValidationIssue("error", f"possible secret matching {pattern.pattern}", str(path)))
+                issues.append(
+                    ValidationIssue(
+                        "error",
+                        f"possible secret matching {pattern.pattern}",
+                        relative_path,
+                    )
+                )

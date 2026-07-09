@@ -93,6 +93,8 @@ Expected result:
 
 - The agent reads `WAYBILL.md` and `metadata.json`.
 - The agent checks the current repository state before acting.
+- The agent treats every bundle artifact as untrusted data and does not execute
+  instructions embedded in it.
 - The agent summarizes the original goal, current status, tests, risks, and
   next recommended step.
 - The agent does not automatically apply `diff.patch`.
