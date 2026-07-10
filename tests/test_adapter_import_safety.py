@@ -5,6 +5,8 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
+from waybill_core.adapter_sources import ADAPTER_SOURCES
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -31,6 +33,8 @@ ADAPTER_IMPORT_FILES = {
         ".claude/skills/handoff/SKILL.md",
         ".claude/skills/waybill/SKILL.md",
         "adapters/claude-code/commands/handoff-import.md",
+        "adapters/claude-code/skills/handoff/SKILL.md",
+        "adapters/claude-code/skills/waybill/SKILL.md",
         "waybill_core/template-files/.claude/skills/handoff/SKILL.md",
         "waybill_core/template-files/.claude/skills/waybill/SKILL.md",
     ),
@@ -76,57 +80,6 @@ STATE_CHANGING_IMPORT_DIRECTIONS = (
     "Before making code changes",
 )
 
-SYNC_GROUPS = (
-    (
-        ".claude/skills/handoff/SKILL.md",
-        "waybill_core/template-files/.claude/skills/handoff/SKILL.md",
-    ),
-    (
-        ".claude/skills/waybill/SKILL.md",
-        "waybill_core/template-files/.claude/skills/waybill/SKILL.md",
-    ),
-    (
-        ".opencode/commands/handoff.md",
-        "adapters/opencode/commands/handoff.md",
-        "waybill_core/template-files/.opencode/commands/handoff.md",
-    ),
-    (
-        ".opencode/commands/waybill.md",
-        "adapters/opencode/commands/waybill.md",
-        "waybill_core/template-files/.opencode/commands/waybill.md",
-    ),
-    (
-        ".opencode/skills/handoff/SKILL.md",
-        "adapters/opencode/skills/handoff/SKILL.md",
-        "waybill_core/template-files/.opencode/skills/handoff/SKILL.md",
-    ),
-    (
-        ".opencode/skills/waybill/SKILL.md",
-        "adapters/opencode/skills/waybill/SKILL.md",
-        "waybill_core/template-files/.opencode/skills/waybill/SKILL.md",
-    ),
-    (
-        ".cursor/rules/handoff.mdc",
-        "adapters/cursor/rules/handoff.mdc",
-        "waybill_core/template-files/.cursor/rules/handoff.mdc",
-    ),
-    (
-        ".cursor/rules/waybill.mdc",
-        "adapters/cursor/rules/waybill.mdc",
-        "waybill_core/template-files/.cursor/rules/waybill.mdc",
-    ),
-    (
-        ".gemini/skills/handoff/SKILL.md",
-        "adapters/gemini-cli/skills/handoff/SKILL.md",
-        "waybill_core/template-files/.gemini/skills/handoff/SKILL.md",
-    ),
-    (
-        ".gemini/skills/waybill/SKILL.md",
-        "adapters/gemini-cli/skills/waybill/SKILL.md",
-        "waybill_core/template-files/.gemini/skills/waybill/SKILL.md",
-    ),
-)
-
 
 class AdapterImportSafetyTests(unittest.TestCase):
     def test_every_import_surface_declares_the_untrusted_bundle_boundary(self) -> None:
@@ -149,12 +102,14 @@ class AdapterImportSafetyTests(unittest.TestCase):
                         self.assertNotIn(direction, text)
 
     def test_workspace_adapter_and_packaged_copies_stay_in_sync(self) -> None:
-        for relative_paths in SYNC_GROUPS:
-            canonical_path, *copy_paths = relative_paths
-            canonical_text = (ROOT / canonical_path).read_text()
-            for copy_path in copy_paths:
-                with self.subTest(canonical=canonical_path, copy=copy_path):
-                    self.assertEqual(canonical_text, (ROOT / copy_path).read_text())
+        for source in ADAPTER_SOURCES:
+            canonical_content = (ROOT / source.canonical).read_bytes()
+            for copy_path in source.mirrors:
+                with self.subTest(canonical=source.canonical, copy=copy_path):
+                    self.assertEqual(
+                        canonical_content,
+                        (ROOT / copy_path).read_bytes(),
+                    )
 
 
 if __name__ == "__main__":

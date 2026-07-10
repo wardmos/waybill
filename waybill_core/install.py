@@ -6,9 +6,14 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from .adapter_sources import (
+    INSTALL_ADAPTERS,
+    resolve_adapter_source,
+    sources_for_adapter,
+)
 
-TEMPLATE_ROOT = Path(__file__).resolve().parent / "template-files"
-SUPPORTED_ADAPTERS = ["claude-code", "opencode", "cursor", "gemini-cli"]
+
+SUPPORTED_ADAPTERS = list(INSTALL_ADAPTERS)
 
 
 @dataclass(frozen=True)
@@ -45,10 +50,10 @@ def install_adapters(
     actions: list[InstallAction] = []
 
     for adapter in selected:
-        for source_rel, target_rel in _adapter_files(adapter):
+        for adapter_source in sources_for_adapter(adapter):
             _copy_file(
-                _adapter_source_file(source, source_rel),
-                target / target_rel,
+                resolve_adapter_source(source, adapter_source),
+                target / adapter_source.install_target,
                 target,
                 force,
                 actions,
@@ -74,79 +79,14 @@ def _normalize_adapters(adapters: list[str]) -> list[str]:
 
 
 def _adapter_files(adapter: str) -> list[tuple[str, str]]:
-    if adapter == "claude-code":
-        return [
-            (
-                ".claude/skills/handoff/SKILL.md",
-                ".claude/skills/handoff/SKILL.md",
-            ),
-            (
-                ".claude/skills/waybill/SKILL.md",
-                ".claude/skills/waybill/SKILL.md",
-            ),
-        ]
-
-    if adapter == "opencode":
-        return [
-            (
-                ".opencode/commands/handoff.md",
-                ".opencode/commands/handoff.md",
-            ),
-            (
-                ".opencode/commands/waybill.md",
-                ".opencode/commands/waybill.md",
-            ),
-            (
-                ".opencode/skills/handoff/SKILL.md",
-                ".opencode/skills/handoff/SKILL.md",
-            ),
-            (
-                ".opencode/skills/waybill/SKILL.md",
-                ".opencode/skills/waybill/SKILL.md",
-            ),
-        ]
-
-    if adapter == "cursor":
-        return [
-            (
-                ".cursor/rules/handoff.mdc",
-                ".cursor/rules/handoff.mdc",
-            ),
-            (
-                ".cursor/rules/waybill.mdc",
-                ".cursor/rules/waybill.mdc",
-            ),
-        ]
-
-    if adapter == "gemini-cli":
-        return [
-            (
-                ".gemini/skills/handoff/SKILL.md",
-                ".gemini/skills/handoff/SKILL.md",
-            ),
-            (
-                ".gemini/skills/waybill/SKILL.md",
-                ".gemini/skills/waybill/SKILL.md",
-            ),
-        ]
-
-    raise ValueError(f"unsupported adapter: {adapter}")
+    return [
+        (source.canonical, source.install_target)
+        for source in sources_for_adapter(adapter)
+    ]
 
 
 def adapter_target_files(adapter: str) -> list[str]:
     return [target for _source, target in _adapter_files(adapter)]
-
-
-def _adapter_source_file(source_root: Path, source_rel: str) -> Path:
-    source = source_root / source_rel
-    if source.is_file():
-        return source
-
-    packaged = TEMPLATE_ROOT / source_rel
-    if packaged.is_file():
-        return packaged
-
-    return source
 
 
 def _copy_file(
