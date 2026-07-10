@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .limits import MAX_DIFF_BYTES, format_bytes
+from .repo import read_repo_fidelity
 from .schema_versions import CURRENT_SCHEMA_VERSION
 
 
@@ -94,21 +95,31 @@ def _check_output_path(output: Path, force: bool) -> None:
 
 
 def _read_git_state(repo: Path) -> dict[str, str]:
+    fidelity = read_repo_fidelity(repo)
     return {
         "branch": _git_value(repo, "branch", "--show-current") or "HEAD",
         "base_ref": "unknown",
         "head_sha": _git_value(repo, "rev-parse", "HEAD") or "unknown",
         "status": _git_value(repo, "status", "--short"),
+        "status_digest": fidelity.status_digest,
+        "repo_state_digest": fidelity.repo_state_digest,
     }
 
 
 def _diff_text(repo: Path, max_diff_bytes: int) -> str:
-    diff, truncated = _git_value_limited(repo, max_diff_bytes, "diff", "--binary")
+    diff, truncated = _git_value_limited(
+        repo,
+        max_diff_bytes,
+        "diff",
+        "--binary",
+        "HEAD",
+        "--",
+    )
     if truncated:
         return (
             "# Diff omitted.\n"
             "#\n"
-            "# `git diff --binary` exceeded the Waybill draft limit of "
+            "# `git diff --binary HEAD --` exceeded the Waybill draft limit of "
             f"{format_bytes(max_diff_bytes)}.\n"
             "# Review the repository directly and capture only the relevant changes\n"
             "# before sharing this bundle.\n"
@@ -141,6 +152,8 @@ def _metadata_text(
             "base_ref": git["base_ref"],
             "head_sha": git["head_sha"],
             "dirty": bool(git["status"].strip()),
+            "status_digest": git["status_digest"],
+            "repo_state_digest": git["repo_state_digest"],
         },
         "artifacts": {
             "waybill": "WAYBILL.md",
@@ -238,7 +251,7 @@ Read-only inspection commands:
 git -C {repo} branch --show-current -> {git["branch"]}
 git -C {repo} rev-parse HEAD -> {git["head_sha"]}
 git -C {repo} status --short -> {status}
-git -C {repo} diff --binary -> captured in diff.patch
+git -C {repo} diff --binary HEAD -- -> captured in diff.patch
 ```
 
 Bundle-writing actions:
@@ -294,7 +307,8 @@ def _git_value_limited(
         stderr=subprocess.DEVNULL,
     )
     assert process.stdout is not None
-    output = process.stdout.read(max_bytes + 1)
+    with process.stdout:
+        output = process.stdout.read(max_bytes + 1)
     if len(output) > max_bytes:
         process.kill()
         process.wait()

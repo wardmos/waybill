@@ -179,6 +179,11 @@ This checks:
 - CLI adapter initialization into target repositories in text and JSON.
 - CLI adapter diagnostics for complete, partial, and missing installations.
 - CLI draft bundle scaffolding in text and JSON.
+- Runtime metadata type, timestamp, digest, and nested sensitive-content
+  validation.
+- Repository fidelity for staged, unstaged, and untracked-path changes without
+  capturing untracked contents.
+- Untrusted-input boundaries across every adapter import surface.
 - CLI repository verification for matching and mismatched branch, HEAD, and
   dirty state.
 - CLI import preflight for valid input and combined bundle/repository failures.

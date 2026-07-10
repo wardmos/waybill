@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from dataclasses import dataclass
@@ -29,6 +30,13 @@ class RepoVerificationReport:
         return any(check.status == "error" for check in self.checks)
 
 
+@dataclass(frozen=True)
+class RepoFidelity:
+    status: bytes
+    status_digest: str
+    repo_state_digest: str
+
+
 def verify_repo_state(
     bundle_path: str | Path,
     repo_path: str | Path,
@@ -46,6 +54,18 @@ def verify_repo_state(
     _compare_value("branch", git.get("branch"), current.get("branch"), checks)
     _compare_value("head_sha", git.get("head_sha"), current.get("head_sha"), checks)
     _compare_dirty(git.get("dirty"), current.get("dirty"), checks)
+    _compare_optional_digest(
+        "status_digest",
+        git.get("status_digest"),
+        current.get("status_digest"),
+        checks,
+    )
+    _compare_optional_digest(
+        "repo_state_digest",
+        git.get("repo_state_digest"),
+        current.get("repo_state_digest"),
+        checks,
+    )
 
     return RepoVerificationReport(bundle, repo, checks)
 
@@ -84,9 +104,7 @@ def _read_repo_state(repo: Path, checks: list[RepoCheck]) -> dict[str, object] |
 
     branch = _git(repo, "branch", "--show-current")
     head = _git(repo, "rev-parse", "HEAD")
-    status = _git(repo, "status", "--short")
-
-    failed = [result for result in [branch, head, status] if result.returncode != 0]
+    failed = [result for result in [branch, head] if result.returncode != 0]
     if failed:
         message = (
             failed[0].stderr.strip()
@@ -96,11 +114,19 @@ def _read_repo_state(repo: Path, checks: list[RepoCheck]) -> dict[str, object] |
         checks.append(_error("repo", "git repository", str(repo), message))
         return None
 
+    try:
+        fidelity = read_repo_fidelity(repo)
+    except ValueError as exc:
+        checks.append(_error("repo", "readable git state", str(repo), str(exc)))
+        return None
+
     checks.append(RepoCheck("repo", "ok", "git repository", str(repo), "read"))
     return {
         "branch": branch.stdout.strip() or "HEAD",
         "head_sha": head.stdout.strip(),
-        "dirty": bool(status.stdout.strip()),
+        "dirty": bool(fidelity.status),
+        "status_digest": fidelity.status_digest,
+        "repo_state_digest": fidelity.repo_state_digest,
     }
 
 
@@ -137,6 +163,107 @@ def _compare_dirty(expected: object, actual: object, checks: list[RepoCheck]) ->
         checks.append(RepoCheck("dirty", "ok", expected, actual, "matches"))
     else:
         checks.append(RepoCheck("dirty", "error", expected, actual, "does not match"))
+
+
+def _compare_optional_digest(
+    name: str,
+    expected: object,
+    actual: object,
+    checks: list[RepoCheck],
+) -> None:
+    if expected in [None, "", "unknown"]:
+        checks.append(
+            RepoCheck(
+                name,
+                "warning",
+                expected,
+                actual,
+                "bundle does not record this optional repository digest",
+            )
+        )
+        return
+
+    if expected == actual:
+        checks.append(RepoCheck(name, "ok", expected, actual, "matches"))
+    else:
+        checks.append(RepoCheck(name, "error", expected, actual, "does not match"))
+
+
+def read_repo_fidelity(repo: Path) -> RepoFidelity:
+    status = _git_bytes(
+        repo,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+    )
+    index = _git_bytes(repo, "ls-files", "--stage", "-z")
+    unstaged_diff = _git_bytes(
+        repo,
+        "diff",
+        "--binary",
+        "--full-index",
+        "--no-color",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--no-renames",
+        "--diff-algorithm=myers",
+        "--no-indent-heuristic",
+        "--unified=0",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+        "--",
+    )
+
+    status_bytes = _require_git_bytes(status, "git status")
+    index_bytes = _require_git_bytes(index, "git ls-files")
+    unstaged_diff_bytes = _require_git_bytes(unstaged_diff, "git diff")
+    return RepoFidelity(
+        status=status_bytes,
+        status_digest=_digest(
+            b"waybill-status-v1",
+            [(b"porcelain-v1-z", status_bytes)],
+        ),
+        repo_state_digest=_digest(
+            b"waybill-repo-state-v1",
+            [
+                (b"porcelain-v1-z", status_bytes),
+                (b"index-v1-z", index_bytes),
+                (b"unstaged-diff-v1", unstaged_diff_bytes),
+            ],
+        ),
+    )
+
+
+def _digest(domain: bytes, components: list[tuple[bytes, bytes]]) -> str:
+    digest = hashlib.sha256()
+    digest.update(domain)
+    digest.update(b"\0")
+    for name, value in components:
+        digest.update(len(name).to_bytes(4, "big"))
+        digest.update(name)
+        digest.update(len(value).to_bytes(8, "big"))
+        digest.update(value)
+    return f"sha256:{digest.hexdigest()}"
+
+
+def _git_bytes(repo: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
+def _require_git_bytes(
+    result: subprocess.CompletedProcess[bytes],
+    command: str,
+) -> bytes:
+    if result.returncode == 0:
+        return result.stdout
+    detail = (result.stderr or result.stdout).decode(errors="replace").strip()
+    raise ValueError(f"{command} failed: {detail or 'unknown git error'}")
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:

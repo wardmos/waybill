@@ -69,9 +69,12 @@ Expected result:
 - `.waybill/` is created in the target repository.
 - `WAYBILL.md` summarizes the goal, status, changed files, tests, risks, and
   next step.
-- `metadata.json` records branch, dirty state, and artifact paths.
-- `diff.patch`, `commands.log`, and `test-summary.md` are included when useful
-  context is available.
+- `metadata.json` records branch, dirty state, privacy-preserving repository
+  state digests, and artifact paths.
+- `diff.patch` captures staged and unstaged tracked changes. Untracked contents
+  are not captured automatically.
+- `commands.log` and `test-summary.md` are included when useful context is
+  available.
 - Very large diffs are omitted from `diff.patch` with an explanatory note; add
   only the relevant changes before sharing.
 

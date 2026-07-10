@@ -40,6 +40,16 @@
         },
         "dirty": {
           "type": "boolean"
+        },
+        "status_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "description": "Optional SHA-256 digest of stable porcelain status bytes, including untracked paths but not untracked file contents."
+        },
+        "repo_state_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "description": "Optional SHA-256 digest of canonical status, index, and unstaged tracked diff bytes. Only the digest is stored."
         }
       }
     },

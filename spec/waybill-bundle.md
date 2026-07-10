@@ -54,6 +54,24 @@ Recommended:
 Adapters may include additional files, but importers must not require them for
 basic handoff.
 
+## Repository Fidelity
+
+New bundles may include optional `git.status_digest` and
+`git.repo_state_digest` metadata:
+
+- `status_digest` fingerprints the stable Git porcelain status, including
+  untracked paths but not untracked file contents.
+- `repo_state_digest` fingerprints status, index state, and unstaged tracked
+  changes.
+
+Both values use `sha256:<hex>` and contain no raw file paths or file content.
+Importers should compare them when present and warn, rather than fail, when
+reading an older bundle that does not include them.
+
+`diff.patch` created by the support CLI captures staged and unstaged tracked
+changes relative to `HEAD`. Untracked file contents are never added
+automatically.
+
 ## Handoff Kinds
 
 By default, a bundle is an ordinary agent-to-agent handoff. Compatible exporters
@@ -140,7 +158,7 @@ An adapter exporting a bundle should:
    - `git status --short`
    - `git branch --show-current`
    - `git rev-parse HEAD`
-   - `git diff`
+   - `git diff --binary HEAD --`
 3. Create `.waybill/`.
 4. Write `WAYBILL.md` using the exact section headings from the standard
    template.
