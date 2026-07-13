@@ -176,6 +176,7 @@ repositories.
 | `validate` | Validate bundle structure, metadata, artifacts, and obvious secrets |
 | `inspect` | Summarize metadata, artifacts, and validation status |
 | `verify-repo` | Compare bundle metadata with the current repo state |
+| `verify-pair` | Verify delegation correlation, roles, sources, and result status |
 | `preflight` | Run validation plus repository-state checks before import |
 | `ready` | Check whether a bundle is ready for handoff |
 | `redact` | Create a redacted review copy |

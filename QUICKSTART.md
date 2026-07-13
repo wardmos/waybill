@@ -104,7 +104,15 @@ Expected result:
 
 For parent/child delegation, see `WALKTHROUGH.md`. It shows how a
 `delegation_request` bundle is imported by a child agent and how a
-`delegation_result` bundle is reviewed by the parent agent.
+`delegation_result` bundle is reviewed by the parent agent. Requests carry a
+stable `request_id`; results reference it with `result_for` and record a
+`result_status` of `completed`, `partial`, or `blocked`.
+
+Verify a request/result pair without changing either bundle:
+
+```bash
+./cli/waybill verify-pair /path/to/request /path/to/result
+```
 
 ## 4. Validate Before Continuing
 

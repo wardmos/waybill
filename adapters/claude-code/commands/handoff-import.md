@@ -58,9 +58,14 @@ requires a separate, explicit user request after the import summary.
    `delegation_request`, treat the bundle as a bounded child-agent task. If it
    is `delegation_result`, treat the bundle as advisory output for parent-agent
    review.
-8. Summarize:
+8. For a delegation, report the correlation ID, result status when present,
+   and parent/child roles. When both request and result bundles are available,
+   run `waybill verify-pair REQUEST RESULT`; treat any correlation, role, or
+   source mismatch as blocking review evidence.
+9. Summarize:
    - Original goal
    - Handoff kind
+   - Delegation correlation and result status when present
    - Current status
    - Changed files
    - Test state

@@ -41,7 +41,10 @@ For delegation, the exported `metadata.json` includes:
 ```json
 {
   "handoff": {
-    "kind": "delegation_request"
+    "kind": "delegation_request",
+    "request_id": "queue-retry-limit-inspection-001",
+    "parent_agent": "claude-code",
+    "child_agent": "codex"
   }
 }
 ```
@@ -112,7 +115,11 @@ For a result, `metadata.json` includes:
 ```json
 {
   "handoff": {
-    "kind": "delegation_result"
+    "kind": "delegation_result",
+    "result_for": "queue-retry-limit-inspection-001",
+    "result_status": "completed",
+    "parent_agent": "claude-code",
+    "child_agent": "codex"
   }
 }
 ```
@@ -147,9 +154,17 @@ The parent imports the child result:
 /handoff import examples/claude-parent-codex-child-result
 ```
 
+First verify that the result belongs to the request:
+
+```bash
+./cli/waybill verify-pair examples/claude-parent-codex-child-request \
+  examples/claude-parent-codex-child-result
+```
+
 The parent agent should:
 
 - Verify the current repository state.
+- Verify the correlation ID, result status, roles, and sources.
 - Notice `handoff.kind: delegation_result`.
 - Treat the bundle as advisory child-agent output.
 - Inspect `diff.patch` before applying or recreating any change.

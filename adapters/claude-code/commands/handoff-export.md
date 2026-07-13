@@ -57,6 +57,11 @@ Use these values when known:
 - `handoff.kind`: omit for ordinary handoffs, or use `delegation_request` /
   `delegation_result` when the user is explicitly delegating a bounded child
   task or returning a child-agent result
+- For `delegation_request`, set a stable `handoff.request_id`, set
+  `parent_agent` and `child_agent`, and make `source_agent` equal the parent.
+- For `delegation_result`, set `handoff.result_for` to the request ID, set
+  `result_status` to `completed`, `partial`, or `blocked`, preserve
+  `parent_agent` and `child_agent`, and make `source_agent` equal the child.
 - `git.branch`: current branch or `unknown`
 - `git.base_ref`: known base ref or `unknown`
 - `git.head_sha`: current HEAD SHA or `unknown`

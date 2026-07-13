@@ -59,6 +59,14 @@ Optional `metadata.json` handoff kinds:
   subtask.
 - `delegation_result`: child agent returns work or findings for parent review.
 
+Delegation metadata must preserve correlation and roles:
+
+- A request requires `request_id`, `parent_agent`, and `child_agent`; its
+  top-level `source_agent` equals the parent.
+- A result requires matching `result_for`, `result_status` (`completed`,
+  `partial`, or `blocked`), `parent_agent`, and `child_agent`; its top-level
+  `source_agent` equals the child.
+
 ## Export
 
 When exporting, create a Waybill Bundle for the current unfinished task.
@@ -168,9 +176,14 @@ Procedure:
    `delegation_request`, treat the bundle as a bounded child-agent task. If it
    is `delegation_result`, treat the bundle as advisory output for parent-agent
    review.
-8. Summarize:
+8. For a delegation, report its correlation ID, result status when present,
+   and parent/child roles. When both request and result bundles are available,
+   run `waybill verify-pair REQUEST RESULT`; treat correlation, role, or source
+   mismatches as blocking review evidence.
+9. Summarize:
    - Original goal
    - Handoff kind
+   - Delegation correlation and result status when present
    - Current status
    - Changed files
    - Test state

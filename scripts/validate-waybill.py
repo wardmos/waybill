@@ -313,6 +313,7 @@ def validate_structure() -> None:
         "delegation_result",
         "/handoff import examples/claude-parent-codex-child-request",
         "/handoff import examples/claude-parent-codex-child-result",
+        "./cli/waybill verify-pair",
         "Import remains non-destructive",
     ]:
         if expected not in walkthrough:
@@ -337,6 +338,10 @@ def validate_structure() -> None:
     for expected in [
         "delegation_request",
         "delegation_result",
+        "request_id",
+        "result_for",
+        "result_status",
+        "waybill verify-pair REQUEST RESULT",
         "Child Agent Task",
         "Parent Next Step",
         "must not automatically apply `diff.patch`",
@@ -373,6 +378,23 @@ def validate_metadata_schema() -> None:
     kind = handoff.get("properties", {}).get("kind", {})
     if kind.get("enum") != ["handoff", "delegation_request", "delegation_result"]:
         fail("metadata schema must define supported handoff.kind values")
+    result_status = handoff.get("properties", {}).get("result_status", {})
+    if result_status.get("enum") != ["completed", "partial", "blocked"]:
+        fail("metadata schema must define supported delegation result statuses")
+    conditional_required = {
+        tuple(rule.get("then", {}).get("required", []))
+        for rule in handoff.get("allOf", [])
+    }
+    if conditional_required != {
+        ("request_id", "parent_agent", "child_agent"),
+        (
+            "result_for",
+            "result_status",
+            "parent_agent",
+            "child_agent",
+        ),
+    }:
+        fail("metadata schema must require delegation correlation and role fields")
 
 
 def validate_schema_version_compatibility() -> None:
@@ -815,12 +837,15 @@ def validate_examples() -> None:
     expected_delegation = {
         "examples/claude-parent-codex-child-request": {
             "kind": "delegation_request",
+            "request_id": "queue-retry-limit-inspection-001",
             "source_agent": "claude-code",
             "parent_agent": "claude-code",
             "child_agent": "codex",
         },
         "examples/claude-parent-codex-child-result": {
             "kind": "delegation_result",
+            "result_for": "queue-retry-limit-inspection-001",
+            "result_status": "completed",
             "source_agent": "codex",
             "parent_agent": "claude-code",
             "child_agent": "codex",
@@ -832,9 +857,11 @@ def validate_examples() -> None:
         handoff = metadata.get("handoff")
         if not isinstance(handoff, dict):
             fail(f"{example} must include handoff metadata")
-        for field in ["kind", "parent_agent", "child_agent"]:
-            if handoff.get(field) != expected[field]:
-                fail(f"{example} must set handoff.{field} to {expected[field]}")
+        for field, value in expected.items():
+            if field == "source_agent":
+                continue
+            if handoff.get(field) != value:
+                fail(f"{example} must set handoff.{field} to {value}")
         if metadata.get("source_agent") != expected["source_agent"]:
             fail(f"{example} must set source_agent to {expected['source_agent']}")
         roles.add((handoff.get("parent_agent"), handoff.get("child_agent")))
