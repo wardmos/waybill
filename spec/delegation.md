@@ -9,12 +9,17 @@ verify, and summarize before taking action.
 
 ## Metadata
 
-Delegation-aware bundles use optional `metadata.json` handoff metadata:
+Delegation-aware bundles use `metadata.json` handoff metadata. A request has a
+stable identifier and explicit parent/child roles:
 
 ```json
 {
+  "source_agent": "claude-code",
   "handoff": {
-    "kind": "delegation_request"
+    "kind": "delegation_request",
+    "request_id": "queue-retry-limit-inspection-001",
+    "parent_agent": "claude-code",
+    "child_agent": "codex"
   }
 }
 ```
@@ -27,6 +32,18 @@ Allowed `handoff.kind` values:
   bounded subtask and return a result.
 - `delegation_result`: A child agent is returning completed work, findings, or
   a proposed patch to a parent agent for review.
+
+A `delegation_request` requires `request_id`, `parent_agent`, and `child_agent`.
+Its top-level `source_agent` must equal `parent_agent`.
+
+A `delegation_result` requires `result_for`, `result_status`, `parent_agent`,
+and `child_agent`. `result_for` identifies the request, `result_status` is one
+of `completed`, `partial`, or `blocked`, and top-level `source_agent` must equal
+`child_agent`.
+
+For a valid pair, the result's `result_for` must equal the request's
+`request_id`, and both bundles must preserve the same parent and child roles.
+Use `waybill verify-pair REQUEST RESULT` for a read-only pair check.
 
 Importers that do not understand delegation can still read the standard
 `WAYBILL.md` sections. Delegation-aware importers should use `handoff.kind` to

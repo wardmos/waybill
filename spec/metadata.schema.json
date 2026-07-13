@@ -76,18 +76,63 @@
       "type": "object",
       "description": "Optional handoff semantics for compatible importers.",
       "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "const": "delegation_request"
+              }
+            }
+          },
+          "then": {
+            "required": ["request_id", "parent_agent", "child_agent"]
+          }
+        },
+        {
+          "if": {
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "const": "delegation_result"
+              }
+            }
+          },
+          "then": {
+            "required": ["result_for", "result_status", "parent_agent", "child_agent"]
+          }
+        }
+      ],
       "properties": {
         "kind": {
           "type": "string",
           "enum": ["handoff", "delegation_request", "delegation_result"],
           "description": "Use handoff for ordinary transfers, delegation_request for parent-to-child subtasks, and delegation_result for child-to-parent results."
         },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable correlation identifier required on a delegation request."
+        },
+        "result_for": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Request identifier required on a delegation result."
+        },
+        "result_status": {
+          "type": "string",
+          "enum": ["completed", "partial", "blocked"],
+          "description": "Outcome required on a delegation result."
+        },
         "parent_agent": {
           "type": "string",
+          "minLength": 1,
           "description": "Optional name of the parent agent role or adapter."
         },
         "child_agent": {
           "type": "string",
+          "minLength": 1,
           "description": "Optional name of the child agent role or adapter."
         }
       }

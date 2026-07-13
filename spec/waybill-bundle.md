@@ -94,6 +94,13 @@ Allowed `handoff.kind` values are:
 - `delegation_result`: A child agent returns work, findings, or a proposed patch
   for parent-agent review.
 
+Delegation requests require a stable `request_id` plus `parent_agent` and
+`child_agent`. Delegation results carry the request ID in `result_for`, record
+`result_status` as `completed`, `partial`, or `blocked`, and preserve the same
+roles. The request source is the parent and the result source is the child.
+`waybill verify-pair REQUEST RESULT` validates these invariants without changing
+either bundle.
+
 Delegation-aware bundles still include the standard files and sections. See
 `spec/delegation.md` for the additional sections and import posture.
 

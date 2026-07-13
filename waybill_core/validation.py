@@ -22,6 +22,7 @@ REQUIRED_BUNDLE_FILES = ["WAYBILL.md", "metadata.json"]
 RECOMMENDED_BUNDLE_FILES = ["diff.patch", "commands.log", "test-summary.md"]
 
 HANDOFF_KINDS = ["handoff", "delegation_request", "delegation_result"]
+DELEGATION_RESULT_STATUSES = ["completed", "partial", "blocked"]
 
 RFC3339_DATE_TIME = re.compile(
     r"^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}"
@@ -349,8 +350,8 @@ def _validate_handoff_metadata(
         )
         return
 
+    kind = handoff.get("kind", "handoff")
     if "kind" in handoff:
-        kind = handoff.get("kind")
         if not isinstance(kind, str):
             issues.append(
                 ValidationIssue(
@@ -369,12 +370,79 @@ def _validate_handoff_metadata(
                 )
             )
 
-    for field in ["parent_agent", "child_agent"]:
+    for field in ["parent_agent", "child_agent", "request_id", "result_for"]:
         if field in handoff and not _is_non_empty_string(handoff.get(field)):
             issues.append(
                 ValidationIssue(
                     "error",
                     f"metadata handoff.{field} must be a non-empty string",
+                    str(metadata_path),
+                )
+            )
+
+    if "result_status" in handoff and handoff.get(
+        "result_status"
+    ) not in DELEGATION_RESULT_STATUSES:
+        allowed = ", ".join(DELEGATION_RESULT_STATUSES)
+        issues.append(
+            ValidationIssue(
+                "error",
+                f"metadata handoff.result_status must be one of: {allowed}",
+                str(metadata_path),
+            )
+        )
+
+    if kind == "delegation_request":
+        _require_handoff_fields(
+            handoff,
+            ["request_id", "parent_agent", "child_agent"],
+            kind,
+            metadata_path,
+            issues,
+        )
+        parent = handoff.get("parent_agent")
+        if _is_non_empty_string(parent) and metadata.get("source_agent") != parent:
+            issues.append(
+                ValidationIssue(
+                    "error",
+                    "metadata source_agent must match handoff.parent_agent "
+                    "for delegation_request",
+                    str(metadata_path),
+                )
+            )
+    elif kind == "delegation_result":
+        _require_handoff_fields(
+            handoff,
+            ["result_for", "result_status", "parent_agent", "child_agent"],
+            kind,
+            metadata_path,
+            issues,
+        )
+        child = handoff.get("child_agent")
+        if _is_non_empty_string(child) and metadata.get("source_agent") != child:
+            issues.append(
+                ValidationIssue(
+                    "error",
+                    "metadata source_agent must match handoff.child_agent "
+                    "for delegation_result",
+                    str(metadata_path),
+                )
+            )
+
+
+def _require_handoff_fields(
+    handoff: dict[str, Any],
+    fields: list[str],
+    kind: str,
+    metadata_path: Path,
+    issues: list[ValidationIssue],
+) -> None:
+    for field in fields:
+        if field not in handoff:
+            issues.append(
+                ValidationIssue(
+                    "error",
+                    f"metadata handoff.{field} is required for {kind}",
                     str(metadata_path),
                 )
             )

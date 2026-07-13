@@ -5,6 +5,8 @@
   "repo_root": ".",
   "handoff": {
     "kind": "delegation_result",
+    "result_for": "queue-retry-limit-inspection-001",
+    "result_status": "completed",
     "parent_agent": "claude-code",
     "child_agent": "codex"
   },
