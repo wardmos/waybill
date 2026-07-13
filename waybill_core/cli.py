@@ -20,6 +20,11 @@ from waybill_core.doctor import (  # noqa: E402
     DoctorReport,
     doctor_repository,
 )
+from waybill_core.delegation import (  # noqa: E402
+    DelegationPairCheck,
+    DelegationPairReport,
+    verify_delegation_pair,
+)
 from waybill_core.install import (  # noqa: E402
     InstallAction,
     InstallReport,
@@ -255,6 +260,39 @@ def build_repo_report(report: RepoVerificationReport) -> dict[str, object]:
     }
 
 
+def delegation_pair_check_to_dict(
+    check: DelegationPairCheck,
+) -> dict[str, object]:
+    return {
+        "name": check.name,
+        "status": check.status,
+        "expected": check.expected,
+        "actual": check.actual,
+        "message": check.message,
+    }
+
+
+def build_delegation_pair_report(
+    report: DelegationPairReport,
+) -> dict[str, object]:
+    request_handoff = report.request_handoff
+    result_handoff = report.result_handoff
+    return {
+        "request": str(report.request),
+        "result": str(report.result),
+        "success": not report.has_errors,
+        "valid": not report.has_errors,
+        "request_id": request_handoff.get("request_id"),
+        "result_for": result_handoff.get("result_for"),
+        "result_status": result_handoff.get("result_status"),
+        "parent_agent": request_handoff.get("parent_agent"),
+        "child_agent": request_handoff.get("child_agent"),
+        "checks": [
+            delegation_pair_check_to_dict(check) for check in report.checks
+        ],
+    }
+
+
 def build_preflight_report(report: ImportPreflightReport) -> dict[str, object]:
     validation = build_validation_report(
         report.bundle,
@@ -308,6 +346,11 @@ def build_inspect_report(
     errors = [issue for issue in issues if issue.severity == "error"]
     warnings = [issue for issue in issues if issue.severity == "warning"]
     artifacts = []
+    handoff_metadata = (
+        metadata.get("handoff")
+        if isinstance(metadata, dict) and isinstance(metadata.get("handoff"), dict)
+        else {"kind": "handoff"}
+    )
     artifact_metadata = (
         metadata.get("artifacts")
         if isinstance(metadata, dict) and isinstance(metadata.get("artifacts"), dict)
@@ -345,6 +388,7 @@ def build_inspect_report(
             if metadata is not None
             else "invalid"
         ),
+        "handoff": handoff_metadata,
         "metadata": metadata,
         "metadata_error": metadata_error,
         "artifacts": artifacts,
@@ -448,6 +492,29 @@ def cmd_verify_repo(args: argparse.Namespace) -> int:
         return 1
 
     print("PASS bundle repo state matches current repo")
+    return 0
+
+
+def cmd_verify_pair(args: argparse.Namespace) -> int:
+    report = verify_delegation_pair(args.request, args.result)
+    if args.json:
+        print(json.dumps(build_delegation_pair_report(report), indent=2))
+        return 1 if report.has_errors else 0
+
+    print(f"Delegation request: {report.request}")
+    print(f"Delegation result: {report.result}")
+    for check in report.checks:
+        print(
+            f"  - {check.status.upper()}: {check.name}: "
+            f"expected={check.expected!r} actual={check.actual!r} - {check.message}"
+        )
+
+    if report.has_errors:
+        sys.stdout.flush()
+        print("FAIL delegation result does not match request", file=sys.stderr)
+        return 1
+
+    print("PASS delegation result matches request")
     return 0
 
 
@@ -584,6 +651,11 @@ def cmd_inspect(args: argparse.Namespace) -> int:
         print(f"Metadata: {metadata_error}")
     elif metadata is not None:
         git = metadata.get("git") if isinstance(metadata.get("git"), dict) else {}
+        handoff = (
+            metadata.get("handoff")
+            if isinstance(metadata.get("handoff"), dict)
+            else {}
+        )
         artifacts = (
             metadata.get("artifacts")
             if isinstance(metadata.get("artifacts"), dict)
@@ -598,6 +670,14 @@ def cmd_inspect(args: argparse.Namespace) -> int:
         print_field("Git base ref", git.get("base_ref"))
         print_field("Git head SHA", git.get("head_sha"))
         print_field("Git dirty", git.get("dirty"))
+        print_field("Handoff kind", handoff.get("kind", "handoff"))
+        print_field("Parent agent", handoff.get("parent_agent"))
+        print_field("Child agent", handoff.get("child_agent"))
+        if handoff.get("kind") == "delegation_request":
+            print_field("Delegation request ID", handoff.get("request_id"))
+        elif handoff.get("kind") == "delegation_result":
+            print_field("Delegation result for", handoff.get("result_for"))
+            print_field("Delegation result status", handoff.get("result_status"))
 
         print("Artifacts:")
         for name, artifact in artifacts.items():
@@ -930,6 +1010,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="write machine-readable JSON",
     )
     verify_repo.set_defaults(func=cmd_verify_repo)
+
+    verify_pair = subparsers.add_parser(
+        "verify-pair",
+        help="verify a delegation result against its request",
+    )
+    verify_pair.add_argument(
+        "request",
+        help="path to a delegation_request Waybill Bundle",
+    )
+    verify_pair.add_argument(
+        "result",
+        help="path to a delegation_result Waybill Bundle",
+    )
+    verify_pair.add_argument(
+        "--json",
+        action="store_true",
+        help="write machine-readable JSON",
+    )
+    verify_pair.set_defaults(func=cmd_verify_pair)
 
     new = subparsers.add_parser("new", help="create a draft Waybill Bundle")
     new.add_argument(

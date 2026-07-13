@@ -96,6 +96,12 @@ Compare bundle metadata with a repo:
 ./cli/waybill verify-repo .waybill --repo . --json
 ```
 
+Verify a delegation request/result pair:
+
+```bash
+./cli/waybill verify-pair examples/claude-parent-codex-child-request examples/claude-parent-codex-child-result --json
+```
+
 Run the full import preflight check:
 
 ```bash
@@ -285,6 +291,25 @@ Expected result:
 - The example bundle reports a mismatch against the Waybill repository.
 - JSON output parses as valid JSON and includes `valid` plus check details.
 - A synthetic bundle with matching current repo metadata returns `PASS`.
+
+## CLI Verify Pair Smoke Test
+
+Verify the synthetic delegation fixtures:
+
+```bash
+./cli/waybill verify-pair \
+  examples/claude-parent-codex-child-request \
+  examples/claude-parent-codex-child-result
+```
+
+Expected result:
+
+- The request `request_id` matches the result `result_for`.
+- Parent and child roles remain unchanged in both bundles.
+- The request source is the parent and the result source is the child.
+- `result_status` is `completed`, `partial`, or `blocked`.
+- A mismatched reference, reversed role, source mismatch, or invalid status
+  returns non-zero.
 
 ## CLI Validate Smoke Test
 

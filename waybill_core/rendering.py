@@ -64,6 +64,11 @@ def _render_metadata(
 
     metadata = metadata or {}
     git = metadata.get("git") if isinstance(metadata.get("git"), dict) else {}
+    handoff = (
+        metadata.get("handoff")
+        if isinstance(metadata.get("handoff"), dict)
+        else {}
+    )
     rows = [
         ("Schema version", metadata.get("schema_version")),
         (
@@ -77,6 +82,12 @@ def _render_metadata(
         ("Git base ref", git.get("base_ref")),
         ("Git head SHA", git.get("head_sha")),
         ("Git dirty", git.get("dirty")),
+        ("Handoff kind", handoff.get("kind", "handoff")),
+        ("Parent agent", handoff.get("parent_agent")),
+        ("Child agent", handoff.get("child_agent")),
+        ("Delegation request ID", handoff.get("request_id")),
+        ("Delegation result for", handoff.get("result_for")),
+        ("Delegation result status", handoff.get("result_status")),
     ]
 
     lines.extend(["| Field | Value |", "| --- | --- |"])
