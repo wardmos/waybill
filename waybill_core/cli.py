@@ -114,6 +114,7 @@ def doctor_check_to_dict(check: DoctorCheck) -> dict[str, object]:
     return {
         "name": check.name,
         "status": check.status,
+        "state": check.state,
         "message": check.message,
     }
 
@@ -122,7 +123,10 @@ def build_doctor_report(report: DoctorReport) -> dict[str, object]:
     return {
         "target": str(report.target),
         "adapters": report.adapters,
+        "success": not report.has_errors,
         "valid": not report.has_errors,
+        "codex_plugin_managed_by_init": report.codex_plugin_managed_by_init,
+        "codex_plugin_message": report.codex_plugin_message,
         "checks": [doctor_check_to_dict(check) for check in report.checks],
     }
 
@@ -138,7 +142,9 @@ def build_install_report(report: InstallReport) -> dict[str, object]:
     return {
         "target": str(report.target),
         "adapters": report.adapters,
-        "success": True,
+        "success": not report.has_conflicts,
+        "dry_run": report.dry_run,
+        "has_conflicts": report.has_conflicts,
         "actions": [install_action_to_dict(action) for action in report.actions],
     }
 
@@ -424,6 +430,7 @@ def cmd_init(args: argparse.Namespace) -> int:
             args.target,
             args.adapter or ["all"],
             force=args.force,
+            dry_run=args.dry_run,
         )
     except (
         FileExistsError,
@@ -440,18 +447,28 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     if args.json:
         print(json.dumps(build_install_report(report), indent=2))
-        return 0
+        return 1 if report.has_conflicts else 0
 
-    print(f"Initialized Waybill adapters in: {report.target}")
+    if report.dry_run:
+        print(f"Waybill adapter installation plan for: {report.target}")
+    else:
+        print(f"Initialized Waybill adapters in: {report.target}")
     print(f"Adapters: {', '.join(report.adapters)}")
     for action in report.actions:
         print(f"  - {action.action}: {action.path}")
+    if report.has_conflicts:
+        print("FAIL adapter installation has conflicts", file=sys.stderr)
+        return 1
     return 0
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
     try:
-        report = doctor_repository(args.target, args.adapter or ["all"])
+        report = doctor_repository(
+            args.target,
+            args.adapter or ["all"],
+            source_root=REPO_ROOT,
+        )
     except ValueError as exc:
         print(f"FAIL {exc}", file=sys.stderr)
         return 1
@@ -972,6 +989,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
         help="replace existing adapter files",
+    )
+    init.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="plan adapter changes without writing files",
     )
     init.add_argument(
         "--json",
