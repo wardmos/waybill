@@ -10,11 +10,11 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
-from tests.test_share_check import snapshot_tree
+from tests.unit.test_share_check import snapshot_tree
 from waybill_core.cli import main
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 EXAMPLE = ROOT / "examples" / "claude-to-codex"
 
 

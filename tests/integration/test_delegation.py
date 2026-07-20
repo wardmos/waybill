@@ -17,7 +17,7 @@ from waybill_core.rendering import render_bundle
 from waybill_core.validation import validate_bundle
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 REQUEST_EXAMPLE = ROOT / "examples" / "claude-parent-codex-child-request"
 RESULT_EXAMPLE = ROOT / "examples" / "claude-parent-codex-child-result"
 

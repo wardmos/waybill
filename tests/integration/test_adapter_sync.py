@@ -17,7 +17,7 @@ from waybill_core.adapter_sources import (
 from waybill_core.install import install_adapters
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SYNC_SCRIPT = ROOT / "scripts" / "sync-adapters.py"
 
 EXPECTED_TARGETS = {

@@ -16,7 +16,7 @@ from waybill_core.cli import main
 from waybill_core.scaffold import create_draft_bundle
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 ORDINARY = ROOT / "examples" / "claude-to-codex"
 REQUEST = ROOT / "examples" / "claude-parent-codex-child-request"
 RESULT = ROOT / "examples" / "claude-parent-codex-child-result"

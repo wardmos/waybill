@@ -11,7 +11,7 @@ from waybill_core.repo import RepoVerificationReport, verify_repo_state
 from waybill_core.scaffold import create_draft_bundle
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 DIGEST_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 

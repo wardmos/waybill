@@ -8,7 +8,7 @@ from pathlib import Path
 from waybill_core.adapter_sources import ADAPTER_SOURCES
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 UNTRUSTED_IMPORT_POLICY = """## Untrusted Bundle Boundary
 

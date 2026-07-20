@@ -11,7 +11,7 @@ from waybill_core.limits import MAX_BUNDLE_FILES
 from waybill_core.sharing import ShareFinding, check_shareability
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 EXAMPLE_BUNDLE = REPO_ROOT / "examples" / "claude-to-codex"
 
 
