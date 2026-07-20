@@ -60,7 +60,13 @@ from waybill_core.repo import (  # noqa: E402
 from waybill_core.rendering import render_bundle  # noqa: E402
 from waybill_core.scaffold import DraftBundleReport, create_draft_bundle  # noqa: E402
 from waybill_core.schema_versions import schema_version_status  # noqa: E402
-from waybill_core.sharing import ShareReport, share_bundle  # noqa: E402
+from waybill_core.sharing import (  # noqa: E402
+    ShareCheckReport,
+    ShareFinding,
+    ShareReport,
+    check_shareability,
+    share_bundle,
+)
 from waybill_core.validation import (  # noqa: E402
     ValidationIssue,
     has_errors,
@@ -212,6 +218,27 @@ def build_share_report(report: ShareReport) -> dict[str, object]:
         "redaction": build_redaction_report(report.redaction),
         "validation": validation,
         "pack": build_pack_report(report.pack, validation),
+    }
+
+
+def share_finding_to_dict(finding: ShareFinding) -> dict[str, object]:
+    return {
+        "kind": finding.kind,
+        "path": finding.path,
+        "count": finding.count,
+        "blocking": finding.blocking,
+    }
+
+
+def build_share_check_report(report: ShareCheckReport) -> dict[str, object]:
+    return {
+        "source": str(report.source),
+        "success": report.shareable,
+        "shareable": report.shareable,
+        "replacement_count": report.replacement_count,
+        "error_count": report.error_count,
+        "finding_count": report.finding_count,
+        "findings": [share_finding_to_dict(finding) for finding in report.findings],
     }
 
 
@@ -788,6 +815,33 @@ def cmd_pack(args: argparse.Namespace) -> int:
 
 
 def cmd_share(args: argparse.Namespace) -> int:
+    if args.check:
+        report = check_shareability(args.bundle)
+        if args.json:
+            print(json.dumps(build_share_check_report(report), indent=2))
+            return 0 if report.shareable else 1
+
+        print(f"Shareability check: {report.source}")
+        for finding in report.findings:
+            blocking = "blocking" if finding.blocking else "planned"
+            print(
+                f"  - {blocking}: {finding.kind}: {finding.path}: "
+                f"{finding.count}"
+            )
+        if not report.shareable:
+            print("FAIL bundle is not shareable", file=sys.stderr)
+            return 1
+        print("PASS bundle is shareable after planned redactions")
+        return 0
+
+    if args.output is None:
+        message = "--output is required unless --check is used"
+        if args.json:
+            print(json.dumps({"success": False, "error": message}, indent=2))
+            return 1
+        print(f"FAIL {message}", file=sys.stderr)
+        return 1
+
     try:
         report = share_bundle(
             args.bundle,
@@ -1178,8 +1232,12 @@ def build_parser() -> argparse.ArgumentParser:
     share.add_argument("bundle", help="path to a Waybill Bundle directory")
     share.add_argument(
         "--output",
-        required=True,
-        help="zip file to write",
+        help="zip file to write; required unless --check is used",
+    )
+    share.add_argument(
+        "--check",
+        action="store_true",
+        help="check shareability without writing redacted or archive outputs",
     )
     share.add_argument(
         "--redacted-output",
