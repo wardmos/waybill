@@ -74,6 +74,26 @@ from waybill_core.validation import (  # noqa: E402
 )
 
 
+class CliUsageError(ValueError):
+    """An argparse error retained for either text or JSON rendering."""
+
+    def __init__(self, parser: argparse.ArgumentParser, message: str) -> None:
+        self.parser = parser
+        self.message = message
+        super().__init__(message)
+
+
+class WaybillArgumentParser(argparse.ArgumentParser):
+    """Defer usage-error formatting until the requested output mode is known."""
+
+    def error(self, message: str) -> None:
+        raise CliUsageError(self, message)
+
+
+def print_json_error(message: str) -> None:
+    print(json.dumps({"success": False, "error": message}, indent=2))
+
+
 def read_metadata(bundle: Path) -> tuple[dict[str, Any] | None, str | None]:
     path = bundle / "metadata.json"
     if not path.is_file():
@@ -109,6 +129,7 @@ def build_validation_report(
     warnings = [issue for issue in issues if issue.severity == "warning"]
     return {
         "bundle": str(bundle),
+        "success": len(errors) == 0,
         "valid": len(errors) == 0,
         "errors": len(errors),
         "warnings": len(warnings),
@@ -288,6 +309,7 @@ def build_repo_report(report: RepoVerificationReport) -> dict[str, object]:
     return {
         "bundle": str(report.bundle),
         "repo": str(report.repo),
+        "success": not report.has_errors,
         "valid": not report.has_errors,
         "checks": [repo_check_to_dict(check) for check in report.checks],
     }
@@ -334,6 +356,7 @@ def build_preflight_report(report: ImportPreflightReport) -> dict[str, object]:
     return {
         "bundle": str(report.bundle),
         "repo": str(report.repo),
+        "success": not report.has_errors,
         "valid": not report.has_errors,
         "validation": validation,
         "repo_checks": [
@@ -359,6 +382,7 @@ def build_readiness_report(report: ExportReadinessReport) -> dict[str, object]:
     return {
         "bundle": str(report.bundle),
         "repo": str(report.repo),
+        "success": not report.has_errors,
         "valid": not report.has_errors,
         "validation": validation,
         "repo_checks": [
@@ -415,6 +439,7 @@ def build_inspect_report(
 
     return {
         "bundle": str(bundle),
+        "success": len(errors) == 0,
         "valid": len(errors) == 0,
         "schema_version_status": (
             schema_version_status(metadata.get("schema_version"))
@@ -497,6 +522,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             source_root=REPO_ROOT,
         )
     except ValueError as exc:
+        if args.json:
+            print_json_error(str(exc))
+            return 1
         print(f"FAIL {exc}", file=sys.stderr)
         return 1
     if args.json:
@@ -1012,7 +1040,7 @@ def cmd_render(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = WaybillArgumentParser(
         prog="waybill",
         description="Work with local Waybill Bundles.",
     )
@@ -1305,9 +1333,25 @@ def add_adapter_argument(parser: argparse.ArgumentParser, verb: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
     parser = build_parser()
-    args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        args = parser.parse_args(arguments)
+    except CliUsageError as exc:
+        if "--json" in arguments:
+            print_json_error(exc.message)
+        else:
+            exc.parser.print_usage(sys.stderr)
+            print(f"{exc.parser.prog}: error: {exc.message}", file=sys.stderr)
+        return 2
+
+    try:
+        return args.func(args)
+    except Exception as exc:
+        if getattr(args, "json", False):
+            print_json_error(str(exc))
+            return 1
+        raise
 
 
 if __name__ == "__main__":
