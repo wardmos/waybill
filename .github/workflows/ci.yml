@@ -31,6 +31,9 @@ jobs:
       - name: Run repository validation
         run: python3 scripts/validate-waybill.py
 
+      - name: Run tests
+        run: python3 -m unittest discover -s tests -t . -v
+
       - name: Compile Python files
         run: python3 -m py_compile cli/waybill waybill_core/*.py scripts/validate-waybill.py
 

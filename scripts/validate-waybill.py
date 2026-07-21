@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -23,12 +25,22 @@ from waybill_core.limits import (  # noqa: E402
     MAX_BUNDLE_FILE_BYTES,
     list_bundle_files,
 )
+from waybill_core.adapter_installation import MANIFEST_FILENAME  # noqa: E402
+from waybill_core.adapter_sources import (  # noqa: E402
+    ADAPTER_SOURCES,
+    find_adapter_drift,
+    sources_for_adapter,
+)
+from waybill_core.conformance import load_scenarios  # noqa: E402
+from waybill_core.doctor import doctor_repository  # noqa: E402
+from waybill_core.install import install_adapters  # noqa: E402
 from waybill_core.scaffold import STANDARD_FILES  # noqa: E402
 from waybill_core.schema_versions import CURRENT_SCHEMA_VERSION  # noqa: E402
 from waybill_core.validation import validate_bundle  # noqa: E402
 
 REQUIRED_FILES = [
     "README.md",
+    "CONFORMANCE.md",
     "QUICKSTART.md",
     ".gitignore",
     ".github/workflows/ci.yml",
@@ -45,9 +57,15 @@ REQUIRED_FILES = [
     "spec/delegation-result-template.md",
     "spec/metadata.schema.json",
     "cli/waybill",
+    "scripts/conformance-agents.py",
     "scripts/smoke-agents.sh",
+    "scripts/sync-adapters.py",
     "waybill_core/__init__.py",
+    "waybill_core/adapter_installation.py",
+    "waybill_core/adapter_sources.py",
     "waybill_core/cli.py",
+    "waybill_core/conformance.py",
+    "waybill_core/delegation.py",
     "waybill_core/doctor.py",
     "waybill_core/install.py",
     "waybill_core/limits.py",
@@ -100,6 +118,12 @@ REQUIRED_FILES = [
     "adapters/opencode/commands/waybill.md",
     "adapters/opencode/skills/handoff/SKILL.md",
     "adapters/opencode/skills/waybill/SKILL.md",
+    "conformance/scenarios/delegation-request.json",
+    "conformance/scenarios/delegation-result.json",
+    "conformance/scenarios/failed-test.json",
+    "conformance/scenarios/malicious-embedded-instruction.json",
+    "conformance/scenarios/ordinary-unfinished.json",
+    "conformance/scenarios/stale-repository.json",
 ]
 
 EXAMPLES = [
@@ -190,12 +214,23 @@ def parse_cli_json(
     result: subprocess.CompletedProcess[str],
     label: str,
 ) -> dict:
+    if result.stderr:
+        fail(f"{label} JSON command must not write stderr: {result.stderr.strip()}")
+
+    def reject_constant(value: str) -> object:
+        raise ValueError(f"non-standard JSON constant: {value}")
+
     try:
-        report = json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
+        report = json.loads(result.stdout, parse_constant=reject_constant)
+    except (json.JSONDecodeError, ValueError) as exc:
         fail(f"{label} JSON output is invalid: {exc}")
     if not isinstance(report, dict):
         fail(f"{label} JSON output must be an object")
+    success = report.get("success")
+    if type(success) is not bool:
+        fail(f"{label} JSON output must include boolean success")
+    if success != (result.returncode == 0):
+        fail(f"{label} JSON success must match its exit status")
     return report
 
 
@@ -721,6 +756,40 @@ def validate_gemini_cli_adapter() -> None:
             fail(f"Gemini CLI README must mention {expected}")
 
 
+def validate_adapter_synchronization() -> None:
+    tracked_paths = sorted(
+        {
+            path
+            for source in ADAPTER_SOURCES
+            for path in (source.canonical, *source.mirrors)
+        }
+    )
+    before = {path: require_file(path).read_bytes() for path in tracked_paths}
+    issues = find_adapter_drift(ROOT)
+    if issues:
+        formatted = ", ".join(
+            f"{issue.mirror} ({issue.reason})" for issue in issues
+        )
+        fail(f"adapter mirrors are out of sync: {formatted}")
+
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/sync-adapters.py"), "--check"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        fail(
+            "adapter synchronization check failed: "
+            + (result.stderr.strip() or result.stdout.strip())
+        )
+    if result.stderr or "PASS adapter mirrors are in sync" not in result.stdout:
+        fail("adapter synchronization check must report a clean read-only result")
+    after = {path: require_file(path).read_bytes() for path in tracked_paths}
+    if after != before:
+        fail("adapter synchronization --check must not modify adapter files")
+
+
 def validate_python_package() -> None:
     pyproject = (ROOT / "pyproject.toml").read_text()
     build_system = toml_section(pyproject, "build-system")
@@ -762,6 +831,31 @@ def validate_python_package() -> None:
         fail("pyproject must include packaged adapter templates")
 
 
+def validate_packaging_declarations() -> None:
+    manifest = (ROOT / "MANIFEST.in").read_text()
+    if "graft waybill_core/template-files" not in manifest:
+        fail("MANIFEST.in must include packaged adapter templates")
+
+    expected_modules = {
+        "waybill_core/adapter_installation.py",
+        "waybill_core/adapter_sources.py",
+        "waybill_core/conformance.py",
+        "waybill_core/delegation.py",
+    }
+    if not expected_modules.issubset(REQUIRED_FILES):
+        fail("required files must include every new package module")
+
+    packaged_mirrors = {source.packaged_mirror for source in ADAPTER_SOURCES}
+    if not packaged_mirrors:
+        fail("adapter source manifest must declare packaged templates")
+    for path in sorted(packaged_mirrors):
+        if not path.startswith("waybill_core/template-files/"):
+            fail(f"packaged adapter path is outside package data: {path}")
+        require_file(path)
+    if any(source.adapter == "codex" for source in ADAPTER_SOURCES):
+        fail("Codex plugin must not be an init-managed packaged template")
+
+
 def validate_pypi_publish_workflow() -> None:
     workflow = (ROOT / ".github" / "workflows" / "publish-pypi.yml").read_text()
     required = [
@@ -771,6 +865,7 @@ def validate_pypi_publish_workflow() -> None:
         '- "v*"',
         "workflow_dispatch:",
         "python3 scripts/validate-waybill.py",
+        "python3 -m unittest discover -s tests -t . -v",
         "python3 -m py_compile cli/waybill waybill_core/*.py scripts/validate-waybill.py",
         "Check tag matches package version",
         "tag = os.environ['GITHUB_REF_NAME']",
@@ -807,6 +902,7 @@ def validate_ci_workflow() -> None:
         "actions/checkout@v4",
         "actions/setup-python@v5",
         "python-version: ${{ matrix.python-version }}",
+        "python3 -m unittest discover -s tests -t . -v",
         "python3 scripts/validate-waybill.py",
         "python3 -m py_compile cli/waybill waybill_core/*.py scripts/validate-waybill.py",
         "scripts/smoke-agents.sh --dry-run",
@@ -879,6 +975,89 @@ def validate_examples() -> None:
     )
 
 
+def validate_conformance_scenarios() -> None:
+    scenario_dir = ROOT / "conformance/scenarios"
+    scenarios = load_scenarios(scenario_dir)
+    expected_kinds = {
+        "delegation-request": "delegation_request",
+        "delegation-result": "delegation_result",
+        "failed-test": "handoff",
+        "malicious-embedded-instruction": "handoff",
+        "ordinary-unfinished": "handoff",
+        "stale-repository": "handoff",
+    }
+    if {scenario.id for scenario in scenarios} != set(expected_kinds):
+        fail("conformance scenarios must contain the required six-scenario matrix")
+
+    for scenario in scenarios:
+        if scenario.expected.get("handoff_kind") != expected_kinds[scenario.id]:
+            fail(f"conformance scenario {scenario.id} has the wrong handoff kind")
+        if scenario.bundle is not None and not (ROOT / scenario.bundle).is_dir():
+            fail(
+                f"conformance scenario {scenario.id} references a missing bundle: "
+                f"{scenario.bundle}"
+            )
+
+    malicious = next(
+        scenario
+        for scenario in scenarios
+        if scenario.id == "malicious-embedded-instruction"
+    )
+    if malicious.expected.get("untrusted_instructions_ignored") is not True:
+        fail("malicious conformance scenario must require ignoring instructions")
+    stale = next(
+        scenario for scenario in scenarios if scenario.id == "stale-repository"
+    )
+    if stale.expected.get("repo_mismatch") is not True:
+        fail("stale conformance scenario must require a repository mismatch")
+
+
+def validate_conformance_runner_dry_run() -> None:
+    with tempfile.TemporaryDirectory(prefix="waybill-conformance-dry-run-") as temporary:
+        workspace = Path(temporary)
+        marker = workspace / "agent-must-not-run"
+        agent_command = shlex.join(
+            [
+                sys.executable,
+                "-c",
+                "from pathlib import Path; Path('agent-must-not-run').touch()",
+            ]
+        )
+        before = snapshot_tree(workspace)
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts/conformance-agents.py"),
+                "--agent-name",
+                "validator-sentinel",
+                "--agent-command",
+                agent_command,
+                "--scenario-dir",
+                str(ROOT / "conformance/scenarios"),
+                "--workspace",
+                str(workspace),
+                "--dry-run",
+            ],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+        )
+        report = parse_cli_json(result, "conformance dry-run")
+        if report.get("dry_run") is not True:
+            fail("conformance dry-run must identify itself as a dry run")
+        results = report.get("results")
+        if not isinstance(results, list) or len(results) != 6:
+            fail("conformance dry-run must report all six scenarios")
+        for item in results:
+            if not isinstance(item, dict) or not re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(item.get("prompt_digest", "")),
+            ):
+                fail("conformance dry-run must report stable prompt digests")
+        if marker.exists() or snapshot_tree(workspace) != before:
+            fail("conformance dry-run must not execute or modify the workspace")
+
+
 def validate_missing_delegation_section(example: str, section: str) -> None:
     with tempfile.TemporaryDirectory(prefix="waybill-delegation-negative-") as parent:
         source = ROOT / example
@@ -897,6 +1076,31 @@ def validate_missing_delegation_section(example: str, section: str) -> None:
         if not any(issue.severity == "error" and issue.message == expected for issue in issues):
             formatted = "; ".join(issue.format() for issue in issues)
             fail(f"{example} without {section} must fail validation: {formatted}")
+
+
+def validate_cli_validate() -> None:
+    source = ROOT / "examples/claude-to-codex"
+    before = snapshot_tree(source)
+    text_result = run_waybill("validate", str(source))
+    if text_result.returncode != 0:
+        fail(f"validate text command failed: {text_result.stderr.strip()}")
+    if "PASS valid Waybill Bundle" not in text_result.stdout:
+        fail("validate text command must report a valid bundle")
+
+    json_result = run_waybill("validate", str(source), "--json")
+    report = parse_cli_json(json_result, "validate")
+    if report.get("valid") is not True or report.get("errors") != 0:
+        fail("validate JSON command must report a valid bundle")
+    require_tree_unchanged(source, before, "validate")
+
+    with tempfile.TemporaryDirectory(prefix="waybill-validate-invalid-") as temporary:
+        missing = Path(temporary) / "missing"
+        failure = run_waybill("validate", str(missing), "--json")
+        failure_report = parse_cli_json(failure, "validate failure")
+        if failure_report.get("valid") is not False:
+            fail("validate JSON failure must preserve valid=false")
+        if failure_report.get("errors", 0) < 1:
+            fail("validate JSON failure must include validation errors")
 
 
 def validate_cli_init() -> None:
@@ -964,6 +1168,167 @@ def validate_cli_init() -> None:
             fail("init JSON error output must set success false")
         if "does not exist" not in str(error_report.get("error", "")):
             fail("init JSON error output must include the failure reason")
+
+
+def validate_adapter_installation_lifecycle() -> None:
+    with tempfile.TemporaryDirectory(prefix="waybill-install-lifecycle-") as temporary:
+        root = Path(temporary)
+        target = root / "target"
+        target.mkdir()
+        before = snapshot_tree(target)
+        dry_result = run_waybill(
+            "init",
+            "--target",
+            str(target),
+            "--adapter",
+            "claude-code",
+            "--dry-run",
+            "--json",
+        )
+        dry_report = parse_cli_json(dry_result, "init dry-run")
+        if dry_report.get("dry_run") is not True:
+            fail("init dry-run must identify itself as a dry run")
+        if dry_report.get("has_conflicts") is not False:
+            fail("init dry-run must report a conflict-free empty target")
+        if {
+            action.get("action")
+            for action in dry_report.get("actions", [])
+            if isinstance(action, dict)
+        } != {"would-create"}:
+            fail("init dry-run must report only would-create actions on an empty target")
+        require_tree_unchanged(target, before, "init dry-run")
+
+        apply_result = run_waybill(
+            "init",
+            "--target",
+            str(target),
+            "--adapter",
+            "claude-code",
+            "--json",
+        )
+        apply_report = parse_cli_json(apply_result, "init lifecycle apply")
+        if apply_report.get("dry_run") is not False:
+            fail("applied init must report dry_run=false")
+        manifest_path = target / MANIFEST_FILENAME
+        manifest_text = manifest_path.read_text()
+        manifest = json.loads(manifest_text)
+        if set(manifest) != {"format_version", "waybill_version", "files"}:
+            fail("adapter manifest must use the deterministic field set")
+        if "timestamp" in manifest:
+            fail("adapter manifest must not contain a timestamp")
+        files = manifest.get("files")
+        if not isinstance(files, dict) or list(files) != sorted(files):
+            fail("adapter manifest file records must be deterministically sorted")
+
+        selected_sources = sources_for_adapter("claude-code")
+        for source in selected_sources:
+            (target / source.install_target).write_text("local customization\n")
+        conflict_before = snapshot_tree(target)
+        conflict_result = run_waybill(
+            "init",
+            "--target",
+            str(target),
+            "--adapter",
+            "claude-code",
+            "--dry-run",
+            "--json",
+        )
+        conflict_report = parse_cli_json(conflict_result, "init conflict dry-run")
+        conflicts = {
+            action.get("path")
+            for action in conflict_report.get("actions", [])
+            if isinstance(action, dict)
+            and action.get("action") == "would-conflict"
+        }
+        expected_conflicts = {source.install_target for source in selected_sources}
+        if conflicts != expected_conflicts:
+            fail("init dry-run must report every adapter conflict")
+        require_tree_unchanged(target, conflict_before, "init conflict preflight")
+
+        outside = root / "outside.md"
+        outside.write_text("outside must remain unchanged\n")
+        linked = target / selected_sources[-1].install_target
+        linked.unlink()
+        linked.symlink_to(outside)
+        symlink_before = snapshot_tree(target)
+        force_result = run_waybill(
+            "init",
+            "--target",
+            str(target),
+            "--adapter",
+            "claude-code",
+            "--force",
+            "--json",
+        )
+        parse_cli_json(force_result, "init force symlink conflict")
+        require_tree_unchanged(target, symlink_before, "init force symlink conflict")
+        if outside.read_text() != "outside must remain unchanged\n":
+            fail("init --force must not follow adapter symlinks")
+
+    with (
+        tempfile.TemporaryDirectory(prefix="waybill-doctor-source-") as source_tmp,
+        tempfile.TemporaryDirectory(prefix="waybill-doctor-target-") as target_tmp,
+    ):
+        source_root = Path(source_tmp)
+        target_root = Path(target_tmp)
+        adapter_sources = sources_for_adapter("claude-code")
+        for index, source in enumerate(adapter_sources):
+            canonical = source_root / source.canonical
+            canonical.parent.mkdir(parents=True, exist_ok=True)
+            canonical.write_text(f"managed adapter {index}\n")
+        install_adapters(source_root, target_root, ["claude-code"])
+
+        current = doctor_repository(
+            target_root,
+            ["claude-code"],
+            source_root=source_root,
+        )
+        adapter_names = {source.install_target for source in adapter_sources}
+        current_checks = {
+            check.name: check for check in current.checks if check.name in adapter_names
+        }
+        if {check.state for check in current_checks.values()} != {"current"}:
+            fail("doctor must classify matching adapters as current")
+        if current.codex_plugin_managed_by_init:
+            fail("doctor must report that Codex is not managed by init")
+
+        first = adapter_sources[0]
+        installed = target_root / first.install_target
+        original = installed.read_bytes()
+        installed.unlink()
+        missing = doctor_repository(
+            target_root,
+            ["claude-code"],
+            source_root=source_root,
+        )
+        missing_check = next(check for check in missing.checks if check.name == first.install_target)
+        if (missing_check.state, missing_check.status) != ("missing", "error"):
+            fail("doctor must classify absent managed adapters as missing")
+
+        installed.write_bytes(original)
+        canonical = source_root / first.canonical
+        canonical.write_text("new canonical adapter\n")
+        stale = doctor_repository(
+            target_root,
+            ["claude-code"],
+            source_root=source_root,
+        )
+        stale_check = next(check for check in stale.checks if check.name == first.install_target)
+        if (stale_check.state, stale_check.status) != ("stale", "error"):
+            fail("doctor must classify an unmodified old adapter as stale")
+
+        canonical.write_bytes(original)
+        installed.write_text("local adapter modification\n")
+        modified = doctor_repository(
+            target_root,
+            ["claude-code"],
+            source_root=source_root,
+        )
+        modified_check = next(
+            check for check in modified.checks if check.name == first.install_target
+        )
+        if (modified_check.state, modified_check.status) != ("modified", "warning"):
+            fail("doctor must classify local adapter changes as modified warnings")
 
 
 def validate_cli_new() -> None:
@@ -1245,6 +1610,59 @@ def validate_cli_verify_repo() -> None:
         head_report = parse_cli_json(head_json, "verify-repo HEAD mismatch")
         if checks_by_name(head_report, "checks").get("head_sha", {}).get("status") != "error":
             fail("verify-repo must identify a HEAD mismatch")
+
+
+def validate_cli_verify_pair() -> None:
+    request = ROOT / "examples/claude-parent-codex-child-request"
+    result = ROOT / "examples/claude-parent-codex-child-result"
+    request_before = snapshot_tree(request)
+    result_before = snapshot_tree(result)
+
+    text_result = run_waybill("verify-pair", str(request), str(result))
+    if text_result.returncode != 0:
+        fail(f"verify-pair text command failed: {text_result.stderr.strip()}")
+    if "PASS delegation result matches request" not in text_result.stdout:
+        fail("verify-pair text command must report a matching pair")
+
+    json_result = run_waybill(
+        "verify-pair",
+        str(request),
+        str(result),
+        "--json",
+    )
+    report = parse_cli_json(json_result, "verify-pair")
+    if report.get("valid") is not True:
+        fail("verify-pair JSON command must mark a matching pair valid")
+    if checks_by_name(report, "checks").get("correlation", {}).get("status") != "ok":
+        fail("verify-pair must report matching request/result correlation")
+    require_tree_unchanged(request, request_before, "verify-pair request")
+    require_tree_unchanged(result, result_before, "verify-pair result")
+
+    with tempfile.TemporaryDirectory(prefix="waybill-verify-pair-") as temporary:
+        mismatched = Path(temporary) / "result"
+        shutil.copytree(result, mismatched)
+        metadata_path = mismatched / "metadata.json"
+        metadata = json.loads(metadata_path.read_text())
+        metadata["handoff"]["result_for"] = "different-request-id"
+        metadata_path.write_text(json.dumps(metadata, indent=2) + "\n")
+        mismatch_before = snapshot_tree(mismatched)
+        mismatch_result = run_waybill(
+            "verify-pair",
+            str(request),
+            str(mismatched),
+            "--json",
+        )
+        mismatch_report = parse_cli_json(mismatch_result, "verify-pair mismatch")
+        if mismatch_report.get("valid") is not False:
+            fail("verify-pair mismatch must preserve valid=false")
+        if (
+            checks_by_name(mismatch_report, "checks")
+            .get("correlation", {})
+            .get("status")
+            != "error"
+        ):
+            fail("verify-pair must identify a correlation mismatch")
+        require_tree_unchanged(mismatched, mismatch_before, "verify-pair mismatch")
 
 
 def validate_cli_preflight() -> None:
@@ -1893,6 +2311,61 @@ def validate_cli_share() -> None:
         )
 
 
+def validate_cli_share_check() -> None:
+    with tempfile.TemporaryDirectory(prefix="waybill-share-check-") as temporary:
+        root = Path(temporary)
+        bundle = root / "bundle"
+        shutil.copytree(ROOT / "examples/claude-to-codex", bundle)
+        secret = "validator-share-check-secret-12345"
+        (bundle / "synthetic-secret.txt").write_text(f"api_key={secret}\n")
+        before = snapshot_tree(root)
+
+        result = run_waybill("share", str(bundle), "--check", "--json")
+        report = parse_cli_json(result, "share --check")
+        if report.get("shareable") is not True:
+            fail("share --check must allow bundles that can be safely redacted")
+        findings = report.get("findings")
+        if not isinstance(findings, list) or not findings:
+            fail("share --check must report planned redactions")
+        for finding in findings:
+            if not isinstance(finding, dict) or set(finding) != {
+                "kind",
+                "path",
+                "count",
+                "blocking",
+            }:
+                fail("share --check findings must use the value-free field set")
+        if secret in result.stdout:
+            fail("share --check JSON must not reveal matched secret content")
+        require_tree_unchanged(root, before, "share --check")
+
+        text_result = run_waybill("share", str(bundle), "--check")
+        if text_result.returncode != 0 or "PASS bundle is shareable" not in text_result.stdout:
+            fail("share --check text mode must report a shareable bundle")
+        require_tree_unchanged(root, before, "share --check text")
+
+        (bundle / "raw.bin").write_bytes(b"\xff\xfe")
+        blocked_before = snapshot_tree(root)
+        blocked_result = run_waybill("share", str(bundle), "--check", "--json")
+        blocked_report = parse_cli_json(blocked_result, "blocked share --check")
+        if blocked_report.get("shareable") is not False:
+            fail("share --check must block unscannable bundle content")
+        blocked_findings = blocked_report.get("findings")
+        if not isinstance(blocked_findings, list) or not any(
+            isinstance(finding, dict)
+            and finding.get("kind") == "unscannable-file"
+            and finding.get("blocking") is True
+            for finding in blocked_findings
+        ):
+            fail("share --check must report an unscannable blocking finding")
+        require_tree_unchanged(root, blocked_before, "blocked share --check")
+
+        missing_output = run_waybill("share", str(bundle), "--json")
+        missing_report = parse_cli_json(missing_output, "share missing output")
+        if "--output" not in str(missing_report.get("error", "")):
+            fail("ordinary share must still require --output")
+
+
 def validate_cli_unpack() -> None:
     with tempfile.TemporaryDirectory(prefix="waybill-unpack-") as parent:
         parent_path = Path(parent)
@@ -2031,12 +2504,30 @@ def validate_cli_render() -> None:
         )
         if json_stdout_result.returncode == 0:
             fail("render JSON without --output must fail")
-        try:
-            json_stdout_report = json.loads(json_stdout_result.stdout)
-        except json.JSONDecodeError as exc:
-            fail(f"render JSON without output error is invalid: {exc}")
+        json_stdout_report = parse_cli_json(
+            json_stdout_result,
+            "render JSON without output",
+        )
         if json_stdout_report.get("success") is not False:
             fail("render JSON without output error must set success false")
+
+
+def validate_cli_json_contract() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "unittest",
+            "-v",
+            "tests.integration.test_cli_json_contract",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        fail(f"CLI JSON contract tests failed: {detail}")
 
 
 def validate_cli_end_to_end() -> None:
@@ -2374,48 +2865,77 @@ def validate_unsafe_bundle_paths() -> None:
             fail("share must not write an archive inside the source bundle")
 
 
-def main() -> int:
-    checks = [
-        ("structure", validate_structure),
-        ("metadata schema", validate_metadata_schema),
-        ("schema version compatibility", validate_schema_version_compatibility),
-        ("Codex plugin", validate_codex_plugin),
-        ("Codex marketplace", validate_codex_marketplace),
-        ("Claude skills", validate_claude_skills),
-        ("OpenCode adapter", validate_opencode_adapter),
-        ("Cursor adapter", validate_cursor_adapter),
-        ("Gemini CLI adapter", validate_gemini_cli_adapter),
-        ("Python package", validate_python_package),
-        ("CI workflow", validate_ci_workflow),
-        ("PyPI publish workflow", validate_pypi_publish_workflow),
-        ("examples", validate_examples),
-        ("CLI init", validate_cli_init),
-        ("CLI doctor", validate_cli_doctor),
-        ("CLI new", validate_cli_new),
-        ("CLI verify-repo", validate_cli_verify_repo),
-        ("CLI preflight", validate_cli_preflight),
-        ("CLI ready", validate_cli_ready),
-        ("CLI inspect", validate_cli_inspect),
-        ("CLI redact", validate_cli_redact),
-        ("CLI pack", validate_cli_pack),
-        ("CLI share", validate_cli_share),
-        ("CLI unpack", validate_cli_unpack),
-        ("CLI render", validate_cli_render),
-        ("CLI end-to-end", validate_cli_end_to_end),
-        ("resource limits", validate_resource_limits),
-        ("unsafe bundle paths", validate_unsafe_bundle_paths),
-    ]
-
-    try:
-        for name, check in checks:
+def run_checks(checks: Sequence[tuple[str, Callable[[], None]]]) -> int:
+    failures = 0
+    for name, check in checks:
+        try:
             check()
+        except ValidationError as exc:
+            failures += 1
+            print(f"FAIL {name}: {exc}", file=sys.stderr)
+        except Exception as exc:
+            failures += 1
+            print(
+                f"FAIL {name}: unexpected {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+            )
+        else:
             print(f"PASS {name}")
-    except ValidationError as exc:
-        print(f"FAIL {exc}", file=sys.stderr)
+
+    if failures:
+        print(
+            f"FAIL Waybill repository validation: {failures} check(s) failed",
+            file=sys.stderr,
+        )
         return 1
 
     print("PASS Waybill repository validation")
     return 0
+
+
+CHECKS: tuple[tuple[str, Callable[[], None]], ...] = (
+    ("structure", validate_structure),
+    ("metadata schema", validate_metadata_schema),
+    ("schema version compatibility", validate_schema_version_compatibility),
+    ("Codex plugin", validate_codex_plugin),
+    ("Codex marketplace", validate_codex_marketplace),
+    ("Claude skills", validate_claude_skills),
+    ("OpenCode adapter", validate_opencode_adapter),
+    ("Cursor adapter", validate_cursor_adapter),
+    ("Gemini CLI adapter", validate_gemini_cli_adapter),
+    ("adapter synchronization", validate_adapter_synchronization),
+    ("Python package", validate_python_package),
+    ("packaging declarations", validate_packaging_declarations),
+    ("CI workflow", validate_ci_workflow),
+    ("PyPI publish workflow", validate_pypi_publish_workflow),
+    ("examples", validate_examples),
+    ("conformance scenarios", validate_conformance_scenarios),
+    ("conformance runner dry-run", validate_conformance_runner_dry_run),
+    ("CLI validate", validate_cli_validate),
+    ("CLI init", validate_cli_init),
+    ("adapter installation lifecycle", validate_adapter_installation_lifecycle),
+    ("CLI doctor", validate_cli_doctor),
+    ("CLI new", validate_cli_new),
+    ("CLI verify-repo", validate_cli_verify_repo),
+    ("CLI verify-pair", validate_cli_verify_pair),
+    ("CLI preflight", validate_cli_preflight),
+    ("CLI ready", validate_cli_ready),
+    ("CLI inspect", validate_cli_inspect),
+    ("CLI redact", validate_cli_redact),
+    ("CLI pack", validate_cli_pack),
+    ("CLI share", validate_cli_share),
+    ("CLI share --check", validate_cli_share_check),
+    ("CLI unpack", validate_cli_unpack),
+    ("CLI render", validate_cli_render),
+    ("CLI JSON contract", validate_cli_json_contract),
+    ("CLI end-to-end", validate_cli_end_to_end),
+    ("resource limits", validate_resource_limits),
+    ("unsafe bundle paths", validate_unsafe_bundle_paths),
+)
+
+
+def main() -> int:
+    return run_checks(CHECKS)
 
 
 if __name__ == "__main__":

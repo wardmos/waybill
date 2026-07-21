@@ -153,5 +153,5 @@ scenario.
 Run the focused tests after changing the contract or matrix:
 
 ```sh
-python3 -m unittest -v tests.test_conformance
+python3 -m unittest -v tests.conformance.test_conformance
 ```
