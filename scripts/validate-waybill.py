@@ -60,6 +60,7 @@ REQUIRED_FILES = [
     "scripts/conformance-agents.py",
     "scripts/smoke-agents.sh",
     "scripts/sync-adapters.py",
+    "scripts/test-wheel-install.py",
     "waybill_core/__init__.py",
     "waybill_core/adapter_installation.py",
     "waybill_core/adapter_sources.py",
@@ -856,6 +857,25 @@ def validate_packaging_declarations() -> None:
         fail("Codex plugin must not be an init-managed packaged template")
 
 
+def validate_wheel_installation() -> None:
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/test-wheel-install.py")],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        fail(f"isolated wheel installation failed: {detail}")
+    if result.stderr:
+        fail("isolated wheel installation must not write stderr on success")
+    if not re.fullmatch(
+        r"PASS isolated wheel installation: agent_waybill-[^\s]+\.whl\n?",
+        result.stdout,
+    ):
+        fail("isolated wheel installation returned an unexpected success report")
+
+
 def validate_pypi_publish_workflow() -> None:
     workflow = (ROOT / ".github" / "workflows" / "publish-pypi.yml").read_text()
     required = [
@@ -866,7 +886,8 @@ def validate_pypi_publish_workflow() -> None:
         "workflow_dispatch:",
         "python3 scripts/validate-waybill.py",
         "python3 -m unittest discover -s tests -t . -v",
-        "python3 -m py_compile cli/waybill waybill_core/*.py scripts/validate-waybill.py",
+        "python3 -m py_compile cli/waybill waybill_core/*.py scripts/*.py",
+        "scripts/sync-adapters.py --check",
         "Check tag matches package version",
         "tag = os.environ['GITHUB_REF_NAME']",
         "tag {tag} does not match package version v{version}",
@@ -904,7 +925,8 @@ def validate_ci_workflow() -> None:
         "python-version: ${{ matrix.python-version }}",
         "python3 -m unittest discover -s tests -t . -v",
         "python3 scripts/validate-waybill.py",
-        "python3 -m py_compile cli/waybill waybill_core/*.py scripts/validate-waybill.py",
+        "python3 -m py_compile cli/waybill waybill_core/*.py scripts/*.py",
+        "scripts/sync-adapters.py --check",
         "scripts/smoke-agents.sh --dry-run",
     ]
     for expected in required:
@@ -2906,6 +2928,7 @@ CHECKS: tuple[tuple[str, Callable[[], None]], ...] = (
     ("adapter synchronization", validate_adapter_synchronization),
     ("Python package", validate_python_package),
     ("packaging declarations", validate_packaging_declarations),
+    ("wheel installation", validate_wheel_installation),
     ("CI workflow", validate_ci_workflow),
     ("PyPI publish workflow", validate_pypi_publish_workflow),
     ("examples", validate_examples),
