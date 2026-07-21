@@ -3,10 +3,43 @@
 Waybill ships as Markdown instructions for Claude Code, a local Codex plugin,
 OpenCode commands and skills, Cursor project rules, Gemini CLI workspace
 skills, and a small Python standard-library CLI. No package manager install is
-required.
+required when running it from a Waybill checkout.
 
 For the shortest setup path, start with `QUICKSTART.md`. This document keeps
 the fuller per-adapter details.
+
+## Managed Project Adapter Lifecycle
+
+`waybill init` manages the file-based Claude Code, OpenCode, Cursor CLI, and
+Gemini CLI adapters. Preview the complete plan before writing:
+
+```bash
+./cli/waybill init --target /path/to/repo --dry-run
+./cli/waybill init --target /path/to/repo --dry-run --json
+```
+
+The plan reports `would-create`, `would-update`, `unchanged`, and
+`would-conflict`. It finishes conflict preflight for every selected file before
+an apply can begin. `--force` may replace conflicting regular files, but it
+never follows a symbolic link.
+
+Apply and verify the plan:
+
+```bash
+./cli/waybill init --target /path/to/repo
+./cli/waybill doctor --target /path/to/repo
+```
+
+An apply writes `.waybill-adapters.json` atomically after the adapter files.
+The manifest contains no timestamp, uses deterministic key/path ordering, and
+records the Waybill version plus each managed file digest. `doctor` classifies
+managed files as `current`, `missing`, `stale`, or `modified`. Without a
+manifest, an older installation can still identify an exact current file, but
+a differing file is `modified` rather than reliably `stale`. An unsafe or
+malformed manifest is reported as `invalid` and makes the check fail closed.
+
+Codex is intentionally outside this lifecycle. Install its plugin using the
+marketplace flow below; `init` never copies or manages the Codex plugin.
 
 ## Codex
 
@@ -251,13 +284,19 @@ uvx agent-waybill --help
 After installing the adapters you need, run the static repository validation:
 
 ```bash
+python3 -m unittest discover -s tests -t . -v
 python3 scripts/validate-waybill.py
+python3 -m py_compile cli/waybill waybill_core/*.py scripts/*.py
+scripts/sync-adapters.py --check
+scripts/smoke-agents.sh --dry-run
+python3 scripts/test-wheel-install.py
 ```
 
 Install Claude Code, OpenCode, Cursor, and Gemini CLI project files into another
 repository:
 
 ```bash
+./cli/waybill init --target /path/to/repo --dry-run
 ./cli/waybill init --target /path/to/repo
 ./cli/waybill init --target /path/to/repo --json
 ```
@@ -268,6 +307,10 @@ Check the target repository installation:
 ./cli/waybill doctor --target /path/to/repo
 ./cli/waybill doctor --target /path/to/repo --json
 ```
+
+The JSON reports use a top-level boolean `success` that is `true` exactly when
+the command exits zero. JSON errors remain a single JSON object without prose
+or traceback output.
 
 Create a draft bundle:
 
@@ -281,6 +324,13 @@ Compare a bundle with the current repository state:
 ```bash
 ./cli/waybill verify-repo .waybill --repo .
 ./cli/waybill verify-repo .waybill --repo . --json
+```
+
+Verify delegation request/result correlation without changing either bundle:
+
+```bash
+./cli/waybill verify-pair /path/to/request /path/to/result
+./cli/waybill verify-pair /path/to/request /path/to/result --json
 ```
 
 Run the full import preflight check:
@@ -321,9 +371,16 @@ Create a redacted copy before sharing:
 Redact, validate, and pack a shareable archive:
 
 ```bash
+./cli/waybill share .waybill --check
+./cli/waybill share .waybill --check --json
 ./cli/waybill share .waybill --output waybill.zip
 ./cli/waybill share .waybill --output waybill.zip --json
 ```
+
+`share --check` does not require `--output` and performs no writes. Its findings
+contain only finding type, relative path, match count, and blocking status; it
+never prints matched secret content. Ordinary `share` still requires
+`--output`.
 
 Pack a validated bundle into a zip archive:
 

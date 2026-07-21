@@ -74,6 +74,12 @@ from waybill_core.validation import (  # noqa: E402
 )
 
 
+JSON_HELP = (
+    "write one JSON object with a top-level boolean success field; success is "
+    "true exactly when the exit status is zero"
+)
+
+
 class CliUsageError(ValueError):
     """An argparse error retained for either text or JSON rendering."""
 
@@ -1043,6 +1049,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = WaybillArgumentParser(
         prog="waybill",
         description="Work with local Waybill Bundles.",
+        epilog=(
+            "JSON-capable commands emit one object with a top-level boolean "
+            "success field; success is true exactly when the exit status is zero."
+        ),
     )
     parser.add_argument(
         "--version",
@@ -1056,11 +1066,21 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument(
         "--json",
         action="store_true",
-        help="write machine-readable JSON",
+        help=JSON_HELP,
     )
     validate.set_defaults(func=cmd_validate)
 
-    init = subparsers.add_parser("init", help="install Waybill adapter files")
+    init = subparsers.add_parser(
+        "init",
+        help="plan or install managed Waybill adapter files",
+        description=(
+            "Plan or install managed adapter files and .waybill-adapters.json."
+        ),
+        epilog=(
+            "Dry-run actions are would-create, would-update, unchanged, or "
+            "would-conflict. Codex plugin is not managed by init."
+        ),
+    )
     init.add_argument(
         "--target",
         default=".",
@@ -1070,21 +1090,31 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument(
         "--force",
         action="store_true",
-        help="replace existing adapter files",
+        help="replace conflicting regular files; never follows symbolic links",
     )
     init.add_argument(
         "--dry-run",
         action="store_true",
-        help="plan adapter changes without writing files",
+        help="report planned actions without writing files or the manifest",
     )
     init.add_argument(
         "--json",
         action="store_true",
-        help="write machine-readable JSON",
+        help=JSON_HELP,
     )
     init.set_defaults(func=cmd_init)
 
-    doctor = subparsers.add_parser("doctor", help="check Waybill adapter files")
+    doctor = subparsers.add_parser(
+        "doctor",
+        help="classify managed Waybill adapter files",
+        description=(
+            "Classify managed adapter files as current, missing, stale, or modified."
+        ),
+        epilog=(
+            "Without a manifest, changed files are modified rather than stale. "
+            "Codex plugin is not managed by init or doctor."
+        ),
+    )
     doctor.add_argument(
         "--target",
         default=".",
@@ -1094,7 +1124,7 @@ def build_parser() -> argparse.ArgumentParser:
     doctor.add_argument(
         "--json",
         action="store_true",
-        help="write machine-readable JSON",
+        help=JSON_HELP,
     )
     doctor.set_defaults(func=cmd_doctor)
 
@@ -1111,7 +1141,7 @@ def build_parser() -> argparse.ArgumentParser:
     verify_repo.add_argument(
         "--json",
         action="store_true",
-        help="write machine-readable JSON",
+        help=JSON_HELP,
     )
     verify_repo.set_defaults(func=cmd_verify_repo)
 
@@ -1130,7 +1160,7 @@ def build_parser() -> argparse.ArgumentParser:
     verify_pair.add_argument(
         "--json",
         action="store_true",
-        help="write machine-readable JSON",
+        help=JSON_HELP,
     )
     verify_pair.set_defaults(func=cmd_verify_pair)
 
@@ -1168,7 +1198,7 @@ def build_parser() -> argparse.ArgumentParser:
     new.add_argument(
         "--json",
         action="store_true",
-        help="write machine-readable JSON",
+        help=JSON_HELP,
     )
     new.set_defaults(func=cmd_new)
 
@@ -1185,7 +1215,7 @@ def build_parser() -> argparse.ArgumentParser:
     preflight.add_argument(
         "--json",
         action="store_true",
-        help="write machine-readable JSON",
+        help=JSON_HELP,
     )
     preflight.set_defaults(func=cmd_preflight)
 
@@ -1202,7 +1232,7 @@ def build_parser() -> argparse.ArgumentParser:
     ready.add_argument(
         "--json",
         action="store_true",
-        help="write machine-readable JSON",
+        help=JSON_HELP,
     )
     ready.set_defaults(func=cmd_ready)
 
@@ -1211,7 +1241,7 @@ def build_parser() -> argparse.ArgumentParser:
     inspect.add_argument(
         "--json",
         action="store_true",
-        help="write machine-readable JSON",
+        help=JSON_HELP,
     )
     inspect.set_defaults(func=cmd_inspect)
 
@@ -1230,7 +1260,7 @@ def build_parser() -> argparse.ArgumentParser:
     redact.add_argument(
         "--json",
         action="store_true",
-        help="write machine-readable JSON",
+        help=JSON_HELP,
     )
     redact.set_defaults(func=cmd_redact)
 
@@ -1249,13 +1279,22 @@ def build_parser() -> argparse.ArgumentParser:
     pack.add_argument(
         "--json",
         action="store_true",
-        help="write machine-readable JSON",
+        help=JSON_HELP,
     )
     pack.set_defaults(func=cmd_pack)
 
     share = subparsers.add_parser(
         "share",
-        help="redact, validate, and zip a Waybill Bundle",
+        help="check or create a redacted Waybill archive",
+        description=(
+            "Check shareability without writes, or redact, validate, and zip a "
+            "Waybill Bundle."
+        ),
+        epilog=(
+            "--check performs no writes and does not require --output. Findings "
+            "report only kind, path, count, and blocking, and never include "
+            "matched secret values."
+        ),
     )
     share.add_argument("bundle", help="path to a Waybill Bundle directory")
     share.add_argument(
@@ -1265,7 +1304,7 @@ def build_parser() -> argparse.ArgumentParser:
     share.add_argument(
         "--check",
         action="store_true",
-        help="check shareability without writing redacted or archive outputs",
+        help="run the read-only shareability preflight",
     )
     share.add_argument(
         "--redacted-output",
@@ -1279,7 +1318,7 @@ def build_parser() -> argparse.ArgumentParser:
     share.add_argument(
         "--json",
         action="store_true",
-        help="write machine-readable JSON",
+        help=JSON_HELP,
     )
     share.set_defaults(func=cmd_share)
 
@@ -1298,7 +1337,7 @@ def build_parser() -> argparse.ArgumentParser:
     unpack.add_argument(
         "--json",
         action="store_true",
-        help="write machine-readable JSON",
+        help=JSON_HELP,
     )
     unpack.set_defaults(func=cmd_unpack)
 
@@ -1316,7 +1355,7 @@ def build_parser() -> argparse.ArgumentParser:
     render.add_argument(
         "--json",
         action="store_true",
-        help="write machine-readable JSON; requires --output",
+        help=f"{JSON_HELP}; requires --output",
     )
     render.set_defaults(func=cmd_render)
 
@@ -1328,7 +1367,10 @@ def add_adapter_argument(parser: argparse.ArgumentParser, verb: str) -> None:
         "--adapter",
         action="append",
         choices=["all", "claude-code", "opencode", "cursor", "gemini-cli"],
-        help=f"adapter to {verb}; may be repeated",
+        help=(
+            f"file-based adapter to {verb}; may be repeated; "
+            "Codex plugin is installed separately"
+        ),
     )
 
 

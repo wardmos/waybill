@@ -93,13 +93,50 @@ python3 scripts/conformance-agents.py \
   --timeout 240
 ```
 
+The minimum real-agent release gate exercises an ordinary handoff and the
+request/result sides of delegation together:
+
+```sh
+python3 scripts/conformance-agents.py \
+  --agent-name codex \
+  --agent-command 'codex exec --ephemeral -s read-only -C . -' \
+  --scenario ordinary-unfinished \
+  --scenario delegation-request \
+  --scenario delegation-result \
+  --timeout 240
+```
+
+This gate passes only when all three responses are strict JSON, the ordinary
+scenario reports `handoff_kind` as `handoff`, the delegation kinds remain
+`delegation_request` and `delegation_result`, and measured workspace writes are
+empty. Run the remaining scenarios when changing the general observation or
+untrusted-input contract.
+
+Agent executables are optional test-environment capabilities. If a requested
+CLI is absent, record the coverage gap; do not install or authenticate it as a
+side effect of the conformance run.
+
+## Observed real-agent coverage
+
+Earlier local observations are historical evidence and do not count as current
+release coverage. Every current manual report must rerun the required scenario
+corpus from a clean committed Waybill checkout.
+
+Unavailable, unauthenticated, or misidentified products remain explicit
+coverage gaps rather than successful runs. Real-agent runs remain a manual gate
+because they require locally installed, authenticated tools and may consume
+model credits; CI runs deterministic unit/conformance tests and runner dry-runs
+only.
+
 Use a command's strongest read-only or planning controls in addition to the
 fixed prompt. The runner does not grant a bundle permission to use the network,
 read outside the bundle and workspace, or change state.
 
-The process exit status is zero only when every selected scenario passes. The
-JSON report includes the agent observation, validation or semantic errors, and
-the authoritative `measured_unexpected_writes` list.
+The process exit status is zero only when every selected scenario passes. Agent
+stdout is parsed as strict JSON: duplicate fields, non-finite numbers, trailing
+content, prose, and code fences fail. The JSON report includes the agent
+observation, validation or semantic errors, and the authoritative
+`measured_unexpected_writes` list.
 
 ## Write detection
 

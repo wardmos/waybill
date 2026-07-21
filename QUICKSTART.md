@@ -13,7 +13,7 @@ local handoff bundle in the repository:
 ```
 
 This guide uses the project-local adapters and the standard-library CLI. No
-package manager install is required.
+package manager install is required when running from a Waybill checkout.
 
 ## 1. Install Adapters Into A Repo
 
@@ -23,8 +23,15 @@ and Gemini CLI:
 From the Waybill repository:
 
 ```bash
+./cli/waybill init --target /path/to/your/repo --dry-run
 ./cli/waybill init --target /path/to/your/repo
 ```
+
+The dry run performs the complete conflict preflight but writes nothing. It
+reports `would-create`, `would-update`, `unchanged`, and `would-conflict`
+actions. A conflict returns non-zero without writing. Resolve every conflict
+before applying, or use `--force` only when you intend to replace conflicting
+regular files; force never follows symbolic links.
 
 Install only one adapter when needed:
 
@@ -39,7 +46,15 @@ Check the installation:
 
 ```bash
 ./cli/waybill doctor --target /path/to/your/repo
+./cli/waybill doctor --target /path/to/your/repo --json
 ```
+
+A successful install atomically records managed files and digests in the
+deterministic, timestamp-free `.waybill-adapters.json` manifest. `doctor`
+reports each managed file as `current`, `missing`, `stale`, or `modified`. For
+an older installation without a manifest, a file that differs from the current
+template is `modified`; it cannot be reliably distinguished as an untouched
+stale install or a local edit.
 
 Codex is installed separately as a local plugin from this repository:
 
@@ -49,6 +64,8 @@ codex plugin add waybill@waybill-local
 ```
 
 See `INSTALL.md` for the full Codex plugin flow.
+
+The Codex plugin is not an `init` or `doctor` management target.
 
 ## 2. Export A Handoff
 
@@ -132,10 +149,26 @@ For scripts:
 ./cli/waybill ready /path/to/your/repo/.waybill --repo /path/to/your/repo --json
 ```
 
+Every JSON-capable command writes exactly one JSON object. Its top-level
+boolean `success` is `true` exactly when the command exits zero; JSON failures
+do not include ordinary text or a traceback.
+
 ## 5. Share Safely
 
 Review `.waybill/` before sharing it. It can contain prompts, paths, diffs,
 logs, test output, tokens, cookies, API keys, or customer data.
+
+First run the read-only shareability check. It requires no output path and
+writes nothing:
+
+```bash
+./cli/waybill share /path/to/your/repo/.waybill --check
+./cli/waybill share /path/to/your/repo/.waybill --check --json
+```
+
+The exit code is zero only when the bundle is shareable. JSON findings expose
+only `kind`, `path`, `count`, and `blocking`; matched secret values are never
+printed.
 
 Create a redacted archive:
 
@@ -167,6 +200,9 @@ Print the exact commands without calling any model:
 ```bash
 scripts/smoke-agents.sh --dry-run
 ```
+
+For strict semantic scenarios with measured workspace write detection, use the
+conformance runner documented in `CONFORMANCE.md`.
 
 ## Notes
 

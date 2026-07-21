@@ -3,13 +3,30 @@
 This document describes the checks for the Waybill handoff and CLI
 workflow.
 
-## Static Validation
+## Full Local Gate
 
-Run:
+Run the same deterministic checks used for release readiness:
 
 ```bash
+python3 -m unittest discover -s tests -t . -v
 python3 scripts/validate-waybill.py
+python3 -m py_compile cli/waybill waybill_core/*.py scripts/*.py
+scripts/sync-adapters.py --check
+scripts/smoke-agents.sh --dry-run
+python3 scripts/test-wheel-install.py
+git diff --check
 ```
+
+Tests are organized by purpose:
+
+```text
+tests/unit/         isolated library and validator behavior
+tests/integration/  CLI, repository, adapter, and packaging boundaries
+tests/conformance/  deterministic agent observation scenarios
+```
+
+All three directories are Python packages so `unittest discover -s tests -t .`
+recurses consistently on Python 3.10, 3.11, and 3.12.
 
 ## Continuous Integration
 
@@ -18,12 +35,17 @@ Python 3.10, 3.11, and 3.12 matrix. Each job runs:
 
 ```bash
 python3 scripts/validate-waybill.py
-python3 -m py_compile cli/waybill waybill_core/*.py scripts/validate-waybill.py
+python3 -m unittest discover -s tests -t . -v
+python3 -m py_compile cli/waybill waybill_core/*.py scripts/*.py
+scripts/sync-adapters.py --check
 scripts/smoke-agents.sh --dry-run
 ```
 
 The repository validator checks the workflow triggers, read-only permissions,
-Python matrix, action versions, and command list. The validator itself uses
+Python matrix, action versions, and command list. It runs every named check even
+after a validation or unexpected exception, then reports all failures together.
+Its packaging check runs `scripts/test-wheel-install.py`, so CI does not repeat
+the disposable wheel build as a second workflow step. The validator itself uses
 only Python 3.10-compatible standard-library features.
 
 ## Repeatable Agent Smoke Tests
@@ -64,9 +86,43 @@ Notes:
 - Gemini CLI in plan mode may not have shell tools available; it should still
   read the bundle and report the repo mismatch from available context.
 
+## Agent Conformance
+
+The conformance runner is stricter than the smoke script: each agent must emit
+one exact JSON observation, semantic values must match the versioned scenario,
+and the runner independently measures all workspace writes outside `.git`.
+
+Validate all scenarios without resolving or executing an agent command:
+
+```bash
+python3 scripts/conformance-agents.py \
+  --agent-name codex \
+  --agent-command 'codex exec --ephemeral -s read-only -C . -' \
+  --dry-run
+```
+
+The minimum real-agent gate covers an ordinary handoff plus both sides of a
+delegation pair:
+
+```bash
+python3 scripts/conformance-agents.py \
+  --agent-name codex \
+  --agent-command 'codex exec --ephemeral -s read-only -C . -' \
+  --scenario ordinary-unfinished \
+  --scenario delegation-request \
+  --scenario delegation-result \
+  --timeout 240
+```
+
+The ordinary scenario must return `handoff_kind: "handoff"`; every bundled
+scenario requires an empty measured-write list. If an optional agent CLI is not
+installed, record the coverage gap rather than installing it as part of a test
+run. See `CONFORMANCE.md` for the full six-scenario matrix.
+
 Install project-local adapters into a target repository:
 
 ```bash
+./cli/waybill init --target /tmp/waybill-init-target --dry-run
 ./cli/waybill init --target /tmp/waybill-init-target
 ./cli/waybill init --target /tmp/waybill-init-target --force --json
 ```
@@ -140,6 +196,8 @@ Create a redacted copy:
 Create a redacted zip archive:
 
 ```bash
+./cli/waybill share .waybill --check
+./cli/waybill share .waybill --check --json
 ./cli/waybill share .waybill --output waybill.zip
 ./cli/waybill share .waybill --output waybill.zip --json
 ```
@@ -165,6 +223,36 @@ Render a Markdown review report:
 ./cli/waybill render .waybill-redacted --output waybill-report.md --json
 ```
 
+## JSON CLI Contract
+
+Every command that accepts `--json` must write exactly one JSON object to
+stdout and no ordinary text or traceback to stderr. The object has a top-level
+boolean `success`, with this invariant:
+
+```text
+success == (exit code == 0)
+```
+
+Commands that already expose `valid` retain it. The integration matrix tests
+successful and failing paths for all JSON-capable commands, including argparse
+usage errors and unexpected exceptions.
+
+## Isolated Wheel Installation
+
+Run:
+
+```bash
+python3 scripts/test-wheel-install.py
+```
+
+The script copies only packaging inputs into a temporary source tree, rejects
+symlinks in packaged sources, builds a wheel, installs it into a temporary
+virtual environment, and runs outside both the checkout and build copy with
+source-path imports disabled. It verifies the package/CLI version, every
+packaged adapter template, `init`, deterministic `.waybill-adapters.json`, a
+repeat idempotent init, and `doctor` current states. All wheel, venv, and target
+files are deleted with the temporary directory; nothing is uploaded.
+
 This checks:
 
 - Required repository files.
@@ -174,6 +262,7 @@ This checks:
 - Codex plugin manifest shape.
 - Example artifact references.
 - Required `WAYBILL.md` sections.
+- Exact loading and dry-run execution of all six conformance scenarios.
 - Delegation request/result fixtures and missing-section negative validation.
 - Obvious secret-like strings in examples.
 - Agent-neutral handoff wording in examples.
@@ -182,8 +271,11 @@ This checks:
 - Gemini CLI skill frontmatter and handoff safety rules.
 - Push and pull request CI coverage for Python 3.10, 3.11, and 3.12 with
   read-only permissions.
-- CLI adapter initialization into target repositories in text and JSON.
-- CLI adapter diagnostics for complete, partial, and missing installations.
+- Canonical adapter mirror synchronization in read-only check mode.
+- CLI adapter plan/apply separation, full conflict preflight, symlink safety,
+  atomic deterministic manifests, and text/JSON reporting.
+- CLI adapter diagnostics for current, missing, stale, modified, legacy, and
+  invalid-manifest installations.
 - CLI draft bundle scaffolding in text and JSON.
 - Runtime metadata type, timestamp, digest, and nested sensitive-content
   validation.
@@ -199,20 +291,29 @@ This checks:
 - CLI redaction output for common token and key/value patterns in text and JSON.
 - CLI share output for redacted archive preparation and fail-closed handling of
   unscannable files in text and JSON.
+- CLI read-only share checks, value-free findings, exit semantics, and zero
+  output writes.
 - CLI pack output and refusal to archive invalid bundles in text and JSON.
 - CLI unpack output and validation of unpacked bundles in text and JSON.
 - CLI render output for Markdown review reports in text and JSON.
 - End-to-end CLI workflow from draft bundle through rendered review report.
+- Common JSON success/error envelopes across every JSON-capable command.
+- A temporary wheel build, isolated installation, packaged templates, init,
+  doctor, and manifest lifecycle outside the source checkout.
 - Resource limits for diff capture, bundle file count, single-file size, and
   total bundle size.
 
-The script intentionally uses only the Python standard library.
+The project runtime and repository test code use only the Python standard
+library. Wheel construction uses the build requirements already declared in
+`pyproject.toml`; it adds no runtime dependency.
 
 ## CLI Init Smoke Test
 
 Install adapters into a temporary repository:
 
 ```bash
+./cli/waybill init --target /tmp/waybill-init-target --dry-run
+./cli/waybill init --target /tmp/waybill-init-target --dry-run --json
 ./cli/waybill init --target /tmp/waybill-init-target --force
 ./cli/waybill init --target /tmp/waybill-init-target --force --json
 ```
@@ -224,13 +325,20 @@ Expected result:
 - Cursor rules are copied into `.cursor/rules/`.
 - Gemini CLI skills are copied into `.gemini/skills/`.
 - `.gitignore` includes `.waybill/`.
-- Existing adapter files are refused unless `--force` is provided.
+- Dry-run reports `would-create`, `would-update`, `unchanged`, and
+  `would-conflict` without writing any file.
+- Every conflict is found before an apply writes its first file.
+- Existing conflicting regular files are refused unless `--force` is provided;
+  force never follows a symlink.
+- `.waybill-adapters.json` is written atomically with deterministic sorted
+  content, file digests, and no timestamp.
 - `--adapter claude-code` installs only Claude Code skill files.
 - `--adapter opencode` installs only OpenCode files.
 - `--adapter cursor` installs only Cursor rule files.
 - `--adapter gemini-cli` installs only Gemini CLI skill files.
 - Codex plugin files are not installed by `init`; see `INSTALL.md`.
-- JSON output parses as valid JSON and includes installed adapter actions.
+- JSON output includes a boolean `success`, dry-run state, conflict state, and
+  adapter actions.
 
 ## CLI Doctor Smoke Test
 
@@ -243,10 +351,14 @@ Check an initialized repository:
 
 Expected result:
 
-- Installed Claude Code, OpenCode, Cursor, and Gemini CLI files are reported as
-  `OK`.
+- Installed Claude Code, OpenCode, Cursor, and Gemini CLI files are `current`.
 - `.gitignore` with `.waybill/` is reported as `OK`.
-- JSON output parses as valid JSON and includes adapter check details.
+- JSON output includes adapter check status and lifecycle `state` values.
+- Deleted managed files are `missing`; files unchanged since an older manifest
+  but different from current templates are `stale`; locally changed files are
+  `modified`.
+- Without a manifest, exact template matches are `current`, while differing
+  legacy files are `modified` rather than `stale`.
 - A partial installation returns a non-zero exit code and reports missing files.
 - `--adapter claude-code` checks only Claude Code skill files.
 - `--adapter opencode` checks only OpenCode files.
@@ -399,6 +511,13 @@ Expected result:
 
 ## CLI Share Smoke Test
 
+Check shareability without creating or replacing outputs:
+
+```bash
+./cli/waybill share examples/claude-to-codex --check
+./cli/waybill share examples/claude-to-codex --check --json
+```
+
 Create a redacted review bundle and zip archive in one command:
 
 ```bash
@@ -408,6 +527,11 @@ Create a redacted review bundle and zip archive in one command:
 
 Expected result:
 
+- Check mode does not require `--output` and leaves the entire workspace
+  unchanged.
+- Check mode exits zero exactly when the bundle is shareable.
+- Check findings contain only `kind`, `path`, `count`, and `blocking`; they
+  never include matched secret values.
 - The command creates a redacted review bundle near the output archive.
 - The redacted review bundle is validated before packing.
 - The command creates a zip archive from the redacted bundle.

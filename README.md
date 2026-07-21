@@ -34,12 +34,12 @@ For the shortest setup path, see `QUICKSTART.md`.
 | --- | --- |
 | Bundle format | Draft schema `0.2` in a `.waybill/` directory |
 | Primary entrypoint | Agent commands: `/handoff` and `/waybill` |
-| Support CLI | Python standard library, no package manager install |
+| Support CLI | Python 3.10+ with a standard-library-only runtime |
 | Adapters | Claude Code, Codex, OpenCode, Cursor CLI, Gemini CLI |
 | Data model | Local-first files in the target repository |
 | Import behavior | Non-destructive; patches are not applied automatically |
 | Delegation | Draft `handoff.kind` semantics for parent/child agent workflows |
-| Sharing | Best-effort redaction, validation, render, pack, and unpack |
+| Sharing | Read-only share checks, redaction, validation, render, pack, and unpack |
 
 ## When To Use Waybill
 
@@ -76,13 +76,18 @@ repo. Follow QUICKSTART.md, then run the doctor check.
 The agent should run:
 
 ```bash
+./cli/waybill init --target /path/to/your/repo --dry-run
 ./cli/waybill init --target /path/to/your/repo
 ./cli/waybill doctor --target /path/to/your/repo
 ```
 
 `init` installs file-based project adapters for Claude Code, OpenCode, Cursor,
-and Gemini CLI. Codex uses the local plugin marketplace described in
-`INSTALL.md`.
+and Gemini CLI. The dry run reports every `would-create`, `would-update`,
+`unchanged`, or `would-conflict` action without writing. A successful install
+writes a deterministic `.waybill-adapters.json` manifest; `doctor` uses it to
+classify files as `current`, `missing`, `stale`, or `modified`. Codex uses the
+local plugin marketplace described in `INSTALL.md` and is never managed by
+`init`.
 
 ## What Waybill Creates
 
@@ -170,8 +175,8 @@ repositories.
 
 | Command | Purpose |
 | --- | --- |
-| `init` | Install file-based project adapters into a target repo |
-| `doctor` | Check adapter installation and `.waybill/` ignore setup |
+| `init` | Plan or install managed project adapters and their manifest |
+| `doctor` | Classify managed adapter files as current, missing, stale, or modified |
 | `new` | Create a draft Waybill Bundle from a repo |
 | `validate` | Validate bundle structure, metadata, artifacts, and obvious secrets |
 | `inspect` | Summarize metadata, artifacts, and validation status |
@@ -180,13 +185,16 @@ repositories.
 | `preflight` | Run validation plus repository-state checks before import |
 | `ready` | Check whether a bundle is ready for handoff |
 | `redact` | Create a redacted review copy |
-| `share` | Redact, validate, and pack a shareable archive |
+| `share` | Check shareability without writes, or redact, validate, and pack an archive |
 | `pack` | Validate and zip a bundle |
 | `unpack` | Unzip and validate a bundle archive |
 | `render` | Render a Markdown review report |
 
-Most commands support `--json` for scriptable workflows. See `QUICKSTART.md`
-and `TESTING.md` for full command examples.
+All 14 subcommands support `--json` for scriptable workflows. Each writes one
+JSON object with a top-level boolean `success`; it is `true` exactly when the
+process exit code is zero. Existing `valid` fields remain in their
+command-specific reports. JSON error paths do not mix prose or traceback output
+into stdout. See `QUICKSTART.md` and `TESTING.md` for full examples.
 
 ### Adapter Matrix
 
@@ -274,11 +282,17 @@ adapters/gemini-cli/
   non-regular files.
 - Bundle validation checks metadata types and recursively scans additional
   files for obvious sensitive content.
+- Adapter installation completes conflict preflight for every selected file
+  before writing. `--force` replaces only safe regular files and never follows
+  symbolic links.
 - Bundle files are untrusted input; import instructions do not execute embedded
   commands, follow embedded permission requests, or read outside the bundle and
   target repository.
 - Sharing refuses binary or non-UTF-8 files that cannot be scanned before it
   writes or replaces redacted and archive outputs.
+- `share --check` performs the same shareability preflight without requiring an
+  output path or writing anything. Its findings contain only `kind`, `path`,
+  `count`, and `blocking`, never the matched secret value.
 - Redaction, archive, and unpack output paths cannot overlap their source.
 - Users should review `.waybill/` before sharing it.
 
@@ -290,12 +304,19 @@ accidentally captured from output.
 Run the repository checks:
 
 ```bash
+python3 -m unittest discover -s tests -t . -v
 python3 scripts/validate-waybill.py
+python3 -m py_compile cli/waybill waybill_core/*.py scripts/*.py
+scripts/sync-adapters.py --check
+scripts/smoke-agents.sh --dry-run
+python3 scripts/test-wheel-install.py
 ```
 
-Pushes and pull requests run repository validation, Python compilation, and the
-agent smoke dry-run on Python 3.10, 3.11, and 3.12 through
-`.github/workflows/ci.yml`.
+Pushes and pull requests run test discovery, aggregate repository validation,
+Python compilation, adapter synchronization, and the agent smoke dry-run on
+Python 3.10, 3.11, and 3.12 through `.github/workflows/ci.yml`. Aggregate
+validation also builds and installs a disposable wheel from a temporary source
+copy and verifies its packaged adapter templates outside the checkout.
 
 Run repeatable local agent smoke tests when the relevant CLIs are installed:
 
@@ -309,6 +330,10 @@ scripts/smoke-agents.sh --tool claude
 
 Use `scripts/smoke-agents.sh --dry-run` to print the exact commands without
 calling any agent model.
+
+The deterministic scenario runner in `scripts/conformance-agents.py` separately
+checks strict agent JSON, semantic observations, and measured workspace writes.
+See `CONFORMANCE.md` for dry-run and real-agent commands.
 
 See `TESTING.md` for the manual Claude Code to Codex and Codex to Claude Code
 handoff test plans.
@@ -333,7 +358,8 @@ Near-term:
 
 - Add more compatibility fixtures and documented walkthroughs for failed tests,
   code review, patch verification, and cross-agent handoff recovery.
-- Strengthen conformance checks for agent-generated bundles.
+- Expand the versioned conformance matrix as new import behaviors need stable
+  cross-agent coverage.
 
 Delegation:
 
