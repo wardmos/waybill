@@ -15,6 +15,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from waybill_core import __version__  # noqa: E402
+from waybill_core.application import WaybillApplication  # noqa: E402
 from waybill_core.doctor import (  # noqa: E402
     DoctorCheck,
     DoctorReport,
@@ -23,7 +24,6 @@ from waybill_core.doctor import (  # noqa: E402
 from waybill_core.delegation import (  # noqa: E402
     DelegationPairCheck,
     DelegationPairReport,
-    verify_delegation_pair,
 )
 from waybill_core.install import (  # noqa: E402
     InstallAction,
@@ -40,12 +40,10 @@ from waybill_core.packing import (  # noqa: E402
 )
 from waybill_core.preflight import (  # noqa: E402
     ImportPreflightReport,
-    run_import_preflight,
 )
 from waybill_core.readiness import (  # noqa: E402
     ExportReadinessReport,
     ReadinessCheck,
-    check_export_readiness,
 )
 from waybill_core.redaction import (  # noqa: E402
     RedactedFile,
@@ -55,7 +53,6 @@ from waybill_core.redaction import (  # noqa: E402
 from waybill_core.repo import (  # noqa: E402
     RepoCheck,
     RepoVerificationReport,
-    verify_repo_state,
 )
 from waybill_core.rendering import render_bundle  # noqa: E402
 from waybill_core.scaffold import DraftBundleReport, create_draft_bundle  # noqa: E402
@@ -78,6 +75,7 @@ JSON_HELP = (
     "write one JSON object with a top-level boolean success field; success is "
     "true exactly when the exit status is zero"
 )
+APPLICATION = WaybillApplication()
 
 
 class CliUsageError(ValueError):
@@ -98,19 +96,6 @@ class WaybillArgumentParser(argparse.ArgumentParser):
 
 def print_json_error(message: str) -> None:
     print(json.dumps({"success": False, "error": message}, indent=2))
-
-
-def read_metadata(bundle: Path) -> tuple[dict[str, Any] | None, str | None]:
-    path = bundle / "metadata.json"
-    if not path.is_file():
-        return None, "metadata.json is missing"
-    try:
-        metadata = json.loads(path.read_text())
-    except json.JSONDecodeError as exc:
-        return None, f"metadata.json is invalid JSON: {exc}"
-    if not isinstance(metadata, dict):
-        return None, "metadata.json must contain an object"
-    return metadata, None
 
 
 def print_field(label: str, value: object) -> None:
@@ -465,7 +450,8 @@ def build_inspect_report(
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
-    issues = validate_bundle(args.bundle)
+    operation = APPLICATION.validate(args.bundle)
+    issues = operation.payload
     if args.json:
         print(json.dumps(build_validation_report(args.bundle, issues), indent=2))
         return 1 if has_errors(issues) else 0
@@ -551,7 +537,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 
 def cmd_verify_repo(args: argparse.Namespace) -> int:
-    report = verify_repo_state(args.bundle, args.repo)
+    operation = APPLICATION.verify_repo(args.bundle, args.repo)
+    report = operation.payload
     if args.json:
         print(json.dumps(build_repo_report(report), indent=2))
         return 1 if report.has_errors else 0
@@ -574,7 +561,8 @@ def cmd_verify_repo(args: argparse.Namespace) -> int:
 
 
 def cmd_verify_pair(args: argparse.Namespace) -> int:
-    report = verify_delegation_pair(args.request, args.result)
+    operation = APPLICATION.verify_pair(args.request, args.result)
+    report = operation.payload
     if args.json:
         print(json.dumps(build_delegation_pair_report(report), indent=2))
         return 1 if report.has_errors else 0
@@ -635,7 +623,8 @@ def cmd_new(args: argparse.Namespace) -> int:
 
 
 def cmd_preflight(args: argparse.Namespace) -> int:
-    report = run_import_preflight(args.bundle, args.repo)
+    operation = APPLICATION.preflight(args.bundle, args.repo)
+    report = operation.payload
     errors = report.validation_errors
     warnings = report.validation_warnings
     if args.json:
@@ -665,7 +654,8 @@ def cmd_preflight(args: argparse.Namespace) -> int:
 
 
 def cmd_ready(args: argparse.Namespace) -> int:
-    report = check_export_readiness(args.bundle, args.repo)
+    operation = APPLICATION.ready(args.bundle, args.repo)
+    report = operation.payload
     errors = [
         issue for issue in report.validation_issues if issue.severity == "error"
     ]
@@ -704,11 +694,14 @@ def cmd_ready(args: argparse.Namespace) -> int:
 
 
 def cmd_inspect(args: argparse.Namespace) -> int:
-    bundle = Path(args.bundle)
-    issues = validate_bundle(bundle)
+    operation = APPLICATION.inspect(args.bundle)
+    inspection = operation.payload
+    bundle = inspection.bundle
+    issues = inspection.validation_issues
     errors = [issue for issue in issues if issue.severity == "error"]
     warnings = [issue for issue in issues if issue.severity == "warning"]
-    metadata, metadata_error = read_metadata(bundle)
+    metadata = inspection.metadata
+    metadata_error = inspection.metadata_error
 
     if args.json:
         report = build_inspect_report(bundle, metadata, metadata_error, issues)

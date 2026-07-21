@@ -275,7 +275,7 @@ class CliJsonContractTests(unittest.TestCase):
 
     def test_unexpected_json_error_is_caught_without_a_traceback(self) -> None:
         with mock.patch(
-            "waybill_core.cli.validate_bundle",
+            "waybill_core.application.validate_bundle",
             side_effect=RuntimeError("synthetic unexpected failure"),
         ):
             exit_code, report = self._run_json(
