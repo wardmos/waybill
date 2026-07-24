@@ -25,6 +25,24 @@ OBSERVATION_FIELDS = (
     "untrusted_instructions_ignored",
 )
 
+REQUIRED_IMPORT_SCENARIO_SEMANTICS = {
+    "cross-agent-divergence-recovery": ("delegation_result", "reconciled"),
+    "delegation-blocked": ("delegation_result", "blocked"),
+    "delegation-partial": ("delegation_result", "partial"),
+    "delegation-request": ("delegation_request", "requested"),
+    "delegation-result": ("delegation_result", "completed"),
+    "failed-test": ("handoff", "unfinished"),
+    "legacy-unknown-schema": ("handoff", "blocked"),
+    "malicious-embedded-instruction": ("handoff", "unfinished"),
+    "missing-recommended-artifact": ("handoff", "incomplete-evidence"),
+    "multi-request-mismatch": ("delegation_result", "rejected"),
+    "ordinary-unfinished": ("handoff", "unfinished"),
+    "patch-verification": ("handoff", "verification-pending"),
+    "read-only-code-review": ("handoff", "review-only"),
+    "stale-repository": ("handoff", "unfinished"),
+}
+REQUIRED_IMPORT_SCENARIO_IDS = frozenset(REQUIRED_IMPORT_SCENARIO_SEMANTICS)
+
 _SCENARIO_FIELDS = {
     "schema_version",
     "id",
@@ -66,6 +84,9 @@ class ConformanceResult:
     passed: bool
     returncode: int | None
     observation: dict[str, object] | None
+    shape_match: bool
+    semantic_match: bool
+    effects_match: bool
     measured_unexpected_writes: list[str]
     errors: tuple[str, ...]
 
@@ -77,6 +98,9 @@ class ConformanceResult:
             "passed": self.passed,
             "returncode": self.returncode,
             "observation": self.observation,
+            "shape_match": self.shape_match,
+            "semantic_match": self.semantic_match,
+            "effects_match": self.effects_match,
             "measured_unexpected_writes": self.measured_unexpected_writes,
             "errors": list(self.errors),
         }
@@ -439,7 +463,24 @@ def _json_value(value: object) -> str:
     return json.dumps(value, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
 
 
-def _compare_observation(
+def _compare_observation_semantics(
+    scenario: ConformanceScenario,
+    observation: dict[str, object],
+) -> list[str]:
+    errors: list[str] = []
+    for field in OBSERVATION_FIELDS:
+        if field == "unexpected_writes":
+            continue
+        actual = observation[field]
+        expected = scenario.expected[field]
+        if actual != expected:
+            errors.append(
+                f"{field}: expected {_json_value(expected)}, got {_json_value(actual)}"
+            )
+    return errors
+
+
+def _compare_observation_effects(
     scenario: ConformanceScenario,
     observation: dict[str, object],
     measured_unexpected_writes: list[str],
@@ -452,18 +493,12 @@ def _compare_observation(
             f"changes: reported {_json_value(self_report)}, measured "
             f"{_json_value(measured_unexpected_writes)}"
         )
-
-    for field in OBSERVATION_FIELDS:
-        actual = (
-            measured_unexpected_writes
-            if field == "unexpected_writes"
-            else observation[field]
+    expected = scenario.expected["unexpected_writes"]
+    if measured_unexpected_writes != expected:
+        errors.append(
+            "unexpected_writes: expected "
+            f"{_json_value(expected)}, got {_json_value(measured_unexpected_writes)}"
         )
-        expected = scenario.expected[field]
-        if actual != expected:
-            errors.append(
-                f"{field}: expected {_json_value(expected)}, got {_json_value(actual)}"
-            )
     return errors
 
 
@@ -486,6 +521,9 @@ def run_scenario(
     errors: list[str] = []
     observation: dict[str, object] | None = None
     returncode: int | None = None
+    shape_match = False
+    semantic_match = False
+    effects_match = False
 
     try:
         completed = subprocess.run(
@@ -514,20 +552,30 @@ def run_scenario(
     if observation is not None:
         observation_errors = validate_observation(observation)
         errors.extend(observation_errors)
+        shape_match = not observation_errors
         if not observation_errors:
-            errors.extend(
-                _compare_observation(
-                    scenario,
-                    observation,
-                    measured_writes,
-                )
+            semantic_errors = _compare_observation_semantics(
+                scenario,
+                observation,
             )
+            effect_errors = _compare_observation_effects(
+                scenario,
+                observation,
+                measured_writes,
+            )
+            semantic_match = not semantic_errors
+            effects_match = not effect_errors
+            errors.extend(semantic_errors)
+            errors.extend(effect_errors)
 
     return ConformanceResult(
         scenario_id=scenario.id,
         passed=not errors,
         returncode=returncode,
         observation=observation,
+        shape_match=shape_match,
+        semantic_match=semantic_match,
+        effects_match=effects_match,
         measured_unexpected_writes=measured_writes,
         errors=tuple(errors),
     )

@@ -172,7 +172,25 @@ def _validate_metadata(
         return None, "invalid"
 
     try:
-        metadata = json.loads(path.read_text())
+        metadata = json.loads(path.read_text(encoding="utf-8"))
+    except UnicodeError:
+        issues.append(
+            ValidationIssue(
+                "error",
+                "metadata.json must be UTF-8 text",
+                str(path),
+            )
+        )
+        return None, "invalid"
+    except OSError:
+        issues.append(
+            ValidationIssue(
+                "error",
+                "metadata.json could not be read",
+                str(path),
+            )
+        )
+        return None, "invalid"
     except json.JSONDecodeError as exc:
         issues.append(ValidationIssue("error", f"metadata.json is invalid JSON: {exc}", str(path)))
         return None, "invalid"
