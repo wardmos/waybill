@@ -6,6 +6,11 @@ BUNDLE="examples/claude-to-codex"
 DRY_RUN=0
 TIMEOUT_SECONDS="${WAYBILL_SMOKE_TIMEOUT:-180}"
 GEMINI_MODEL="${WAYBILL_GEMINI_MODEL:-gemini-3.1-flash-lite}"
+CLAUDE_BINARY="${WAYBILL_CLAUDE_BINARY:-claude}"
+CODEX_BINARY="${WAYBILL_CODEX_BINARY:-codex}"
+CURSOR_BINARY="${WAYBILL_CURSOR_BINARY:-agent}"
+OPENCODE_BINARY="${WAYBILL_OPENCODE_BINARY:-opencode}"
+GEMINI_BINARY="${WAYBILL_GEMINI_BINARY:-gemini}"
 TOOLS=()
 
 usage() {
@@ -25,6 +30,11 @@ Options:
 Environment:
   WAYBILL_SMOKE_TIMEOUT       Per-tool timeout in seconds. Defaults to 180.
   WAYBILL_GEMINI_MODEL        Gemini model. Defaults to gemini-3.1-flash-lite.
+  WAYBILL_CLAUDE_BINARY       Claude Code executable. Defaults to claude.
+  WAYBILL_CODEX_BINARY        Codex executable. Defaults to codex.
+  WAYBILL_CURSOR_BINARY       Cursor executable. Defaults to agent.
+  WAYBILL_OPENCODE_BINARY     OpenCode executable. Defaults to opencode.
+  WAYBILL_GEMINI_BINARY       Gemini CLI executable. Defaults to gemini.
 
 The script fails if the repository is dirty before or after a tool runs.
 It writes command logs to a temporary directory under /tmp.
@@ -135,19 +145,19 @@ command_for_tool() {
 
   case "$tool" in
     claude)
-      COMMAND=(claude -p --permission-mode plan --no-session-persistence "$codex_prompt")
+      COMMAND=("$CLAUDE_BINARY" -p --permission-mode plan --no-session-persistence "$codex_prompt")
       ;;
     codex)
-      COMMAND=(codex exec --ephemeral -s read-only -C "$ROOT" "$codex_prompt")
+      COMMAND=("$CODEX_BINARY" exec --ephemeral -s read-only -C "$ROOT" "$codex_prompt")
       ;;
     cursor)
-      COMMAND=(agent -p --trust --mode=ask "$prompt")
+      COMMAND=("$CURSOR_BINARY" -p --trust --mode=ask "$prompt")
       ;;
     opencode)
-      COMMAND=(opencode run --command handoff "import $BUNDLE. Do not modify files; only read the bundle, verify repository state, and summarize the handoff.")
+      COMMAND=("$OPENCODE_BINARY" run --command handoff "import $BUNDLE. Do not modify files; only read the bundle, verify repository state, and summarize the handoff.")
       ;;
     gemini)
-      COMMAND=(gemini --skip-trust --approval-mode plan --model "$GEMINI_MODEL" -p "$prompt")
+      COMMAND=("$GEMINI_BINARY" --skip-trust --approval-mode plan --model "$GEMINI_MODEL" -p "$prompt")
       ;;
     *)
       echo "Unknown tool: $tool" >&2
@@ -156,20 +166,56 @@ command_for_tool() {
   esac
 }
 
+adapter_and_binary_for_tool() {
+  local tool="$1"
+  case "$tool" in
+    claude) ADAPTER="claude-code"; BINARY="$CLAUDE_BINARY" ;;
+    codex) ADAPTER="codex"; BINARY="$CODEX_BINARY" ;;
+    cursor) ADAPTER="cursor"; BINARY="$CURSOR_BINARY" ;;
+    opencode) ADAPTER="opencode"; BINARY="$OPENCODE_BINARY" ;;
+    gemini) ADAPTER="gemini-cli"; BINARY="$GEMINI_BINARY" ;;
+    *) echo "Unknown tool: $tool" >&2; return 2 ;;
+  esac
+}
+
 require_tool_binary() {
   local tool="$1"
-  local binary="$tool"
-  case "$tool" in
-    cursor) binary="agent" ;;
-    claude) binary="claude" ;;
-    codex) binary="codex" ;;
-    opencode) binary="opencode" ;;
-    gemini) binary="gemini" ;;
-  esac
-  if ! command -v "$binary" >/dev/null 2>&1; then
-    echo "Missing CLI for $tool: $binary" >&2
+  adapter_and_binary_for_tool "$tool" || return $?
+  if [[ "$BINARY" == */* ]]; then
+    if [[ ! -x "$BINARY" ]]; then
+      echo "Missing CLI for $tool: $BINARY" >&2
+      return 1
+    fi
+  elif ! command -v "$BINARY" >/dev/null 2>&1; then
+    echo "Missing CLI for $tool: $BINARY" >&2
     return 1
   fi
+}
+
+verify_tool_identity() {
+  local tool="$1"
+  adapter_and_binary_for_tool "$tool" || return $?
+  local report="$LOG_DIR/$tool-identity.json"
+  local identity_command=(
+    python3 "$ROOT/scripts/adapter-matrix.py"
+    --adapter "$ADAPTER"
+    --executable "$ADAPTER=$BINARY"
+    --identity-only
+  )
+
+  echo
+  echo "==> $tool identity"
+  quote_command "${identity_command[@]}"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    return 0
+  fi
+
+  if ! "${identity_command[@]}" >"$report"; then
+    echo "FAIL $tool executable identity. Report: $report" >&2
+    sed -n '1,220p' "$report" >&2
+    return 1
+  fi
+  echo "PASS $tool executable identity. Report: $report"
 }
 
 LOG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/waybill-agent-smoke.XXXXXX")"
@@ -186,6 +232,7 @@ for tool in "${TOOLS[@]}"; do
   if [[ "$DRY_RUN" -eq 0 ]]; then
     require_tool_binary "$tool" || exit 1
   fi
+  verify_tool_identity "$tool" || exit 1
   COMMAND=()
   command_for_tool "$tool" || exit 1
   run_command "$tool" "${COMMAND[@]}" || exit 1

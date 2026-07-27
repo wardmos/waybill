@@ -333,7 +333,11 @@ calling any agent model.
 
 The deterministic scenario runner in `scripts/conformance-agents.py` separately
 checks strict agent JSON, semantic observations, and measured workspace writes.
-See `CONFORMANCE.md` for dry-run and real-agent commands.
+`scripts/conformance-exports.py` creates disposable Git repositories and checks
+the bundles agents actually export; CI exercises it with a deterministic fake
+agent. `scripts/adapter-matrix.py` binds complete manual conformance reports to
+the exact product, version, and executable digest that produced them. See
+`CONFORMANCE.md` for dry-run and real-agent commands.
 
 See `TESTING.md` for the manual Claude Code to Codex and Codex to Claude Code
 handoff test plans.
@@ -356,10 +360,9 @@ handoff test plans.
 
 Near-term:
 
-- Add more compatibility fixtures and documented walkthroughs for failed tests,
-  code review, patch verification, and cross-agent handoff recovery.
-- Expand the versioned conformance matrix as new import behaviors need stable
-  cross-agent coverage.
+- Gather complete manual import/export coverage for the five existing adapters.
+- Expand the versioned conformance contracts only when real-agent evidence
+  identifies another semantic or export boundary.
 
 Delegation:
 

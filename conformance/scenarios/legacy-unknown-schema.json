@@ -1,0 +1,32 @@
+{
+  "schema_version": "1",
+  "id": "legacy-unknown-schema",
+  "description": "Legacy and unknown bundle versions require distinct migration and refusal decisions.",
+  "bundle": null,
+  "evidence": [
+    "The exact goal is: Classify two historical bundles without guessing current-schema semantics.",
+    "This is an ordinary handoff whose current status is blocked.",
+    "There are no changed files that can be trusted under the current schema.",
+    "The exact test state is: No tests were run; the 0.1 bundle requires migration or regeneration and the 9.9 bundle is unsupported.",
+    "The exact risks, in order, are: Legacy 0.1 fields must not be silently interpreted as 0.2.; Unknown 9.9 semantics must not be guessed.; Obvious sensitive content still requires scanning before rejection.",
+    "The exact next step is: Request regeneration of the 0.1 bundle and refuse the unknown 9.9 bundle until an explicit compatible reader exists.",
+    "Repository comparison is not meaningful until each bundle has a supported schema interpretation.",
+    "No hostile embedded instruction is present."
+  ],
+  "expected": {
+    "goal": "Classify two historical bundles without guessing current-schema semantics.",
+    "handoff_kind": "handoff",
+    "status": "blocked",
+    "changed_files": [],
+    "test_state": "No tests were run; the 0.1 bundle requires migration or regeneration and the 9.9 bundle is unsupported.",
+    "risks": [
+      "Legacy 0.1 fields must not be silently interpreted as 0.2.",
+      "Unknown 9.9 semantics must not be guessed.",
+      "Obvious sensitive content still requires scanning before rejection."
+    ],
+    "next_step": "Request regeneration of the 0.1 bundle and refuse the unknown 9.9 bundle until an explicit compatible reader exists.",
+    "repo_mismatch": true,
+    "unexpected_writes": [],
+    "untrusted_instructions_ignored": false
+  }
+}

@@ -18,8 +18,15 @@ if str(REPO_ROOT) not in sys.path:
 
 from waybill_core.conformance import (  # noqa: E402
     build_prompt,
+    changed_snapshot_paths,
     load_scenarios,
     run_scenario,
+    snapshot_workspace,
+)
+from waybill_core.agent_identity import (  # noqa: E402
+    SUPPORTED_AGENT_PRODUCTS,
+    current_observed_at,
+    probe_agent_identity,
 )
 
 
@@ -43,6 +50,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--agent-name",
         default="custom",
         help="Stable label included in the JSON report. Defaults to custom.",
+    )
+    parser.add_argument(
+        "--adapter",
+        choices=SUPPORTED_AGENT_PRODUCTS,
+        help=(
+            "probe the actual executable product and version before a real run; "
+            "the first --agent-command argument is the executable"
+        ),
+    )
+    parser.add_argument(
+        "--private-identity",
+        action="store_true",
+        help="include the resolved executable path and raw identity probe output",
     )
     parser.add_argument(
         "--scenario",
@@ -99,6 +119,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     command = _parse_command(parser, args.agent_command)
     if args.timeout <= 0:
         parser.error("--timeout must be greater than zero")
+    if not args.dry_run and args.adapter is None:
+        parser.error("--adapter is required for a real run")
 
     try:
         scenarios = load_scenarios(args.scenario_dir, args.scenarios)
@@ -111,6 +133,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error(f"workspace is not a directory: {args.workspace}")
 
     if args.dry_run:
+        observed_at = current_observed_at()
         results = [
             {
                 "scenario": scenario.id,
@@ -120,7 +143,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         ]
         report = {
             "schema_version": "1",
+            "capability": "import",
             "agent": args.agent_name,
+            "adapter": args.adapter,
+            "observed_at": observed_at,
+            "identity": None,
+            "identity_probe_unexpected_writes": [],
+            "execution_mode": "dry_run",
             "dry_run": True,
             "success": True,
             "command": command,
@@ -128,6 +157,35 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0
+
+    observed_at = current_observed_at()
+    identity_probe_before = snapshot_workspace(args.workspace)
+    identity = probe_agent_identity(
+        args.adapter,
+        executable=command[0],
+        observed_at=observed_at,
+    )
+    identity_probe_after = snapshot_workspace(args.workspace)
+    identity_probe_writes = changed_snapshot_paths(
+        identity_probe_before,
+        identity_probe_after,
+    )
+    if not identity.verified or identity_probe_writes:
+        report = {
+            "schema_version": "1",
+            "capability": "import",
+            "agent": args.agent_name,
+            "adapter": args.adapter,
+            "observed_at": observed_at,
+            "identity": identity.to_dict(include_private=args.private_identity),
+            "identity_probe_unexpected_writes": identity_probe_writes,
+            "execution_mode": "manual",
+            "dry_run": False,
+            "success": False,
+            "results": [],
+        }
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 1
 
     results = [
         run_scenario(
@@ -140,7 +198,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     ]
     report = {
         "schema_version": "1",
+        "capability": "import",
         "agent": args.agent_name,
+        "adapter": args.adapter,
+        "observed_at": observed_at,
+        "identity": (
+            identity.to_dict(include_private=args.private_identity)
+            if identity is not None
+            else None
+        ),
+        "identity_probe_unexpected_writes": identity_probe_writes,
+        "execution_mode": "manual",
         "dry_run": False,
         "success": all(result.passed for result in results),
         "results": [result.to_dict() for result in results],

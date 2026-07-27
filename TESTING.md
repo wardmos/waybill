@@ -75,7 +75,18 @@ scripts/smoke-agents.sh --dry-run
 
 The script uses `examples/claude-to-codex` by default and requires the working
 tree to be clean before and after each tool runs. Command logs are written under
-`/tmp`.
+`/tmp`. Before invoking a model, it resolves the selected executable, follows
+symbolic links to its real path, hashes its bytes, and verifies the product and
+version. Identity checks fail closed. In particular, an executable named
+`agent` is not counted as Cursor unless its version or help output identifies it
+as Cursor.
+
+Executable paths can be overridden explicitly when a CLI is not on `PATH`:
+
+```bash
+WAYBILL_CLAUDE_BINARY=/path/to/claude scripts/smoke-agents.sh --tool claude
+WAYBILL_CURSOR_BINARY=/path/to/cursor-agent scripts/smoke-agents.sh --tool cursor
+```
 
 Notes:
 
@@ -85,6 +96,67 @@ Notes:
   if the CLI needs access to its own local state.
 - Gemini CLI in plan mode may not have shell tools available; it should still
   read the bundle and report the repo mismatch from available context.
+
+## Adapter Quality Matrix
+
+The adapter matrix separates installed-binary identity from observed capability
+coverage. These are the current minimum gates:
+
+| Adapter | Export | Import |
+| --- | --- | --- |
+| Claude Code | Required | Required |
+| Codex | Required | Required |
+| OpenCode | Optional | Required |
+| Cursor | Optional | Required |
+| Gemini CLI | Optional | Required |
+
+Probe all installed executables without invoking a model:
+
+```bash
+python3 scripts/adapter-matrix.py --identity-only
+```
+
+The private JSON report includes the requested executable, resolved real path,
+SHA-256 digest, detected product, version, observation date, raw identity probe
+output, and paths to accepted conformance reports. Keep it with private test
+logs in a directory outside this repository, and do not commit it to the public
+repository.
+
+Use `--public` only for a sanitized summary. It omits executable paths, raw
+output, error detail, and capability-evidence paths while retaining
+content-addressed report references and SHA-256 digests:
+
+```bash
+python3 scripts/adapter-matrix.py --identity-only --public
+```
+
+Capability results come only from separately executed export or import
+conformance report JSON files. The matrix command validates and hashes the
+reports but never runs an agent model itself. For example, after the
+corresponding private runs have been reviewed:
+
+```bash
+python3 scripts/adapter-matrix.py \
+  --report /private/conformance/claude-code-export.json \
+  --report /private/conformance/claude-code-import.json \
+  --report /private/conformance/codex-export.json \
+  --report /private/conformance/codex-import.json \
+  --report /private/conformance/opencode-import.json \
+  --report /private/conformance/cursor-import.json \
+  --report /private/conformance/gemini-cli-import.json
+```
+
+Each accepted report must be a non-dry-run manual observation, contain a
+verified executable identity with product, version, observation timestamp, and
+executable SHA-256, and cover exactly the complete v1 scenario set for that
+capability. Deterministic fake export reports remain CI evidence and cannot
+count as real adapter coverage. The matrix probes the executable again and
+requires its product, version, and SHA-256 to match the report. A changed binary
+therefore produces `evidence_mismatch`; a Grok binary remains
+`identity_mismatch` for the Cursor adapter. A report with complete failed
+results is retained as `failed`, while a partial or internally inconsistent
+report is rejected. The removed `--result ADAPTER:CAPABILITY=STATUS` interface
+cannot manufacture capability coverage from an ungrounded status string.
 
 ## Agent Conformance
 
@@ -97,6 +169,7 @@ Validate all scenarios without resolving or executing an agent command:
 ```bash
 python3 scripts/conformance-agents.py \
   --agent-name codex \
+  --adapter codex \
   --agent-command 'codex exec --ephemeral -s read-only -C . -' \
   --dry-run
 ```
@@ -107,6 +180,7 @@ delegation pair:
 ```bash
 python3 scripts/conformance-agents.py \
   --agent-name codex \
+  --adapter codex \
   --agent-command 'codex exec --ephemeral -s read-only -C . -' \
   --scenario ordinary-unfinished \
   --scenario delegation-request \
@@ -117,7 +191,7 @@ python3 scripts/conformance-agents.py \
 The ordinary scenario must return `handoff_kind: "handoff"`; every bundled
 scenario requires an empty measured-write list. If an optional agent CLI is not
 installed, record the coverage gap rather than installing it as part of a test
-run. See `CONFORMANCE.md` for the full six-scenario matrix.
+run. See `CONFORMANCE.md` for the full fourteen-scenario matrix.
 
 Install project-local adapters into a target repository:
 
@@ -262,7 +336,7 @@ This checks:
 - Codex plugin manifest shape.
 - Example artifact references.
 - Required `WAYBILL.md` sections.
-- Exact loading and dry-run execution of all six conformance scenarios.
+- Exact loading and dry-run execution of all fourteen import conformance scenarios.
 - Delegation request/result fixtures and missing-section negative validation.
 - Obvious secret-like strings in examples.
 - Agent-neutral handoff wording in examples.

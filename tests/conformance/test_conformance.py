@@ -12,6 +12,8 @@ from pathlib import Path
 
 from waybill_core.conformance import (
     OBSERVATION_FIELDS,
+    REQUIRED_IMPORT_SCENARIO_IDS,
+    REQUIRED_IMPORT_SCENARIO_SEMANTICS,
     ConformanceScenario,
     build_prompt,
     changed_snapshot_paths,
@@ -23,6 +25,7 @@ from waybill_core.conformance import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+SYNTHETIC_AGENT_VERSION = ".".join(("999", "0", "0")) + "-test-only"
 
 
 def valid_observation() -> dict[str, object]:
@@ -239,6 +242,9 @@ class ScenarioExecutionTests(unittest.TestCase):
 
         self.assertTrue(result.passed, result.errors)
         self.assertEqual(valid_observation(), result.observation)
+        self.assertTrue(result.shape_match)
+        self.assertTrue(result.semantic_match)
+        self.assertTrue(result.effects_match)
         self.assertEqual([], result.measured_unexpected_writes)
 
         invalid = run_scenario(
@@ -288,6 +294,9 @@ class ScenarioExecutionTests(unittest.TestCase):
 
         self.assertFalse(result.passed)
         self.assertEqual(["agent-note.txt"], result.measured_unexpected_writes)
+        self.assertTrue(result.shape_match)
+        self.assertTrue(result.semantic_match)
+        self.assertFalse(result.effects_match)
         self.assertTrue(
             any("unexpected_writes self-report does not match" in error for error in result.errors)
         )
@@ -303,6 +312,9 @@ class ScenarioExecutionTests(unittest.TestCase):
         )
 
         self.assertFalse(result.passed)
+        self.assertTrue(result.shape_match)
+        self.assertFalse(result.semantic_match)
+        self.assertTrue(result.effects_match)
         self.assertTrue(
             any("repo_mismatch: expected false, got true" in error for error in result.errors)
         )
@@ -315,15 +327,18 @@ class BundledScenarioTests(unittest.TestCase):
         scenarios = [load_scenario(path) for path in paths]
 
         self.assertEqual(
-            {
-                "delegation-request",
-                "delegation-result",
-                "failed-test",
-                "malicious-embedded-instruction",
-                "ordinary-unfinished",
-                "stale-repository",
-            },
+            REQUIRED_IMPORT_SCENARIO_IDS,
             {scenario.id for scenario in scenarios},
+        )
+        self.assertEqual(
+            REQUIRED_IMPORT_SCENARIO_SEMANTICS,
+            {
+                scenario.id: (
+                    scenario.expected["handoff_kind"],
+                    scenario.expected["status"],
+                )
+                for scenario in scenarios
+            },
         )
         self.assertTrue(
             next(
@@ -377,7 +392,110 @@ class BundledScenarioTests(unittest.TestCase):
             report = json.loads(completed.stdout)
             self.assertTrue(report["success"])
             self.assertTrue(report["dry_run"])
+            self.assertEqual("import", report["capability"])
+            self.assertEqual("dry_run", report["execution_mode"])
+            self.assertIsNone(report["identity"])
+            self.assertRegex(
+                report["observed_at"],
+                r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$",
+            )
             self.assertEqual(["sample"], [item["scenario"] for item in report["results"]])
+
+    def test_cli_real_run_requires_verified_adapter_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            scenario_dir = root / "scenarios"
+            workspace = root / "workspace"
+            scenario_dir.mkdir()
+            workspace.mkdir()
+            (scenario_dir / "sample.json").write_text(
+                json.dumps(scenario_document()),
+                encoding="utf-8",
+            )
+            marker = workspace / "must-not-exist"
+            command = (
+                f"{sys.executable} -c "
+                f"\"from pathlib import Path; Path({str(marker)!r}).touch()\""
+            )
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "scripts" / "conformance-agents.py"),
+                    "--scenario-dir",
+                    str(scenario_dir),
+                    "--workspace",
+                    str(workspace),
+                    "--agent-command",
+                    command,
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(2, completed.returncode)
+            self.assertIn("--adapter is required for a real run", completed.stderr)
+            self.assertFalse(marker.exists())
+
+    def test_cli_counts_identity_probe_workspace_writes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            scenario_dir = root / "scenarios"
+            workspace = root / "workspace"
+            scenario_dir.mkdir()
+            workspace.mkdir()
+            (scenario_dir / "sample.json").write_text(
+                json.dumps(scenario_document()),
+                encoding="utf-8",
+            )
+            probe_marker = workspace / "probe-write"
+            model_marker = workspace / "model-write"
+            executable = root / "codex"
+            executable.write_text(
+                f"""#!{sys.executable}
+import pathlib
+import sys
+
+if "--version" in sys.argv:
+    pathlib.Path({str(probe_marker)!r}).touch()
+    print("codex-cli {SYNTHETIC_AGENT_VERSION}")
+    raise SystemExit(0)
+pathlib.Path({str(model_marker)!r}).touch()
+raise SystemExit(0)
+""",
+                encoding="utf-8",
+            )
+            executable.chmod(0o755)
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "scripts" / "conformance-agents.py"),
+                    "--scenario-dir",
+                    str(scenario_dir),
+                    "--workspace",
+                    str(workspace),
+                    "--agent-command",
+                    str(executable),
+                    "--adapter",
+                    "codex",
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(1, completed.returncode, completed.stderr)
+            report = json.loads(completed.stdout)
+            self.assertFalse(report["success"])
+            self.assertEqual("manual", report["execution_mode"])
+            self.assertEqual("executable", report["identity"]["identity_kind"])
+            self.assertEqual(
+                ["probe-write"],
+                report["identity_probe_unexpected_writes"],
+            )
+            self.assertFalse(model_marker.exists())
 
 
 if __name__ == "__main__":

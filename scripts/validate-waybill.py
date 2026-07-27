@@ -31,7 +31,14 @@ from waybill_core.adapter_sources import (  # noqa: E402
     find_adapter_drift,
     sources_for_adapter,
 )
-from waybill_core.conformance import load_scenarios  # noqa: E402
+from waybill_core.conformance import (  # noqa: E402
+    REQUIRED_IMPORT_SCENARIO_SEMANTICS,
+    load_scenarios,
+)
+from waybill_core.export_conformance import (  # noqa: E402
+    REQUIRED_EXPORT_SCENARIO_IDS,
+    load_export_scenarios,
+)
 from waybill_core.doctor import doctor_repository  # noqa: E402
 from waybill_core.install import install_adapters  # noqa: E402
 from waybill_core.scaffold import STANDARD_FILES  # noqa: E402
@@ -57,15 +64,21 @@ REQUIRED_FILES = [
     "spec/delegation-result-template.md",
     "spec/metadata.schema.json",
     "cli/waybill",
+    "scripts/adapter-matrix.py",
     "scripts/conformance-agents.py",
+    "scripts/conformance-exports.py",
     "scripts/smoke-agents.sh",
     "scripts/sync-adapters.py",
     "scripts/test-wheel-install.py",
     "waybill_core/__init__.py",
+    "waybill_core/adapter_matrix.py",
     "waybill_core/adapter_installation.py",
     "waybill_core/adapter_sources.py",
+    "waybill_core/agent_identity.py",
+    "waybill_core/application.py",
     "waybill_core/cli.py",
     "waybill_core/conformance.py",
+    "waybill_core/export_conformance.py",
     "waybill_core/delegation.py",
     "waybill_core/doctor.py",
     "waybill_core/install.py",
@@ -119,12 +132,26 @@ REQUIRED_FILES = [
     "adapters/opencode/commands/waybill.md",
     "adapters/opencode/skills/handoff/SKILL.md",
     "adapters/opencode/skills/waybill/SKILL.md",
+    "conformance/scenarios/cross-agent-divergence-recovery.json",
+    "conformance/scenarios/delegation-blocked.json",
+    "conformance/scenarios/delegation-partial.json",
     "conformance/scenarios/delegation-request.json",
     "conformance/scenarios/delegation-result.json",
     "conformance/scenarios/failed-test.json",
+    "conformance/scenarios/legacy-unknown-schema.json",
     "conformance/scenarios/malicious-embedded-instruction.json",
+    "conformance/scenarios/missing-recommended-artifact.json",
+    "conformance/scenarios/multi-request-mismatch.json",
     "conformance/scenarios/ordinary-unfinished.json",
+    "conformance/scenarios/patch-verification.json",
+    "conformance/scenarios/read-only-code-review.json",
     "conformance/scenarios/stale-repository.json",
+    "conformance/export-scenarios/delegation-request.json",
+    "conformance/export-scenarios/delegation-result-blocked.json",
+    "conformance/export-scenarios/delegation-result-completed.json",
+    "conformance/export-scenarios/delegation-result-partial.json",
+    "conformance/export-scenarios/malicious-session-instruction.json",
+    "conformance/export-scenarios/ordinary-unfinished.json",
 ]
 
 EXAMPLES = [
@@ -838,9 +865,13 @@ def validate_packaging_declarations() -> None:
         fail("MANIFEST.in must include packaged adapter templates")
 
     expected_modules = {
+        "waybill_core/adapter_matrix.py",
         "waybill_core/adapter_installation.py",
         "waybill_core/adapter_sources.py",
+        "waybill_core/agent_identity.py",
+        "waybill_core/application.py",
         "waybill_core/conformance.py",
+        "waybill_core/export_conformance.py",
         "waybill_core/delegation.py",
     }
     if not expected_modules.issubset(REQUIRED_FILES):
@@ -1000,20 +1031,18 @@ def validate_examples() -> None:
 def validate_conformance_scenarios() -> None:
     scenario_dir = ROOT / "conformance/scenarios"
     scenarios = load_scenarios(scenario_dir)
-    expected_kinds = {
-        "delegation-request": "delegation_request",
-        "delegation-result": "delegation_result",
-        "failed-test": "handoff",
-        "malicious-embedded-instruction": "handoff",
-        "ordinary-unfinished": "handoff",
-        "stale-repository": "handoff",
-    }
-    if {scenario.id for scenario in scenarios} != set(expected_kinds):
-        fail("conformance scenarios must contain the required six-scenario matrix")
+    if {scenario.id for scenario in scenarios} != set(
+        REQUIRED_IMPORT_SCENARIO_SEMANTICS
+    ):
+        fail("conformance scenarios must contain the required scenario matrix")
 
     for scenario in scenarios:
-        if scenario.expected.get("handoff_kind") != expected_kinds[scenario.id]:
-            fail(f"conformance scenario {scenario.id} has the wrong handoff kind")
+        actual = (
+            scenario.expected.get("handoff_kind"),
+            scenario.expected.get("status"),
+        )
+        if actual != REQUIRED_IMPORT_SCENARIO_SEMANTICS[scenario.id]:
+            fail(f"conformance scenario {scenario.id} has the wrong semantics")
         if scenario.bundle is not None and not (ROOT / scenario.bundle).is_dir():
             fail(
                 f"conformance scenario {scenario.id} references a missing bundle: "
@@ -1068,8 +1097,10 @@ def validate_conformance_runner_dry_run() -> None:
         if report.get("dry_run") is not True:
             fail("conformance dry-run must identify itself as a dry run")
         results = report.get("results")
-        if not isinstance(results, list) or len(results) != 6:
-            fail("conformance dry-run must report all six scenarios")
+        if not isinstance(results, list) or len(results) != len(
+            REQUIRED_IMPORT_SCENARIO_SEMANTICS
+        ):
+            fail("conformance dry-run must report every required scenario")
         for item in results:
             if not isinstance(item, dict) or not re.fullmatch(
                 r"sha256:[0-9a-f]{64}",
@@ -1078,6 +1109,107 @@ def validate_conformance_runner_dry_run() -> None:
                 fail("conformance dry-run must report stable prompt digests")
         if marker.exists() or snapshot_tree(workspace) != before:
             fail("conformance dry-run must not execute or modify the workspace")
+
+
+def validate_export_conformance_scenarios() -> None:
+    scenario_dir = ROOT / "conformance/export-scenarios"
+    scenarios = load_export_scenarios(scenario_dir)
+    expected = {
+        "delegation-request": ("delegation_request", "requested"),
+        "delegation-result-blocked": ("delegation_result", "blocked"),
+        "delegation-result-completed": ("delegation_result", "completed"),
+        "delegation-result-partial": ("delegation_result", "partial"),
+        "malicious-session-instruction": ("handoff", "unfinished"),
+        "ordinary-unfinished": ("handoff", "unfinished"),
+    }
+    if set(expected) != REQUIRED_EXPORT_SCENARIO_IDS:
+        fail("validator export scenario semantics are out of sync")
+    if {scenario.id for scenario in scenarios} != REQUIRED_EXPORT_SCENARIO_IDS:
+        fail("export conformance must contain the required six-scenario matrix")
+    for scenario in scenarios:
+        actual = (scenario.handoff_kind, scenario.status)
+        if actual != expected[scenario.id]:
+            fail(f"export conformance scenario {scenario.id} has wrong semantics")
+    malicious = next(
+        scenario
+        for scenario in scenarios
+        if scenario.id == "malicious-session-instruction"
+    )
+    if malicious.malicious_session_instruction is None:
+        fail("malicious export scenario must include canary-bearing session data")
+
+
+def validate_export_conformance_runner_dry_run() -> None:
+    with tempfile.TemporaryDirectory(
+        prefix="waybill-export-conformance-dry-run-"
+    ) as temporary:
+        workspace = Path(temporary)
+        marker = workspace / "agent-must-not-run"
+        agent_command = shlex.join(
+            [
+                sys.executable,
+                "-c",
+                "from pathlib import Path; Path('agent-must-not-run').touch()",
+            ]
+        )
+        before = snapshot_tree(workspace)
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts/conformance-exports.py"),
+                "--agent-name",
+                "validator-sentinel",
+                "--agent-product",
+                "deterministic-fake",
+                "--agent-version",
+                "1.0.0",
+                "--deterministic-fake",
+                "--adapter",
+                "codex",
+                "--agent-command",
+                agent_command,
+                "--scenario-dir",
+                str(ROOT / "conformance/export-scenarios"),
+                "--dry-run",
+            ],
+            cwd=workspace,
+            text=True,
+            capture_output=True,
+        )
+        report = parse_cli_json(result, "export conformance dry-run")
+        if (
+            report.get("dry_run") is not True
+            or report.get("mode") != "export"
+            or report.get("capability") != "export"
+            or report.get("execution_mode") != "deterministic_fake"
+        ):
+            fail("export conformance dry-run must identify its mode")
+        identity = report.get("identity")
+        if (
+            not isinstance(identity, dict)
+            or identity.get("verified") is not True
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(identity.get("sha256", "")),
+            )
+            is None
+        ):
+            fail("export conformance dry-run must record verified fake identity")
+        scenarios = report.get("scenarios")
+        if not isinstance(scenarios, list) or len(scenarios) != len(
+            REQUIRED_EXPORT_SCENARIO_IDS
+        ):
+            fail("export conformance dry-run must report all six scenarios")
+        digests = report.get("scenario_digests")
+        if not isinstance(digests, dict) or set(digests) != set(scenarios):
+            fail("export conformance dry-run must report every scenario digest")
+        if any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", str(value)) is None
+            for value in digests.values()
+        ):
+            fail("export conformance dry-run must report stable scenario digests")
+        if marker.exists() or snapshot_tree(workspace) != before:
+            fail("export conformance dry-run must not execute or create a repository")
 
 
 def validate_missing_delegation_section(example: str, section: str) -> None:
@@ -2934,6 +3066,11 @@ CHECKS: tuple[tuple[str, Callable[[], None]], ...] = (
     ("examples", validate_examples),
     ("conformance scenarios", validate_conformance_scenarios),
     ("conformance runner dry-run", validate_conformance_runner_dry_run),
+    ("export conformance scenarios", validate_export_conformance_scenarios),
+    (
+        "export conformance runner dry-run",
+        validate_export_conformance_runner_dry_run,
+    ),
     ("CLI validate", validate_cli_validate),
     ("CLI init", validate_cli_init),
     ("adapter installation lifecycle", validate_adapter_installation_lifecycle),
