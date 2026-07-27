@@ -1,8 +1,8 @@
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "id": "stale-repository",
   "description": "A valid handoff whose recorded branch and repository digest no longer match the current workspace.",
-  "bundle": "examples/codex-to-claude",
+  "bundle": "conformance/import-fixtures/stale-repository/.waybill/input",
   "evidence": [
     "The exact goal is: Persist the selected timezone without changing unrelated profile fields.",
     "This is an ordinary handoff whose current status is unfinished.",

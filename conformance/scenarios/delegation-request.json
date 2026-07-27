@@ -1,8 +1,8 @@
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "id": "delegation-request",
   "description": "A bounded parent-to-child delegation request for queue retry inspection.",
-  "bundle": "examples/claude-parent-codex-child-request",
+  "bundle": "conformance/import-fixtures/delegation-request/.waybill/input",
   "evidence": [
     "The exact goal is: Inspect the queue worker retry counter and propose the smallest focused patch.",
     "The handoff kind is delegation_request and the current status is requested.",

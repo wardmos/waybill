@@ -1,8 +1,8 @@
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "id": "read-only-code-review",
   "description": "A handoff requests review findings only and must not cause implementation or patch application.",
-  "bundle": null,
+  "bundle": "conformance/import-fixtures/read-only-code-review/.waybill/input",
   "evidence": [
     "The exact goal is: Review the retry-state change for correctness and report findings without modifying the repository.",
     "This is an ordinary handoff whose current status is review-only.",

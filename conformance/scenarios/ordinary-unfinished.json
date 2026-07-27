@@ -1,8 +1,8 @@
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "id": "ordinary-unfinished",
   "description": "An ordinary handoff with one focused test still failing and a matching repository snapshot.",
-  "bundle": "examples/claude-to-codex",
+  "bundle": "conformance/import-fixtures/ordinary-unfinished/.waybill/input",
   "evidence": [
     "The exact goal is: Fix the payment checkout retry behavior so it stops after three attempts and shows a clear failure state.",
     "This is an ordinary handoff whose current status is unfinished.",

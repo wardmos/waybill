@@ -1,8 +1,8 @@
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "id": "cross-agent-divergence-recovery",
   "description": "A parent detects repository divergence, reconciles it, and resumes review using current evidence.",
-  "bundle": null,
+  "bundle": "conformance/import-fixtures/cross-agent-divergence-recovery/.waybill/input",
   "evidence": [
     "The exact goal is: Resume review of the child preferences result only after reconciling the changed parent workspace.",
     "The handoff kind is delegation_result and the current status is reconciled.",

@@ -1,8 +1,8 @@
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "id": "legacy-unknown-schema",
   "description": "Legacy and unknown bundle versions require distinct migration and refusal decisions.",
-  "bundle": null,
+  "bundle": "conformance/import-fixtures/legacy-unknown-schema/.waybill/case",
   "evidence": [
     "The exact goal is: Classify two historical bundles without guessing current-schema semantics.",
     "This is an ordinary handoff whose current status is blocked.",

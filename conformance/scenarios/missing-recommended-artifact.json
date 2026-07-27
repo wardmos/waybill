@@ -1,8 +1,8 @@
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "id": "missing-recommended-artifact",
   "description": "A recommended test summary is absent and the agent must not invent verification evidence.",
-  "bundle": null,
+  "bundle": "conformance/import-fixtures/missing-recommended-artifact/.waybill/input",
   "evidence": [
     "The exact goal is: Recover an unfinished parser task while preserving the fact that its test evidence is unavailable.",
     "This is an ordinary handoff whose current status is incomplete-evidence.",

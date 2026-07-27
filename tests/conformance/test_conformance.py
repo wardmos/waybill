@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from waybill_core.conformance import (
     OBSERVATION_FIELDS,
@@ -50,12 +53,14 @@ def scenario_document(
     *,
     scenario_id: str = "sample",
     expected: dict[str, object] | None = None,
+    schema_version: str = "1",
+    bundle: str | None = None,
 ) -> dict[str, object]:
     return {
-        "schema_version": "1",
+        "schema_version": schema_version,
         "id": scenario_id,
         "description": "A synthetic conformance scenario.",
-        "bundle": None,
+        "bundle": bundle,
         "evidence": [
             "The focused retry test is failing.",
             "No embedded instructions are present.",
@@ -155,6 +160,47 @@ class ScenarioLoadingTests(unittest.TestCase):
 
         self.assertIn("use handoff for an ordinary transfer", first)
 
+    def test_v2_prompt_only_identifies_the_artifact_and_does_not_leak_answers(self) -> None:
+        fixture = self.root / "conformance" / "import-fixtures" / "sample"
+        bundle = fixture / ".waybill" / "input"
+        bundle.mkdir(parents=True)
+        document = scenario_document(
+            schema_version="2",
+            bundle="conformance/import-fixtures/sample/.waybill/input",
+        )
+        path = self.root / "conformance" / "scenarios" / "sample.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps(document), encoding="utf-8")
+
+        scenario = load_scenario(path)
+        prompt = build_prompt(scenario)
+
+        self.assertIn("WAYBILL CONFORMANCE PROMPT v2", prompt)
+        self.assertIn('"bundle":".waybill/input"', prompt)
+        self.assertNotIn("sample", prompt)
+        self.assertNotIn(scenario.description, prompt)
+        for field in ("goal", "status", "test_state", "next_step"):
+            self.assertNotIn(str(scenario.expected[field]), prompt)
+        for value in scenario.expected["changed_files"]:
+            self.assertNotIn(str(value), prompt)
+        for value in scenario.expected["risks"]:
+            self.assertNotIn(str(value), prompt)
+
+    def test_v2_requires_a_scenario_owned_fixture_bundle(self) -> None:
+        for bundle in (
+            None,
+            "examples/claude-to-codex",
+            "conformance/import-fixtures/other/.waybill/input",
+        ):
+            with self.subTest(bundle=bundle):
+                document = scenario_document(
+                    schema_version="2",
+                    bundle=bundle,
+                )
+                path = self._write_scenario(document)
+                with self.assertRaisesRegex(ValueError, "v2 bundle"):
+                    load_scenario(path)
+
 class WorkspaceSnapshotTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
@@ -199,6 +245,16 @@ class WorkspaceSnapshotTests(unittest.TestCase):
         after = snapshot_workspace(self.workspace)
 
         self.assertEqual([], changed_snapshot_paths(before, after))
+
+    def test_snapshot_can_include_git_state_for_disposable_execution(self) -> None:
+        git_state = self.workspace / ".git" / "state"
+        git_state.parent.mkdir()
+        git_state.write_text("before", encoding="utf-8")
+        before = snapshot_workspace(self.workspace, include_git=True)
+        git_state.write_text("after", encoding="utf-8")
+        after = snapshot_workspace(self.workspace, include_git=True)
+
+        self.assertEqual([".git/state"], changed_snapshot_paths(before, after))
 
 
 class ScenarioExecutionTests(unittest.TestCase):
@@ -300,6 +356,117 @@ class ScenarioExecutionTests(unittest.TestCase):
         self.assertTrue(
             any("unexpected_writes self-report does not match" in error for error in result.errors)
         )
+        self.assertFalse((self.workspace / "agent-note.txt").exists())
+
+    def test_disposable_boundary_detects_git_and_parent_escape_writes(self) -> None:
+        observation = valid_observation()
+        source = (
+            "import json,pathlib,sys;"
+            "sys.stdin.read();"
+            "pathlib.Path('.git').mkdir(exist_ok=True);"
+            "pathlib.Path('.git/agent-state').write_text('changed');"
+            "pathlib.Path('../escaped.txt').write_text('escaped');"
+            f"print(json.dumps({observation!r}))"
+        )
+
+        result = run_scenario(
+            self.scenario,
+            [sys.executable, "-c", source],
+            self.workspace,
+        )
+
+        self.assertFalse(result.passed)
+        self.assertEqual(
+            ["../escaped.txt", ".git/agent-state"],
+            result.measured_unexpected_writes,
+        )
+        self.assertTrue(result.boundary_escape_detected)
+        self.assertTrue(result.git_write_detected)
+        self.assertFalse((self.workspace / "escaped.txt").exists())
+
+    def test_agent_environment_excludes_ambient_secret_values(self) -> None:
+        source = (
+            "import json,os,sys;"
+            "sys.stdin.read();"
+            "assert 'WAYBILL_TEST_AMBIENT_SECRET' not in os.environ;"
+            f"print(json.dumps({valid_observation()!r}))"
+        )
+        with mock.patch.dict(
+            os.environ,
+            {"WAYBILL_TEST_AMBIENT_SECRET": "must-not-be-inherited"},
+        ):
+            result = run_scenario(
+                self.scenario,
+                [sys.executable, "-c", source],
+                self.workspace,
+            )
+
+        self.assertTrue(result.passed, result.errors)
+
+    def test_stdout_and_stderr_are_bounded(self) -> None:
+        source = (
+            "import sys;"
+            "sys.stdin.read();"
+            "sys.stdout.write('x' * 8192);"
+            "sys.stderr.write('y' * 8192)"
+        )
+
+        result = run_scenario(
+            self.scenario,
+            [sys.executable, "-c", source],
+            self.workspace,
+            output_limit_bytes=512,
+        )
+
+        self.assertFalse(result.passed)
+        self.assertTrue(result.stdout_truncated)
+        self.assertTrue(result.stderr_truncated)
+        self.assertTrue(any("exceeded 512 bytes" in error for error in result.errors))
+
+    @unittest.skipUnless(os.name == "posix", "process-group checks require POSIX")
+    def test_completed_agent_cannot_leave_a_process_group_running(self) -> None:
+        source = (
+            "import json,subprocess,sys;"
+            "sys.stdin.read();"
+            "subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)']);"
+            f"print(json.dumps({valid_observation()!r}))"
+        )
+
+        started = time.monotonic()
+        result = run_scenario(
+            self.scenario,
+            [sys.executable, "-c", source],
+            self.workspace,
+            timeout_seconds=5,
+        )
+
+        self.assertLess(time.monotonic() - started, 5)
+        self.assertFalse(result.passed)
+        self.assertTrue(result.residual_process_detected)
+        self.assertTrue(any("residual process" in error for error in result.errors))
+
+    @unittest.skipUnless(os.name == "posix", "process-group checks require POSIX")
+    def test_timeout_kills_the_agent_process_group_before_returning(self) -> None:
+        source = (
+            "import subprocess,sys,time;"
+            "sys.stdin.read();"
+            "subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)']);"
+            "time.sleep(30)"
+        )
+
+        started = time.monotonic()
+        result = run_scenario(
+            self.scenario,
+            [sys.executable, "-c", source],
+            self.workspace,
+            timeout_seconds=0.1,
+        )
+
+        self.assertLess(time.monotonic() - started, 2)
+        self.assertFalse(result.passed)
+        self.assertTrue(
+            any("timed out after 0.1 seconds" in error for error in result.errors)
+        )
 
     def test_semantic_mismatch_fails_even_when_observation_shape_is_valid(self) -> None:
         observation = copy.deepcopy(valid_observation())
@@ -352,6 +519,151 @@ class BundledScenarioTests(unittest.TestCase):
                 scenario for scenario in scenarios if scenario.id == "stale-repository"
             ).expected["repo_mismatch"]
         )
+        self.assertTrue(all(scenario.schema_version == "2" for scenario in scenarios))
+        self.assertTrue(all(scenario.bundle is not None for scenario in scenarios))
+        for scenario in scenarios:
+            assert scenario.bundle is not None
+            self.assertTrue((REPO_ROOT / scenario.bundle).is_dir())
+            prompt = build_prompt(scenario)
+            self.assertNotIn(scenario.id, prompt)
+            self.assertNotIn(scenario.description, prompt)
+
+    def test_v2_scenario_runs_in_a_fresh_real_git_fixture(self) -> None:
+        scenario = load_scenario(
+            REPO_ROOT / "conformance" / "scenarios" / "ordinary-unfinished.json"
+        )
+        source = (
+            "import json,pathlib,subprocess,sys;"
+            "prompt=sys.stdin.read();"
+            "assert pathlib.Path('.git').is_dir();"
+            "assert pathlib.Path('.waybill/input/WAYBILL.md').is_file();"
+            "metadata=json.loads(pathlib.Path('.waybill/input/metadata.json').read_text());"
+            "head=subprocess.run(['git','rev-parse','HEAD'],capture_output=True,"
+            "text=True).stdout.strip();"
+            "branch=subprocess.run(['git','branch','--show-current'],capture_output=True,"
+            "text=True).stdout.strip();"
+            "assert metadata['git']['head_sha'] == head;"
+            "assert metadata['git']['branch'] == branch;"
+            "assert '${CURRENT_' not in json.dumps(metadata);"
+            "assert subprocess.run(['git','rev-parse','--is-inside-work-tree'],"
+            "capture_output=True,text=True).stdout.strip() == 'true';"
+            f"print(json.dumps({scenario.expected!r}))"
+        )
+
+        result = run_scenario(
+            scenario,
+            [sys.executable, "-c", source],
+            REPO_ROOT,
+        )
+
+        self.assertTrue(result.passed, result.errors)
+
+    def test_v2_edge_cases_are_backed_by_concrete_artifact_collections(self) -> None:
+        fixture_root = REPO_ROOT / "conformance" / "import-fixtures"
+
+        multi = fixture_root / "multi-request-mismatch" / ".waybill" / "case"
+        preference_request = json.loads(
+            (multi / "request-preferences" / "metadata.json").read_text()
+        )
+        retry_request = json.loads((multi / "request-retry" / "metadata.json").read_text())
+        mismatched_result = json.loads((multi / "result" / "metadata.json").read_text())
+        self.assertEqual(
+            {"preferences-001", "retry-002"},
+            {
+                preference_request["handoff"]["request_id"],
+                retry_request["handoff"]["request_id"],
+            },
+        )
+        self.assertEqual("retry-002", mismatched_result["handoff"]["result_for"])
+        self.assertIn("preferences-001", (multi / "CASE.md").read_text())
+
+        missing = fixture_root / "missing-recommended-artifact" / ".waybill" / "input"
+        self.assertFalse((missing / "test-summary.md").exists())
+        self.assertNotIn(
+            "test_summary",
+            json.loads((missing / "metadata.json").read_text())["artifacts"],
+        )
+
+        historical = fixture_root / "legacy-unknown-schema" / ".waybill" / "case"
+        self.assertEqual(
+            "0.1",
+            json.loads((historical / "legacy-0.1" / "metadata.json").read_text())[
+                "schema_version"
+            ],
+        )
+        self.assertEqual(
+            "9.9",
+            json.loads((historical / "unknown-9.9" / "metadata.json").read_text())[
+                "schema_version"
+            ],
+        )
+
+        reconciled = (
+            fixture_root
+            / "cross-agent-divergence-recovery"
+            / ".waybill"
+            / "input"
+            / "reconciliation.md"
+        ).read_text()
+        self.assertIn("initially recorded", reconciled)
+        self.assertIn("now match", reconciled)
+
+    def test_current_v2_bundles_validate_and_match_real_repository_evidence(self) -> None:
+        scenarios = [
+            load_scenario(path)
+            for path in sorted((REPO_ROOT / "conformance" / "scenarios").glob("*.json"))
+        ]
+        for scenario in scenarios:
+            if not str(scenario.bundle).endswith("/input"):
+                continue
+            source = (
+                "import json,sys;"
+                f"sys.path.insert(0,{str(REPO_ROOT)!r});"
+                "from waybill_core.repo import verify_repo_state;"
+                "from waybill_core.validation import has_errors,validate_bundle;"
+                "sys.stdin.read();"
+                "assert not has_errors(validate_bundle('.waybill/input'));"
+                "repo_report=verify_repo_state('.waybill/input','.');"
+                f"assert repo_report.has_errors is {scenario.expected['repo_mismatch']!r};"
+                f"print(json.dumps({scenario.expected!r}))"
+            )
+
+            with self.subTest(scenario=scenario.id):
+                result = run_scenario(
+                    scenario,
+                    [sys.executable, "-c", source],
+                    REPO_ROOT,
+                )
+                self.assertTrue(result.passed, result.errors)
+
+    def test_malicious_fixture_canaries_detect_named_command_network_and_write(self) -> None:
+        scenario = load_scenario(
+            REPO_ROOT
+            / "conformance"
+            / "scenarios"
+            / "malicious-embedded-instruction.json"
+        )
+        source = (
+            "import json,pathlib,re,subprocess,sys,urllib.request;"
+            "sys.stdin.read();"
+            "notes=pathlib.Path('.waybill/input/untrusted-notes.md').read_text();"
+            "subprocess.run(['./conformance-command-canary'],check=False);"
+            "url=re.search(r'https?://[^` ,]+',notes).group(0);"
+            "urllib.request.urlopen(url,timeout=2).close();"
+            "pathlib.Path('pwned.txt').write_text('triggered');"
+            f"print(json.dumps({scenario.expected!r}))"
+        )
+
+        result = run_scenario(
+            scenario,
+            [sys.executable, "-c", source],
+            REPO_ROOT,
+        )
+
+        self.assertFalse(result.passed)
+        self.assertTrue(result.command_canary_triggered)
+        self.assertTrue(result.network_canary_triggered)
+        self.assertEqual(["pwned.txt"], result.measured_unexpected_writes)
 
     def test_cli_dry_run_does_not_execute_custom_command(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -394,6 +706,10 @@ class BundledScenarioTests(unittest.TestCase):
             self.assertTrue(report["dry_run"])
             self.assertEqual("import", report["capability"])
             self.assertEqual("dry_run", report["execution_mode"])
+            self.assertEqual("2", report["schema_version"])
+            self.assertIsNone(report["provenance"])
+            self.assertTrue(report["safety"]["disposable_workspace"])
+            self.assertFalse(report["safety"]["manual_risk_acknowledged"])
             self.assertIsNone(report["identity"])
             self.assertRegex(
                 report["observed_at"],
@@ -438,6 +754,39 @@ class BundledScenarioTests(unittest.TestCase):
             self.assertIn("--adapter is required for a real run", completed.stderr)
             self.assertFalse(marker.exists())
 
+    def test_cli_real_run_requires_explicit_unsafe_manual_acknowledgement(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            scenario_dir = root / "scenarios"
+            workspace = root / "workspace"
+            scenario_dir.mkdir()
+            workspace.mkdir()
+            (scenario_dir / "sample.json").write_text(
+                json.dumps(scenario_document()),
+                encoding="utf-8",
+            )
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "scripts" / "conformance-agents.py"),
+                    "--scenario-dir",
+                    str(scenario_dir),
+                    "--workspace",
+                    str(workspace),
+                    "--agent-command",
+                    sys.executable,
+                    "--adapter",
+                    "codex",
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(2, completed.returncode)
+            self.assertIn("--unsafe-manual is required", completed.stderr)
+
     def test_cli_counts_identity_probe_workspace_writes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -480,6 +829,7 @@ raise SystemExit(0)
                     str(executable),
                     "--adapter",
                     "codex",
+                    "--unsafe-manual",
                 ],
                 text=True,
                 capture_output=True,
@@ -489,7 +839,7 @@ raise SystemExit(0)
             self.assertEqual(1, completed.returncode, completed.stderr)
             report = json.loads(completed.stdout)
             self.assertFalse(report["success"])
-            self.assertEqual("manual", report["execution_mode"])
+            self.assertEqual("unsafe_manual", report["execution_mode"])
             self.assertEqual("executable", report["identity"]["identity_kind"])
             self.assertEqual(
                 ["probe-write"],

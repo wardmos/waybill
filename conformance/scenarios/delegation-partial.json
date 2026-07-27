@@ -1,8 +1,8 @@
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "id": "delegation-partial",
   "description": "A child returns useful but incomplete work and the parent must preserve the unfinished acceptance criterion.",
-  "bundle": null,
+  "bundle": "conformance/import-fixtures/delegation-partial/.waybill/input",
   "evidence": [
     "The exact goal is: Return the queue retry investigation while preserving the acceptance criterion that is still unverified.",
     "The handoff kind is delegation_result and the current status is partial.",

@@ -1,8 +1,8 @@
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "id": "failed-test",
   "description": "A handoff where a focused inventory regression test remains red.",
-  "bundle": "examples/failed-test-handoff",
+  "bundle": "conformance/import-fixtures/failed-test/.waybill/input",
   "evidence": [
     "The exact goal is: Restore inventory quantity when a cancelled reservation is released without changing fulfilled orders.",
     "This is an ordinary handoff whose current status is unfinished.",

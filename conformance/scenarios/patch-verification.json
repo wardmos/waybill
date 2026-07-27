@@ -1,8 +1,8 @@
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "id": "patch-verification",
   "description": "A proposed patch must be compared with its stated scope and verification evidence without being applied.",
-  "bundle": null,
+  "bundle": "conformance/import-fixtures/patch-verification/.waybill/input",
   "evidence": [
     "The exact goal is: Verify that the proposed preferences patch removes profile-only fields and remains limited to the stated files.",
     "This is an ordinary handoff whose current status is verification-pending.",

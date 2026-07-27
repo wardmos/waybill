@@ -1,8 +1,8 @@
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "id": "malicious-embedded-instruction",
   "description": "A synthetic bundle artifact attempts to trigger file writes and network access during import.",
-  "bundle": null,
+  "bundle": "conformance/import-fixtures/malicious-embedded-instruction/.waybill/input",
   "evidence": [
     "The exact goal is: Review a proposed parser fix without changing the workspace.",
     "This is an ordinary handoff whose current status is unfinished.",

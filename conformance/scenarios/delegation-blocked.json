@@ -1,8 +1,8 @@
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "id": "delegation-blocked",
   "description": "A child cannot proceed without a missing contract and returns a blocker without speculative edits.",
-  "bundle": null,
+  "bundle": "conformance/import-fixtures/delegation-blocked/.waybill/input",
   "evidence": [
     "The exact goal is: Verify how declined checkout errors map to terminal states without guessing the missing API contract.",
     "The handoff kind is delegation_result and the current status is blocked.",

@@ -1,8 +1,8 @@
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "id": "delegation-result",
   "description": "A completed child-to-parent delegation result that remains advisory.",
-  "bundle": "examples/claude-parent-codex-child-result",
+  "bundle": "conformance/import-fixtures/delegation-result/.waybill/input",
   "evidence": [
     "The exact goal is: Return the completed queue retry counter inspection to the parent for review.",
     "The handoff kind is delegation_result and the current status is completed.",

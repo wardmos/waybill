@@ -1,8 +1,8 @@
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "id": "multi-request-mismatch",
   "description": "Two parallel requests exist and a result references the wrong request identifier.",
-  "bundle": null,
+  "bundle": "conformance/import-fixtures/multi-request-mismatch/.waybill/case",
   "evidence": [
     "The exact goal is: Decide whether a child result for the preferences task belongs to either of two parallel delegation requests.",
     "The handoff kind is delegation_result and the current status is rejected.",
