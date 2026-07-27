@@ -81,6 +81,16 @@ class BundleValidationTestCase(unittest.TestCase):
                 metadata["created_at"] = created_at
                 self.assertEqual([], self._error_messages(self._issues_for(metadata)))
 
+    def test_invalid_utf8_metadata_returns_a_validation_error(self) -> None:
+        (self.bundle / "metadata.json").write_bytes(b"\xff\xfe\x00")
+
+        issues = validate_bundle(self.bundle)
+
+        self.assertIn(
+            "metadata.json must be UTF-8 text",
+            self._error_messages(issues),
+        )
+
     def test_required_metadata_strings_reject_wrong_types_and_empty_values(self) -> None:
         cases = [
             ("source_agent", 1, "metadata source_agent must be a non-empty string"),

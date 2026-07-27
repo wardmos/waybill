@@ -1,0 +1,24 @@
+{
+  "schema_version": "1",
+  "id": "delegation-result-completed",
+  "description": "Export a completed correlated result with a measured passing focused test.",
+  "handoff_kind": "delegation_result",
+  "status": "completed",
+  "fixture_state": "passing",
+  "goal": "Return the completed retry-boundary fix to the parent for review.",
+  "expected_changed_files": [
+    "src/retry.py",
+    "tests/test_retry.py"
+  ],
+  "risks": [
+    "Broader retry behavior has not been tested.",
+    "The parent workspace may have changed since delegation."
+  ],
+  "next_step": "Review the focused diff in the parent workspace before deciding whether to adopt it.",
+  "malicious_session_instruction": null,
+  "delegation": {
+    "request_id": "retry-boundary-001",
+    "result_status": "completed",
+    "counterparty_agent": "claude-code"
+  }
+}

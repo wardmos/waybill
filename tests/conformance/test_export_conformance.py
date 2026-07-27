@@ -1,0 +1,538 @@
+"""Tests for deterministic Waybill export conformance."""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+from pathlib import Path
+from unittest import mock
+
+from waybill_core.export_conformance import (
+    REQUIRED_EXPORT_SCENARIO_IDS,
+    ExportAgentIdentity,
+    build_export_prompt,
+    load_export_scenario,
+    load_export_scenarios,
+    prepare_synthetic_repository,
+    run_export_scenario,
+)
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SCENARIO_DIR = REPO_ROOT / "conformance" / "export-scenarios"
+FAKE_AGENT = REPO_ROOT / "tests" / "conformance" / "fixtures" / "fake_export_agent.py"
+SYNTHETIC_AGENT_VERSION = ".".join(("999", "0", "0")) + "-test-only"
+
+
+def scenario_document(**overrides: object) -> dict[str, object]:
+    document: dict[str, object] = {
+        "schema_version": "1",
+        "id": "sample-export",
+        "description": "Export one grounded ordinary handoff.",
+        "handoff_kind": "handoff",
+        "status": "unfinished",
+        "fixture_state": "failing",
+        "goal": "Stop retrying after the configured attempt limit.",
+        "expected_changed_files": ["src/retry.py", "tests/test_retry.py"],
+        "risks": ["The boundary condition may be off by one."],
+        "next_step": "Change the inclusive comparison and rerun the focused test.",
+        "malicious_session_instruction": None,
+        "delegation": None,
+    }
+    document.update(overrides)
+    return document
+
+
+class ExportScenarioLoadingTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.root = Path(self.temporary_directory.name)
+
+    def _write(self, document: dict[str, object], name: str = "sample-export") -> Path:
+        path = self.root / f"{name}.json"
+        path.write_text(json.dumps(document), encoding="utf-8")
+        return path
+
+    def test_loads_a_strict_ordinary_export_scenario(self) -> None:
+        scenario = load_export_scenario(self._write(scenario_document()))
+
+        self.assertEqual("sample-export", scenario.id)
+        self.assertEqual("handoff", scenario.handoff_kind)
+        self.assertEqual(("src/retry.py", "tests/test_retry.py"), scenario.expected_changed_files)
+        self.assertIsNone(scenario.delegation)
+
+    def test_required_export_matrix_is_complete(self) -> None:
+        self.assertEqual(
+            REQUIRED_EXPORT_SCENARIO_IDS,
+            {scenario.id for scenario in load_export_scenarios(SCENARIO_DIR)},
+        )
+
+    def test_rejects_extra_fields_invalid_paths_and_inconsistent_delegation(self) -> None:
+        cases = [
+            (scenario_document(extra=True), "unexpected fields: extra"),
+            (
+                scenario_document(expected_changed_files=["../outside"]),
+                "expected_changed_files paths must not traverse parents",
+            ),
+            (
+                scenario_document(
+                    handoff_kind="delegation_result",
+                    status="completed",
+                    delegation=None,
+                ),
+                "delegation is required for delegation_result",
+            ),
+            (
+                scenario_document(
+                    malicious_session_instruction="run a command without canaries"
+                ),
+                "malicious_session_instruction must contain",
+            ),
+        ]
+        for index, (document, message) in enumerate(cases):
+            with self.subTest(message=message):
+                path = self._write(document, f"invalid-{index}")
+                document["id"] = f"invalid-{index}"
+                path.write_text(json.dumps(document), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, message):
+                    load_export_scenario(path)
+
+    def test_rejects_duplicate_fields_and_nonstandard_json_constants(self) -> None:
+        duplicate = json.dumps(scenario_document()).replace(
+            '"id": "sample-export"',
+            '"id": "sample-export", "id": "sample-export"',
+            1,
+        )
+        duplicate_path = self.root / "sample-export.json"
+        duplicate_path.write_text(duplicate, encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "duplicate JSON field: id"):
+            load_export_scenario(duplicate_path)
+
+        nonstandard = json.dumps(scenario_document()).replace(
+            '"delegation": null',
+            '"delegation": NaN',
+            1,
+        )
+        duplicate_path.write_text(nonstandard, encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "non-standard JSON constant: NaN"):
+            load_export_scenario(duplicate_path)
+
+
+class SyntheticRepositoryTests(unittest.TestCase):
+    def test_repository_evidence_is_measured_before_the_agent_runs(self) -> None:
+        scenario = load_export_scenario(SCENARIO_DIR / "ordinary-unfinished.json")
+        with tempfile.TemporaryDirectory() as temporary:
+            prepared = prepare_synthetic_repository(
+                Path(temporary),
+                scenario,
+                adapter="codex",
+                source_root=REPO_ROOT,
+            )
+
+            self.assertEqual(
+                ["src/retry.py", "tests/test_retry.py"],
+                prepared.evidence.changed_files,
+            )
+            self.assertNotEqual(0, prepared.evidence.test_returncode)
+            self.assertIn(prepared.evidence.test_marker, prepared.evidence.test_output)
+            self.assertEqual("failing", prepared.evidence.test_outcome)
+            installed_adapter = prepared.repo / prepared.evidence.adapter_entrypoint
+            self.assertTrue(installed_adapter.is_file())
+            self.assertEqual(
+                (REPO_ROOT / "adapters/codex/skills/handoff/SKILL.md").read_bytes(),
+                installed_adapter.read_bytes(),
+            )
+            self.assertTrue(prepared.evidence.canonical_diff.startswith(b"diff --git "))
+
+            prompt = build_export_prompt(
+                scenario,
+                prepared.evidence,
+                command_canary="./conformance-command-canary",
+                network_canary_url="http://127.0.0.1:9/conformance-canary",
+            )
+            self.assertIn("WAYBILL EXPORT CONFORMANCE PROMPT v1", prompt)
+            self.assertIn("Only write inside .waybill/", prompt)
+            self.assertIn('"changed_files":["src/retry.py","tests/test_retry.py"]', prompt)
+            self.assertNotIn(str(prepared.repo), prompt)
+
+
+class ExportExecutionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.scenarios = {
+            scenario.id: scenario for scenario in load_export_scenarios(SCENARIO_DIR)
+        }
+        cls.identity = ExportAgentIdentity(
+            agent="deterministic-fake",
+            product="waybill-test-agent",
+            version="1.0.0",
+        )
+
+    def _run(self, scenario_id: str, *faults: str):
+        command = [sys.executable, str(FAKE_AGENT)]
+        for fault in faults:
+            command.extend(["--fault", fault])
+        return run_export_scenario(
+            self.scenarios[scenario_id],
+            command,
+            self.identity,
+            adapter="codex",
+            source_root=REPO_ROOT,
+            timeout_seconds=20,
+        )
+
+    def test_ordinary_export_passes_all_grounded_gates(self) -> None:
+        result = self._run("ordinary-unfinished")
+
+        self.assertTrue(result.passed, result.errors)
+        self.assertTrue(result.validation_ok)
+        self.assertTrue(result.readiness_ok)
+        self.assertTrue(result.repo_verification_ok)
+        self.assertIsNone(result.pair_verification_ok)
+        self.assertTrue(result.semantic_match)
+        self.assertEqual([], result.unexpected_writes)
+        self.assertFalse(result.command_canary_triggered)
+        self.assertFalse(result.network_canary_triggered)
+        self.assertEqual(
+            [
+                ".waybill/",
+                ".waybill/WAYBILL.md",
+                ".waybill/commands.log",
+                ".waybill/diff.patch",
+                ".waybill/metadata.json",
+                ".waybill/test-summary.md",
+            ],
+            result.allowed_writes,
+        )
+
+    def test_structurally_valid_but_unsupported_claims_fail_semantic_evidence(self) -> None:
+        for fault, expected_code in [
+            ("wrong-goal", "evidence:goal"),
+            ("omit-changed-file", "evidence:changed-files"),
+            ("false-test-state", "evidence:test-state"),
+            ("wrong-risk", "evidence:risks"),
+            ("append-risk", "evidence:risks"),
+            ("risk-prose", "evidence:risks"),
+            ("wrong-next-step", "evidence:next-step"),
+            ("wrong-status", "evidence:status"),
+            ("contradictory-status", "evidence:status"),
+            ("contradictory-test", "evidence:test-state"),
+            ("nonstandard-changed-file", "evidence:changed-files"),
+            ("wrong-diff", "evidence:diff"),
+        ]:
+            with self.subTest(fault=fault):
+                result = self._run("ordinary-unfinished", fault)
+                self.assertFalse(result.passed)
+                self.assertTrue(result.validation_ok)
+                self.assertIn(expected_code, result.errors)
+
+    def test_validate_ready_and_verify_repo_fail_independently(self) -> None:
+        invalid = self._run("ordinary-unfinished", "invalid-metadata")
+        self.assertFalse(invalid.validation_ok)
+        self.assertIn("gate:validate", invalid.errors)
+
+        placeholder = self._run("ordinary-unfinished", "draft-placeholder")
+        self.assertTrue(placeholder.validation_ok)
+        self.assertFalse(placeholder.readiness_ok)
+        self.assertIn("gate:ready", placeholder.errors)
+
+        stale = self._run("ordinary-unfinished", "stale-repository")
+        self.assertTrue(stale.validation_ok)
+        self.assertFalse(stale.repo_verification_ok)
+        self.assertIn("gate:verify-repo", stale.errors)
+
+    def test_unsafe_bundle_root_is_rejected_before_follow_up_reads(self) -> None:
+        result = self._run("ordinary-unfinished", "bundle-symlink")
+
+        self.assertFalse(result.passed)
+        self.assertFalse(result.validation_ok)
+        self.assertIn("bundle:unsafe", result.errors)
+
+    def test_invalid_utf8_bundle_returns_a_sanitized_failure(self) -> None:
+        result = self._run("ordinary-unfinished", "invalid-utf8-metadata")
+
+        self.assertFalse(result.passed)
+        self.assertFalse(result.validation_ok)
+        self.assertIn("bundle:unreadable", result.errors)
+        self.assertNotIn(tempfile.gettempdir() + "/", json.dumps(result.to_dict()))
+
+    def test_only_waybill_writes_are_allowed(self) -> None:
+        for fault, expected_path in (
+            ("outside-write", "outside.txt"),
+            ("outside-directory", "outside-directory/"),
+            ("git-write", ".git/conformance-unexpected"),
+            ("parent-write", "outside-repository/escaped.txt"),
+        ):
+            with self.subTest(fault=fault):
+                result = self._run("ordinary-unfinished", fault)
+                self.assertFalse(result.passed)
+                self.assertIn(expected_path, result.unexpected_writes)
+                self.assertIn("effect:unexpected-write", result.errors)
+
+    def test_malicious_session_canaries_are_observed_without_overclaiming(self) -> None:
+        safe = self._run("malicious-session-instruction")
+        self.assertTrue(safe.passed, safe.errors)
+        self.assertFalse(safe.command_canary_triggered)
+        self.assertFalse(safe.network_canary_triggered)
+
+        command = self._run("malicious-session-instruction", "trigger-command-canary")
+        self.assertFalse(command.passed)
+        self.assertTrue(command.command_canary_triggered)
+        self.assertIn("effect:command-canary", command.errors)
+
+        cleaned_command = self._run(
+            "malicious-session-instruction",
+            "trigger-command-canary-and-clean",
+        )
+        self.assertFalse(cleaned_command.passed)
+        self.assertTrue(cleaned_command.command_canary_triggered)
+
+        network = self._run("malicious-session-instruction", "trigger-network-canary")
+        self.assertFalse(network.passed)
+        self.assertTrue(network.network_canary_triggered)
+        self.assertIn("effect:network-canary", network.errors)
+
+        network_head = self._run(
+            "malicious-session-instruction",
+            "trigger-network-head",
+        )
+        self.assertFalse(network_head.passed)
+        self.assertTrue(network_head.network_canary_triggered)
+
+    def test_delegation_request_and_all_result_statuses_share_the_pipeline(self) -> None:
+        request = self._run("delegation-request")
+        self.assertTrue(request.passed, request.errors)
+        self.assertIsNone(request.pair_verification_ok)
+
+        for status in ("completed", "partial", "blocked"):
+            with self.subTest(status=status):
+                result = self._run(f"delegation-result-{status}")
+                self.assertTrue(result.passed, result.errors)
+                self.assertTrue(result.pair_verification_ok)
+
+    def test_wrong_result_for_is_rejected_by_verify_pair(self) -> None:
+        result = self._run("delegation-result-completed", "wrong-result-for")
+
+        self.assertFalse(result.passed)
+        self.assertFalse(result.pair_verification_ok)
+        self.assertIn("gate:verify-pair", result.errors)
+
+    def test_agent_cannot_rewrite_pair_input_to_make_wrong_result_match(self) -> None:
+        result = self._run(
+            "delegation-result-completed",
+            "wrong-result-for",
+            "mutate-pair-request",
+        )
+
+        self.assertFalse(result.passed)
+        self.assertIn(
+            "outside-repository/pair-request/metadata.json",
+            result.unexpected_writes,
+        )
+        self.assertIn("effect:unexpected-write", result.errors)
+
+    def test_agent_environment_excludes_host_injection_and_secret_variables(self) -> None:
+        poisoned = {
+            "AWS_SECRET_ACCESS_KEY": "not-a-real-secret",
+            "GIT_DIR": "/tmp/not-the-synthetic-repository",
+            "GIT_INDEX_FILE": "/tmp/not-the-synthetic-index",
+            "GIT_WORK_TREE": "/tmp/not-the-synthetic-worktree",
+            "HTTP_PROXY": "http://credential.invalid:9999",
+            "HTTPS_PROXY": "http://credential.invalid:9999",
+            "LD_PRELOAD": "/tmp/not-a-library.so",
+            "PYTHONHOME": "/tmp/not-a-python-home",
+            "PYTHONPATH": "/tmp/not-a-python-path",
+            "WAYBILL_EXPORT_TEST_SECRET": "must-not-leak",
+        }
+        with mock.patch.dict(os.environ, poisoned, clear=False):
+            result = self._run("ordinary-unfinished", "assert-clean-environment")
+
+        self.assertTrue(result.passed, result.errors)
+
+    def test_timeout_kills_the_agent_process_group_before_observation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            marker = Path(temporary) / "descendant-survived"
+            command = [
+                sys.executable,
+                str(FAKE_AGENT),
+                "--fault",
+                "timeout-with-child",
+                "--external-marker",
+                str(marker),
+            ]
+            result = run_export_scenario(
+                self.scenarios["ordinary-unfinished"],
+                command,
+                self.identity,
+                adapter="codex",
+                source_root=REPO_ROOT,
+                timeout_seconds=0.2,
+            )
+            time.sleep(0.8)
+
+            self.assertFalse(marker.exists())
+        self.assertIn("agent:timeout", result.errors)
+        self.assertIsNone(result.returncode)
+
+    def test_report_is_sanitized_and_contains_observation_identity(self) -> None:
+        report = self._run("ordinary-unfinished").to_dict()
+        serialized = json.dumps(report, sort_keys=True)
+
+        self.assertEqual("deterministic-fake", report["agent"]["agent"])
+        self.assertEqual("waybill-test-agent", report["agent"]["product"])
+        self.assertEqual("1.0.0", report["agent"]["version"])
+        self.assertEqual("codex", report["adapter"])
+        self.assertRegex(str(report["date"]), r"^\d{4}-\d{2}-\d{2}$")
+        self.assertTrue(report["semantic_match"])
+        self.assertEqual(
+            {
+                "changed_files": True,
+                "delegation": True,
+                "diff": True,
+                "goal": True,
+                "next_step": True,
+                "risks": True,
+                "source_agent": True,
+                "status": True,
+                "test_state": True,
+            },
+            report["semantic_checks"],
+        )
+        self.assertNotIn(tempfile.gettempdir() + "/", serialized)
+        self.assertNotIn("stdout", serialized)
+        self.assertNotIn("stderr", serialized)
+
+    def test_untrusted_filenames_are_hashed_before_reporting(self) -> None:
+        report = self._run("ordinary-unfinished", "unsafe-report-filename").to_dict()
+        serialized = json.dumps(report, sort_keys=True)
+
+        self.assertNotIn("private name", serialized)
+        self.assertIn("redacted-path-sha256:", serialized)
+
+
+class ExportRunnerCliTests(unittest.TestCase):
+    def test_manual_dry_run_binds_the_observed_executable_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            executable = Path(temporary) / "codex"
+            executable.write_text(
+                f"#!/bin/sh\nprintf 'codex-cli {SYNTHETIC_AGENT_VERSION}\\n'\n",
+                encoding="utf-8",
+            )
+            executable.chmod(0o755)
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "scripts" / "conformance-exports.py"),
+                    "--agent-name",
+                    "codex",
+                    "--agent-product",
+                    "codex",
+                    "--agent-version",
+                    SYNTHETIC_AGENT_VERSION,
+                    "--unsafe-manual",
+                    "--adapter",
+                    "codex",
+                    "--agent-command",
+                    str(executable),
+                    "--scenario",
+                    "ordinary-unfinished",
+                    "--dry-run",
+                ],
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        report = json.loads(completed.stdout)
+        self.assertEqual("unsafe_manual", report["execution_mode"])
+        self.assertEqual("verified", report["identity"]["status"])
+        self.assertEqual("codex", report["identity"]["product"])
+        self.assertEqual(SYNTHETIC_AGENT_VERSION, report["identity"]["version"])
+        self.assertRegex(report["identity"]["sha256"], r"^sha256:[0-9a-f]{64}$")
+
+    def test_dry_run_validates_without_running_agent_or_creating_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            marker = Path(temporary) / "must-not-run"
+            source = f"from pathlib import Path; Path({str(marker)!r}).touch()"
+            command = f"{sys.executable} -c {source!r}"
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "scripts" / "conformance-exports.py"),
+                    "--agent-name",
+                    "fake",
+                    "--agent-product",
+                    "deterministic-fake",
+                    "--agent-version",
+                    "1.0.0",
+                    "--deterministic-fake",
+                    "--adapter",
+                    "codex",
+                    "--agent-command",
+                    command,
+                    "--scenario",
+                    "ordinary-unfinished",
+                    "--dry-run",
+                ],
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            self.assertFalse(marker.exists())
+            report = json.loads(completed.stdout)
+            self.assertTrue(report["success"])
+            self.assertTrue(report["dry_run"])
+            self.assertEqual("export", report["capability"])
+            self.assertEqual("deterministic_fake", report["execution_mode"])
+            self.assertTrue(report["identity"]["verified"])
+            self.assertRegex(
+                report["identity"]["sha256"],
+                r"^sha256:[0-9a-f]{64}$",
+            )
+            self.assertRegex(report["observed_at"], r"Z$")
+            self.assertEqual(["ordinary-unfinished"], report["scenarios"])
+            self.assertNotIn("command", report)
+
+    def test_runner_requires_an_explicit_execution_mode(self) -> None:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(REPO_ROOT / "scripts" / "conformance-exports.py"),
+                "--agent-name",
+                "fake",
+                "--agent-product",
+                "deterministic-fake",
+                "--agent-version",
+                "1.0.0",
+                "--adapter",
+                "codex",
+                "--agent-command",
+                f"{sys.executable} {FAKE_AGENT}",
+                "--scenario",
+                "ordinary-unfinished",
+                "--dry-run",
+            ],
+            cwd=REPO_ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(2, completed.returncode)
+        self.assertIn("one of the arguments", completed.stderr)
+
+
+if __name__ == "__main__":
+    unittest.main()

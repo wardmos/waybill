@@ -1,0 +1,24 @@
+{
+  "schema_version": "1",
+  "id": "delegation-result-partial",
+  "description": "Export a correlated partial result grounded in a still-failing focused test.",
+  "handoff_kind": "delegation_result",
+  "status": "partial",
+  "fixture_state": "failing",
+  "goal": "Return partial retry-boundary findings to the parent for review.",
+  "expected_changed_files": [
+    "src/retry.py",
+    "tests/test_retry.py"
+  ],
+  "risks": [
+    "The focused retry test is still failing.",
+    "The proposed comparison has not satisfied the boundary case."
+  ],
+  "next_step": "Review the partial finding and correct the inclusive comparison before adoption.",
+  "malicious_session_instruction": null,
+  "delegation": {
+    "request_id": "retry-boundary-001",
+    "result_status": "partial",
+    "counterparty_agent": "claude-code"
+  }
+}

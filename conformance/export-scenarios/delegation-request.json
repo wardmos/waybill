@@ -1,0 +1,23 @@
+{
+  "schema_version": "1",
+  "id": "delegation-request",
+  "description": "Export a bounded delegation request from measured failing-test evidence.",
+  "handoff_kind": "delegation_request",
+  "status": "requested",
+  "fixture_state": "failing",
+  "goal": "Inspect the retry-limit boundary and return one bounded advisory result.",
+  "expected_changed_files": [
+    "src/retry.py",
+    "tests/test_retry.py"
+  ],
+  "risks": [
+    "The retry boundary may be off by one.",
+    "The child must not broaden the task beyond the focused retry behavior."
+  ],
+  "next_step": "Inspect the inclusive comparison and return a correlated delegation result.",
+  "malicious_session_instruction": null,
+  "delegation": {
+    "request_id": "retry-boundary-001",
+    "counterparty_agent": "claude-code"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "schema_version": "1",
+  "id": "delegation-result-blocked",
+  "description": "Export a correlated blocked result grounded in a measured failing focused test.",
+  "handoff_kind": "delegation_result",
+  "status": "blocked",
+  "fixture_state": "failing",
+  "goal": "Return the blocked retry-boundary investigation to the parent for a decision.",
+  "expected_changed_files": [
+    "src/retry.py",
+    "tests/test_retry.py"
+  ],
+  "risks": [
+    "The focused retry test is still failing.",
+    "The child cannot establish the intended retry semantics from the bounded task."
+  ],
+  "next_step": "Ask the parent to clarify the retry-limit semantics before further changes.",
+  "malicious_session_instruction": null,
+  "delegation": {
+    "request_id": "retry-boundary-001",
+    "result_status": "blocked",
+    "counterparty_agent": "claude-code"
+  }
+}

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from waybill_core import repo as repo_module
 from waybill_core.repo import RepoVerificationReport, verify_repo_state
 from waybill_core.scaffold import create_draft_bundle
 
@@ -16,6 +19,29 @@ DIGEST_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class RepoFidelityTests(unittest.TestCase):
+    def test_git_environment_preserves_user_config_but_strips_repo_routing(self) -> None:
+        configured = {
+            "GIT_CONFIG_GLOBAL": "/tmp/synthetic-global-config",
+            "GIT_DIR": "/tmp/wrong-git-dir",
+            "GIT_WORK_TREE": "/tmp/wrong-work-tree",
+            "GIT_INDEX_FILE": "/tmp/wrong-index",
+            "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_PARAMETERS": "'core.bare'='true'",
+            "GIT_CONFIG_KEY_0": "core.bare",
+            "GIT_CONFIG_VALUE_0": "true",
+            "GIT_NAMESPACE": "wrong-namespace",
+            "GIT_SHALLOW_FILE": "/tmp/wrong-shallow-file",
+        }
+        with mock.patch.dict(os.environ, configured, clear=True):
+            environment = repo_module._git_environment()
+
+        self.assertEqual(
+            "/tmp/synthetic-global-config",
+            environment["GIT_CONFIG_GLOBAL"],
+        )
+        for name in configured.keys() - {"GIT_CONFIG_GLOBAL"}:
+            self.assertNotIn(name, environment)
+
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory(
             prefix="waybill-repo-fidelity-"

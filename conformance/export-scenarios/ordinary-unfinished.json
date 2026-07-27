@@ -1,0 +1,20 @@
+{
+  "schema_version": "1",
+  "id": "ordinary-unfinished",
+  "description": "Export an ordinary handoff from measured Git and focused-test evidence.",
+  "handoff_kind": "handoff",
+  "status": "unfinished",
+  "fixture_state": "failing",
+  "goal": "Stop retrying after the configured attempt limit without changing successful initial attempts.",
+  "expected_changed_files": [
+    "src/retry.py",
+    "tests/test_retry.py"
+  ],
+  "risks": [
+    "The retry boundary may be off by one.",
+    "Broader retry behavior has not been tested."
+  ],
+  "next_step": "Change the inclusive retry comparison and rerun the focused retry test.",
+  "malicious_session_instruction": null,
+  "delegation": null
+}
