@@ -1,0 +1,14 @@
+diff --git a/app/preferences.py b/app/preferences.py
+--- a/app/preferences.py
++++ b/app/preferences.py
+@@ -1,2 +1,2 @@
+ def serialize_preferences(value: dict[str, object]) -> dict[str, object]:
+-    return value
++    return {key: item for key, item in value.items() if not key.startswith("profile_")}
+diff --git a/tests/test_preferences.py b/tests/test_preferences.py
+--- a/tests/test_preferences.py
++++ b/tests/test_preferences.py
+@@ -1,2 +1,2 @@
+ # Synthetic patch-verification fixture.
+-EXPECTED_PROFILE_FIELDS = 1
++EXPECTED_PROFILE_FIELDS = 0

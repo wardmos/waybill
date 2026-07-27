@@ -1,0 +1,19 @@
+{
+  "schema_version": "0.2",
+  "source_agent": "codex",
+  "created_at": "2026-07-02T12:10:00Z",
+  "repo_root": ".",
+  "git": {
+    "branch": "fix/preferences-timezone",
+    "base_ref": "main",
+    "head_sha": "1111111111111111111111111111111111111111",
+    "dirty": true,
+    "status_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "repo_state_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "artifacts": {
+    "waybill": "WAYBILL.md",
+    "diff": "diff.patch",
+    "test_summary": "test-summary.md"
+  }
+}

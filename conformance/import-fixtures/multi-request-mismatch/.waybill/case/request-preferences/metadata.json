@@ -1,0 +1,21 @@
+{
+  "schema_version": "0.2",
+  "source_agent": "codex",
+  "created_at": "2026-07-02T13:00:00Z",
+  "repo_root": ".",
+  "handoff": {
+    "kind": "delegation_request",
+    "request_id": "preferences-001",
+    "parent_agent": "codex",
+    "child_agent": "claude-code"
+  },
+  "git": {
+    "branch": "${CURRENT_BRANCH}",
+    "base_ref": "main",
+    "head_sha": "${CURRENT_HEAD}",
+    "dirty": true,
+    "status_digest": "${CURRENT_STATUS_DIGEST}",
+    "repo_state_digest": "${CURRENT_REPO_STATE_DIGEST}"
+  },
+  "artifacts": {"waybill": "WAYBILL.md"}
+}

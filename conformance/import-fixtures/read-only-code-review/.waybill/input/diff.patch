@@ -1,0 +1,14 @@
+diff --git a/app/retry.py b/app/retry.py
+--- a/app/retry.py
++++ b/app/retry.py
+@@ -1,2 +1,2 @@
+ def terminal_state(error_kind: str) -> str:
+-    return "retrying"
++    return "failed"
+diff --git a/tests/test_retry.py b/tests/test_retry.py
+--- a/tests/test_retry.py
++++ b/tests/test_retry.py
+@@ -1,2 +1,2 @@
+ # Synthetic read-only review fixture.
+-EXPECTED_TERMINAL_STATE = "retrying"
++EXPECTED_TERMINAL_STATE = "failed"

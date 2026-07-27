@@ -1,0 +1,13 @@
+{
+  "schema_version": "0.1",
+  "source_agent": "legacy-agent",
+  "created_at": "2025-01-01T00:00:00Z",
+  "repo_root": ".",
+  "git": {
+    "branch": "legacy",
+    "base_ref": "main",
+    "head_sha": "unknown",
+    "dirty": false
+  },
+  "artifacts": {"waybill": "WAYBILL.md"}
+}

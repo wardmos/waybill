@@ -1,0 +1,26 @@
+{
+  "schema_version": "0.2",
+  "source_agent": "codex",
+  "created_at": "2026-07-02T12:30:00Z",
+  "repo_root": ".",
+  "handoff": {
+    "kind": "delegation_result",
+    "result_for": "checkout-contract-001",
+    "result_status": "blocked",
+    "parent_agent": "claude-code",
+    "child_agent": "codex"
+  },
+  "git": {
+    "branch": "${CURRENT_BRANCH}",
+    "base_ref": "main",
+    "head_sha": "${CURRENT_HEAD}",
+    "dirty": false,
+    "status_digest": "${CURRENT_STATUS_DIGEST}",
+    "repo_state_digest": "${CURRENT_REPO_STATE_DIGEST}"
+  },
+  "artifacts": {
+    "waybill": "WAYBILL.md",
+    "diff": "diff.patch",
+    "test_summary": "test-summary.md"
+  }
+}
