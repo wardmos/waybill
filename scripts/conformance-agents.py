@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shlex
 import sys
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import Sequence
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+AGENT_OUTPUT_LIMIT_BYTES = 256 * 1024
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
@@ -28,6 +30,7 @@ from waybill_core.agent_identity import (  # noqa: E402
     current_observed_at,
     probe_agent_identity,
 )
+from waybill_core.adapter_matrix import compute_source_provenance  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -65,6 +68,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="include the resolved executable path and raw identity probe output",
     )
     parser.add_argument(
+        "--unsafe-manual",
+        action="store_true",
+        help=(
+            "Acknowledge that a real agent uses best-effort process and filesystem "
+            "observation, not an operating-system sandbox."
+        ),
+    )
+    parser.add_argument(
         "--scenario",
         action="append",
         dest="scenarios",
@@ -81,7 +92,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--workspace",
         type=Path,
         default=Path.cwd(),
-        help="Workspace to snapshot and use as the command working directory.",
+        help=(
+            "Identity-probe observation root and legacy v1 workspace. V2 scenarios "
+            "run only in their scenario-owned disposable fixtures."
+        ),
     )
     parser.add_argument(
         "--timeout",
@@ -113,6 +127,50 @@ def _prompt_digest(prompt: str) -> str:
     return "sha256:" + hashlib.sha256(prompt.encode("utf-8")).hexdigest()
 
 
+def _probe_environment() -> dict[str, str]:
+    allowed = (
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "PATH",
+        "PATHEXT",
+        "SYSTEMROOT",
+        "TEMP",
+        "TMP",
+        "TMPDIR",
+        "WINDIR",
+        "XDG_CONFIG_HOME",
+    )
+    return {name: os.environ[name] for name in allowed if name in os.environ}
+
+
+def _sanitized_error(message: str, *roots: Path) -> str:
+    sanitized = message
+    labels = ("<repository>", "<scenario-directory>", "<workspace>")
+    candidates = (REPO_ROOT, *roots)
+    for path, label in zip(candidates, labels):
+        try:
+            resolved = str(path.resolve())
+        except OSError:
+            continue
+        sanitized = sanitized.replace(resolved, label)
+    return sanitized
+
+
+def _safety_report(*, manual_acknowledged: bool) -> dict[str, object]:
+    return {
+        "disposable_workspace": True,
+        "environment_allowlist": True,
+        "git_state_measured": True,
+        "output_limit_bytes_per_stream": AGENT_OUTPUT_LIMIT_BYTES,
+        "process_group_cleanup": "best_effort",
+        "outside_disposable_root_detection": "best_effort",
+        "operating_system_sandbox": False,
+        "manual_risk_acknowledged": manual_acknowledged,
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -121,16 +179,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--timeout must be greater than zero")
     if not args.dry_run and args.adapter is None:
         parser.error("--adapter is required for a real run")
+    if not args.dry_run and not args.unsafe_manual:
+        parser.error("--unsafe-manual is required for a real run")
 
     try:
         scenarios = load_scenarios(args.scenario_dir, args.scenarios)
     except ValueError as exc:
-        parser.error(str(exc))
+        parser.error(_sanitized_error(str(exc), args.scenario_dir, args.workspace))
     if not scenarios:
-        parser.error(f"no scenario JSON files found in {args.scenario_dir}")
+        parser.error("no scenario JSON files found")
 
     if not args.workspace.is_dir():
-        parser.error(f"workspace is not a directory: {args.workspace}")
+        parser.error("workspace is not a directory")
 
     if args.dry_run:
         observed_at = current_observed_at()
@@ -142,7 +202,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             for scenario in scenarios
         ]
         report = {
-            "schema_version": "1",
+            "schema_version": "2",
             "capability": "import",
             "agent": args.agent_name,
             "adapter": args.adapter,
@@ -150,54 +210,73 @@ def main(argv: Sequence[str] | None = None) -> int:
             "identity": None,
             "identity_probe_unexpected_writes": [],
             "execution_mode": "dry_run",
+            "safety": _safety_report(manual_acknowledged=False),
             "dry_run": True,
             "success": True,
-            "command": command,
+            "provenance": None,
             "results": results,
         }
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0
 
     observed_at = current_observed_at()
-    identity_probe_before = snapshot_workspace(args.workspace)
-    identity = probe_agent_identity(
-        args.adapter,
-        executable=command[0],
-        observed_at=observed_at,
-    )
-    identity_probe_after = snapshot_workspace(args.workspace)
+    identity_probe_before = snapshot_workspace(args.workspace, include_git=True)
+    original_working_directory = Path.cwd()
+    try:
+        os.chdir(args.workspace)
+        identity = probe_agent_identity(
+            args.adapter,
+            executable=command[0],
+            environment=_probe_environment(),
+            observed_at=observed_at,
+        )
+    finally:
+        os.chdir(original_working_directory)
+    identity_probe_after = snapshot_workspace(args.workspace, include_git=True)
     identity_probe_writes = changed_snapshot_paths(
         identity_probe_before,
         identity_probe_after,
     )
     if not identity.verified or identity_probe_writes:
         report = {
-            "schema_version": "1",
+            "schema_version": "2",
             "capability": "import",
             "agent": args.agent_name,
             "adapter": args.adapter,
             "observed_at": observed_at,
             "identity": identity.to_dict(include_private=args.private_identity),
             "identity_probe_unexpected_writes": identity_probe_writes,
-            "execution_mode": "manual",
+            "execution_mode": "unsafe_manual",
+            "safety": _safety_report(manual_acknowledged=True),
             "dry_run": False,
             "success": False,
+            "provenance": None,
             "results": [],
         }
         print(json.dumps(report, indent=2, sort_keys=True))
         return 1
 
-    results = [
-        run_scenario(
-            scenario,
-            command,
-            args.workspace,
-            timeout_seconds=args.timeout,
+    try:
+        provenance = compute_source_provenance(
+            REPO_ROOT,
+            adapter=args.adapter,
+            capability="import",
         )
-        for scenario in scenarios
-    ]
+        results = [
+            run_scenario(
+                scenario,
+                command,
+                args.workspace,
+                timeout_seconds=args.timeout,
+                output_limit_bytes=AGENT_OUTPUT_LIMIT_BYTES,
+                inherit_user_config=True,
+            )
+            for scenario in scenarios
+        ]
+    except (OSError, ValueError) as exc:
+        parser.error(_sanitized_error(str(exc), args.scenario_dir, args.workspace))
     report = {
-        "schema_version": "1",
+        "schema_version": "2",
         "capability": "import",
         "agent": args.agent_name,
         "adapter": args.adapter,
@@ -208,9 +287,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             else None
         ),
         "identity_probe_unexpected_writes": identity_probe_writes,
-        "execution_mode": "manual",
+        "execution_mode": "unsafe_manual",
+        "safety": _safety_report(manual_acknowledged=True),
         "dry_run": False,
         "success": all(result.passed for result in results),
+        "provenance": provenance.to_dict(),
         "results": [result.to_dict() for result in results],
     }
     print(json.dumps(report, indent=2, sort_keys=True))

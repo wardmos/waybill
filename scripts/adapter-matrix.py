@@ -58,6 +58,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--source-root",
+        type=Path,
+        default=ROOT,
+        help=(
+            "clean Waybill Git worktree whose revision and conformance contract "
+            "must match every report; defaults to this repository"
+        ),
+    )
+    parser.add_argument(
         "--identity-only",
         action="store_true",
         help="exit based only on executable identity, ignoring unrun capabilities",
@@ -91,17 +100,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     adapters = args.adapter or list(ADAPTERS)
     executable_overrides = _parse_executables(parser, args.executable)
     try:
-        capability_observations = load_capability_observations(args.report)
+        capability_observations = load_capability_observations(
+            args.report,
+            source_root=args.source_root,
+        )
         report = build_adapter_matrix(
             adapters=adapters,
             executable_overrides=executable_overrides,
             capability_observations=capability_observations,
+            source_root=args.source_root,
         )
     except ValueError as exc:
         detail = str(exc)
         if args.public:
-            for report_path in args.report:
-                candidates = {str(report_path), str(report_path.resolve())}
+            private_paths = [*args.report, args.source_root]
+            for private_path in private_paths:
+                candidates = {str(private_path), str(private_path.resolve())}
                 for candidate in sorted(candidates, key=len, reverse=True):
                     detail = detail.replace(candidate, "<report>")
         parser.error(detail)
