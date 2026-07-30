@@ -11,7 +11,9 @@ from unittest import mock
 
 from waybill_core import repo as repo_module
 from waybill_core.repo import RepoVerificationReport, verify_repo_state
+from waybill_core.readiness import check_export_readiness
 from waybill_core.scaffold import create_draft_bundle
+from waybill_core.validation import has_errors, validate_bundle
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -216,6 +218,22 @@ class RepoFidelityTests(unittest.TestCase):
         self.assertFalse(report.has_errors)
         self.assertEqual(checks["status_digest"].status, "warning")
         self.assertEqual(checks["repo_state_digest"].status, "warning")
+
+    def test_legacy_bundle_still_validates_but_is_not_current_export_ready(self) -> None:
+        bundle = self.create_bundle()
+        metadata_path = bundle / "metadata.json"
+        metadata = json.loads(metadata_path.read_text())
+        metadata["git"].pop("status_digest")
+        metadata["git"].pop("repo_state_digest")
+        metadata_path.write_text(json.dumps(metadata, indent=2) + "\n")
+
+        self.assertFalse(has_errors(validate_bundle(bundle)))
+        readiness = check_export_readiness(bundle, self.repo)
+        checks = {check.name: check for check in readiness.content_checks}
+
+        self.assertTrue(readiness.has_errors)
+        self.assertEqual("error", checks["status_digest"].status)
+        self.assertEqual("error", checks["repo_state_digest"].status)
 
 
 if __name__ == "__main__":

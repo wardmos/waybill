@@ -9,7 +9,6 @@ import json
 import os
 import shlex
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
 
@@ -28,6 +27,7 @@ from waybill_core.agent_identity import (  # noqa: E402
     current_observed_at,
     probe_agent_identity,
 )
+from waybill_core.adapter_matrix import compute_source_provenance  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -233,15 +233,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             observed_at,
         )
         execution_mode = "deterministic_fake"
+        provenance = None
     else:
         identity, identity_report = _manual_identity(parser, args, command)
         observed_at = str(identity_report["observed_at"])
         execution_mode = "unsafe_manual"
+        provenance = None
 
-    observed_date = datetime.now(timezone.utc).date().isoformat()
+    observed_date = observed_at[:10]
     if args.dry_run:
         report = {
-            "schema_version": "1",
+            "schema_version": "2",
             "capability": "export",
             "mode": "export",
             "execution_mode": execution_mode,
@@ -252,6 +254,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "adapter": args.adapter,
             "date": observed_date,
             "observed_at": observed_at,
+            "provenance": provenance,
             "scenarios": [scenario.id for scenario in scenarios],
             "scenario_digests": {
                 scenario.id: _scenario_digest(scenario.path) for scenario in scenarios
@@ -259,6 +262,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0
+
+    if args.unsafe_manual:
+        try:
+            provenance = compute_source_provenance(
+                REPO_ROOT,
+                adapter=args.adapter,
+                capability="export",
+            ).to_dict()
+        except ValueError as exc:
+            parser.error(f"could not bind clean source provenance: {exc}")
 
     results = [
         run_export_scenario(
@@ -272,7 +285,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         for scenario in scenarios
     ]
     report = {
-        "schema_version": "1",
+        "schema_version": "2",
         "capability": "export",
         "mode": "export",
         "execution_mode": execution_mode,
@@ -283,6 +296,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "adapter": args.adapter,
         "date": observed_date,
         "observed_at": observed_at,
+        "provenance": provenance,
         "results": [result.to_dict() for result in results],
     }
     print(json.dumps(report, indent=2, sort_keys=True))

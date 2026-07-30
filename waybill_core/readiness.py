@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -63,12 +64,40 @@ def check_export_readiness(
 
 def _check_content(bundle: Path) -> list[ReadinessCheck]:
     checks: list[ReadinessCheck] = []
+    _check_current_export_fidelity(bundle, checks)
     _check_no_placeholders(bundle / "WAYBILL.md", "WAYBILL.md", checks)
     _check_no_placeholders(bundle / "test-summary.md", "test-summary.md", checks)
     _check_no_placeholders(bundle / "commands.log", "commands.log", checks)
     if not checks:
         checks.append(ReadinessCheck("content", "ok", "no draft placeholders found"))
     return checks
+
+
+def _check_current_export_fidelity(
+    bundle: Path,
+    checks: list[ReadinessCheck],
+) -> None:
+    metadata_path = bundle / "metadata.json"
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return
+    if not isinstance(metadata, dict):
+        return
+    git = metadata.get("git")
+    if not isinstance(git, dict):
+        return
+
+    for name in ("status_digest", "repo_state_digest"):
+        if not isinstance(git.get(name), str) or not git[name].strip():
+            checks.append(
+                ReadinessCheck(
+                    name,
+                    "error",
+                    f"current exports must record metadata git.{name}",
+                    str(metadata_path),
+                )
+            )
 
 
 def _check_no_placeholders(

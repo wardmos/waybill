@@ -15,6 +15,7 @@ from unittest import mock
 
 from waybill_core.export_conformance import (
     REQUIRED_EXPORT_SCENARIO_IDS,
+    SUPPORTED_EXPORT_ADAPTERS,
     ExportAgentIdentity,
     build_export_prompt,
     load_export_scenario,
@@ -150,6 +151,14 @@ class SyntheticRepositoryTests(unittest.TestCase):
                 installed_adapter.read_bytes(),
             )
             self.assertTrue(prepared.evidence.canonical_diff.startswith(b"diff --git "))
+            self.assertRegex(
+                prepared.evidence.status_digest,
+                r"^sha256:[0-9a-f]{64}$",
+            )
+            self.assertRegex(
+                prepared.evidence.repo_state_digest,
+                r"^sha256:[0-9a-f]{64}$",
+            )
 
             prompt = build_export_prompt(
                 scenario,
@@ -160,7 +169,40 @@ class SyntheticRepositoryTests(unittest.TestCase):
             self.assertIn("WAYBILL EXPORT CONFORMANCE PROMPT v1", prompt)
             self.assertIn("Only write inside .waybill/", prompt)
             self.assertIn('"changed_files":["src/retry.py","tests/test_retry.py"]', prompt)
+            self.assertIn(
+                f'"repo_state_digest":"{prepared.evidence.repo_state_digest}"',
+                prompt,
+            )
+            self.assertIn(
+                f'"status_digest":"{prepared.evidence.status_digest}"',
+                prompt,
+            )
             self.assertNotIn(str(prepared.repo), prompt)
+
+    def test_all_export_adapters_require_fidelity_and_immutable_final_gates(self) -> None:
+        scenario = load_export_scenario(SCENARIO_DIR / "ordinary-unfinished.json")
+        with tempfile.TemporaryDirectory() as temporary:
+            for adapter in SUPPORTED_EXPORT_ADAPTERS:
+                with self.subTest(adapter=adapter):
+                    prepared = prepare_synthetic_repository(
+                        Path(temporary) / adapter,
+                        scenario,
+                        adapter=adapter,
+                        source_root=REPO_ROOT,
+                    )
+                    entrypoint = prepared.repo / prepared.evidence.adapter_entrypoint
+                    instructions = entrypoint.read_text(encoding="utf-8")
+
+                    for required in (
+                        "status_digest",
+                        "repo_state_digest",
+                        "waybill validate .waybill",
+                        "waybill ready .waybill --repo .",
+                        "waybill verify-repo .waybill --repo .",
+                        "waybill verify-pair REQUEST .waybill",
+                        "Do not modify `.waybill/` after final validation begins.",
+                    ):
+                        self.assertIn(required, instructions)
 
 
 class ExportExecutionTests(unittest.TestCase):
@@ -232,6 +274,42 @@ class ExportExecutionTests(unittest.TestCase):
                 self.assertFalse(result.passed)
                 self.assertTrue(result.validation_ok)
                 self.assertIn(expected_code, result.errors)
+
+    def test_current_export_requires_exact_repository_fidelity_digests(self) -> None:
+        cases = (
+            ("missing-status-digest", "evidence:status-digest"),
+            ("missing-repo-state-digest", "evidence:repo-state-digest"),
+            ("wrong-status-digest", "evidence:status-digest"),
+            ("wrong-repo-state-digest", "evidence:repo-state-digest"),
+        )
+        for fault, expected_code in cases:
+            with self.subTest(fault=fault):
+                result = self._run("ordinary-unfinished", fault)
+
+                self.assertFalse(result.passed)
+                self.assertTrue(result.validation_ok)
+                self.assertFalse(result.readiness_ok)
+                self.assertIn("gate:ready", result.errors)
+                self.assertIn(expected_code, result.errors)
+
+    def test_tracked_content_drift_with_same_status_shape_fails_final_gate(self) -> None:
+        result = self._run("ordinary-unfinished", "same-shape-content-drift")
+
+        self.assertFalse(result.passed)
+        self.assertTrue(result.validation_ok)
+        self.assertFalse(result.readiness_ok)
+        self.assertFalse(result.repo_verification_ok)
+        self.assertIn("gate:ready", result.errors)
+        self.assertIn("gate:verify-repo", result.errors)
+
+    def test_pollution_after_agent_self_check_fails_immutable_final_validation(self) -> None:
+        result = self._run("ordinary-unfinished", "post-check-artifact-pollution")
+
+        self.assertFalse(result.passed)
+        self.assertFalse(result.validation_ok)
+        self.assertFalse(result.readiness_ok)
+        self.assertIn("gate:validate", result.errors)
+        self.assertIn("gate:ready", result.errors)
 
     def test_validate_ready_and_verify_repo_fail_independently(self) -> None:
         invalid = self._run("ordinary-unfinished", "invalid-metadata")
@@ -398,9 +476,11 @@ class ExportExecutionTests(unittest.TestCase):
                 "diff": True,
                 "goal": True,
                 "next_step": True,
+                "repo_state_digest": True,
                 "risks": True,
                 "source_agent": True,
                 "status": True,
+                "status_digest": True,
                 "test_state": True,
             },
             report["semantic_checks"],
@@ -453,7 +533,9 @@ class ExportRunnerCliTests(unittest.TestCase):
 
         self.assertEqual(0, completed.returncode, completed.stderr)
         report = json.loads(completed.stdout)
+        self.assertEqual("2", report["schema_version"])
         self.assertEqual("unsafe_manual", report["execution_mode"])
+        self.assertIsNone(report["provenance"])
         self.assertEqual("verified", report["identity"]["status"])
         self.assertEqual("codex", report["identity"]["product"])
         self.assertEqual(SYNTHETIC_AGENT_VERSION, report["identity"]["version"])
@@ -492,10 +574,12 @@ class ExportRunnerCliTests(unittest.TestCase):
             self.assertEqual(0, completed.returncode, completed.stderr)
             self.assertFalse(marker.exists())
             report = json.loads(completed.stdout)
+            self.assertEqual("2", report["schema_version"])
             self.assertTrue(report["success"])
             self.assertTrue(report["dry_run"])
             self.assertEqual("export", report["capability"])
             self.assertEqual("deterministic_fake", report["execution_mode"])
+            self.assertIsNone(report["provenance"])
             self.assertTrue(report["identity"]["verified"])
             self.assertRegex(
                 report["identity"]["sha256"],

@@ -273,6 +273,8 @@ Review the current repository before taking any state-changing action.
             "base_ref": "unknown",
             "head_sha": evidence["head_sha"],
             "dirty": evidence["dirty"],
+            "status_digest": evidence["status_digest"],
+            "repo_state_digest": evidence["repo_state_digest"],
         },
         "artifacts": {
             "waybill": "WAYBILL.md",
@@ -306,6 +308,18 @@ Review the current repository before taking any state-changing action.
                 "parent_agent": counterparty,
                 "child_agent": adapter,
             }
+
+    git_metadata = metadata["git"]
+    if not isinstance(git_metadata, dict):
+        raise ValueError("git metadata must be an object")
+    if "missing-status-digest" in faults:
+        git_metadata.pop("status_digest")
+    if "missing-repo-state-digest" in faults:
+        git_metadata.pop("repo_state_digest")
+    if "wrong-status-digest" in faults:
+        git_metadata["status_digest"] = "sha256:" + "0" * 64
+    if "wrong-repo-state-digest" in faults:
+        git_metadata["repo_state_digest"] = "sha256:" + "0" * 64
 
     if "invalid-metadata" in faults:
         (bundle / "metadata.json").write_text("{invalid\n", encoding="utf-8")
@@ -359,6 +373,33 @@ The exporting agent did not rerun this test.
 """,
         encoding="utf-8",
     )
+
+    if "post-check-artifact-pollution" in faults:
+        cli = Path(__file__).resolve().parents[3] / "cli" / "waybill"
+        checks = (
+            [str(cli), "validate", ".waybill"],
+            [str(cli), "ready", ".waybill", "--repo", "."],
+            [str(cli), "verify-repo", ".waybill", "--repo", "."],
+        )
+        for command in checks:
+            completed = subprocess.run(
+                command,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            if completed.returncode != 0:
+                raise ValueError("pre-pollution self-check failed")
+        with (bundle / "commands.log").open("a", encoding="utf-8") as stream:
+            stream.write("\nUnexpected artifact: /home/private/session.log\n")
+
+    if "same-shape-content-drift" in faults:
+        Path("src/retry.py").write_text(
+            "def should_retry(attempt: int, limit: int) -> bool:\n"
+            "    return attempt < limit - 1\n",
+            encoding="utf-8",
+        )
 
     if "outside-write" in faults:
         Path("outside.txt").write_text("unexpected\n", encoding="utf-8")

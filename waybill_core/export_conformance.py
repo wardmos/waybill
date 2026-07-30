@@ -21,7 +21,7 @@ from typing import Any, Sequence
 from .delegation import verify_delegation_pair
 from .limits import BundleLimitError, list_bundle_files
 from .readiness import check_export_readiness
-from .repo import verify_repo_state
+from .repo import read_repo_fidelity, verify_repo_state
 from .validation import has_errors, validate_bundle
 
 
@@ -220,6 +220,8 @@ class SyntheticRepositoryEvidence:
     branch: str
     head_sha: str
     dirty: bool
+    status_digest: str
+    repo_state_digest: str
     changed_files: list[str]
     canonical_diff: bytes
     test_command: str
@@ -690,13 +692,8 @@ def prepare_synthetic_repository(
     if _TEST_MARKER not in test.stdout:
         raise ValueError("synthetic test output is missing its evidence marker")
 
-    status = _require_git(
-        repo,
-        "status",
-        "--porcelain=v1",
-        "-z",
-        "--untracked-files=all",
-    )
+    fidelity = read_repo_fidelity(repo)
+    status = fidelity.status
     changed_files = _porcelain_paths(status)
     if changed_files != list(scenario.expected_changed_files):
         raise ValueError(
@@ -711,6 +708,8 @@ def prepare_synthetic_repository(
             branch=branch,
             head_sha=head_sha,
             dirty=bool(status),
+            status_digest=fidelity.status_digest,
+            repo_state_digest=fidelity.repo_state_digest,
             changed_files=changed_files,
             canonical_diff=canonical_diff,
             test_command=_TEST_COMMAND,
@@ -772,6 +771,8 @@ def build_export_prompt(
             "branch": evidence.branch,
             "head_sha": evidence.head_sha,
             "dirty": evidence.dirty,
+            "status_digest": evidence.status_digest,
+            "repo_state_digest": evidence.repo_state_digest,
             "changed_files": evidence.changed_files,
             "diff_digest": "sha256:"
             + hashlib.sha256(evidence.canonical_diff).hexdigest(),
@@ -966,6 +967,14 @@ def _semantic_errors(
         errors.append("evidence:diff")
 
     metadata = _read_metadata(bundle)
+    git = metadata.get("git") if isinstance(metadata, dict) else None
+    if not isinstance(git, dict) or git.get("status_digest") != evidence.status_digest:
+        errors.append("evidence:status-digest")
+    if (
+        not isinstance(git, dict)
+        or git.get("repo_state_digest") != evidence.repo_state_digest
+    ):
+        errors.append("evidence:repo-state-digest")
     if metadata is None or metadata.get("source_agent") != evidence.adapter:
         errors.append("evidence:source-agent")
         return errors
@@ -1250,6 +1259,8 @@ def _semantic_check_results(errors: list[str]) -> dict[str, bool]:
                 "next_step",
                 "status",
                 "diff",
+                "status_digest",
+                "repo_state_digest",
                 "source_agent",
                 "delegation",
             )
@@ -1262,6 +1273,8 @@ def _semantic_check_results(errors: list[str]) -> dict[str, bool]:
         "next_step": "evidence:next-step" not in error_set,
         "status": "evidence:status" not in error_set,
         "diff": "evidence:diff" not in error_set,
+        "status_digest": "evidence:status-digest" not in error_set,
+        "repo_state_digest": "evidence:repo-state-digest" not in error_set,
         "source_agent": "evidence:source-agent" not in error_set,
         "delegation": not bool(
             {"evidence:handoff-kind", "evidence:delegation"} & error_set
