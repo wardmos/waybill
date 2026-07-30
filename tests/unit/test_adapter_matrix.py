@@ -350,6 +350,23 @@ class AdapterMatrixTests(unittest.TestCase):
         path.write_text(json.dumps(document), encoding="utf-8")
         return path
 
+    def _set_import_effect_failure(
+        self,
+        document: dict[str, object],
+        *,
+        measured_writes: list[str],
+        boundary_escape_detected: bool,
+        git_write_detected: bool,
+    ) -> None:
+        result = document["results"][0]  # type: ignore[index]
+        result["passed"] = False  # type: ignore[index]
+        result["effects_match"] = not measured_writes  # type: ignore[index]
+        result["measured_unexpected_writes"] = measured_writes  # type: ignore[index]
+        result["boundary_escape_detected"] = boundary_escape_detected  # type: ignore[index]
+        result["git_write_detected"] = git_write_detected  # type: ignore[index]
+        result["errors"] = ["measured import side effect"]  # type: ignore[index]
+        document["success"] = False
+
     def _probe(
         self,
         adapter: str,
@@ -477,7 +494,7 @@ class AdapterMatrixTests(unittest.TestCase):
         safety_signal = self._document("codex", "import")
         safety_signal["results"][0]["git_write_detected"] = True  # type: ignore[index]
         cases.append(
-            (safety_signal, "passed does not match derived import outcome")
+            (safety_signal, "git_write_detected does not match measured paths")
         )
 
         for index, (document, message) in enumerate(cases):
@@ -512,6 +529,122 @@ class AdapterMatrixTests(unittest.TestCase):
                 effects_path,
                 source_root=self.source_root,
             )
+
+    def test_import_report_accepts_bounded_boundary_write_evidence(self) -> None:
+        document = self._document("codex", "import")
+        self._set_import_effect_failure(
+            document,
+            measured_writes=[
+                "../../../root-state",
+                "../runtime-home/state.json",
+                ".git/agent-state",
+            ],
+            boundary_escape_detected=True,
+            git_write_detected=True,
+        )
+        path = self._write_report("boundary-evidence.json", document)
+
+        observation = load_conformance_report(path, source_root=self.source_root)
+
+        self.assertEqual("failed", observation.status)
+
+    def test_import_report_rederives_boundary_and_git_write_signals(self) -> None:
+        cases = [
+            (
+                ["../runtime-home/state.json"],
+                False,
+                False,
+                "boundary_escape_detected does not match measured paths",
+            ),
+            (
+                [".git/agent-state"],
+                False,
+                False,
+                "git_write_detected does not match measured paths",
+            ),
+            (
+                [],
+                True,
+                False,
+                "boundary_escape_detected does not match measured paths",
+            ),
+            (
+                [],
+                False,
+                True,
+                "git_write_detected does not match measured paths",
+            ),
+        ]
+        for index, (writes, boundary, git_write, message) in enumerate(cases):
+            with self.subTest(message=message, writes=writes):
+                document = self._document("codex", "import")
+                self._set_import_effect_failure(
+                    document,
+                    measured_writes=writes,
+                    boundary_escape_detected=boundary,
+                    git_write_detected=git_write,
+                )
+                path = self._write_report(f"bad-write-signal-{index}.json", document)
+
+                with self.assertRaisesRegex(ValueError, message):
+                    load_conformance_report(path, source_root=self.source_root)
+
+    def test_import_boundary_write_evidence_must_be_canonical_and_bounded(self) -> None:
+        unsafe_paths = [
+            "/absolute",
+            "..",
+            "../..",
+            "../../..",
+            "../../../../outside-snapshot",
+            "../runtime-home/./state.json",
+            "../runtime-home/state.json/",
+            "safe/../escape",
+            "..\\escape",
+            "../runtime-home/\x01state.json",
+        ]
+        for index, unsafe_path in enumerate(unsafe_paths):
+            with self.subTest(path=repr(unsafe_path)):
+                document = self._document("codex", "import")
+                self._set_import_effect_failure(
+                    document,
+                    measured_writes=[unsafe_path],
+                    boundary_escape_detected=unsafe_path.startswith(".."),
+                    git_write_detected=False,
+                )
+                path = self._write_report(f"unsafe-boundary-{index}.json", document)
+
+                with self.assertRaisesRegex(ValueError, "contains an unsafe path"):
+                    load_conformance_report(path, source_root=self.source_root)
+
+        noncanonical_lists = [["second", "first"], ["duplicate", "duplicate"]]
+        for index, writes in enumerate(noncanonical_lists):
+            with self.subTest(paths=writes):
+                document = self._document("codex", "import")
+                self._set_import_effect_failure(
+                    document,
+                    measured_writes=writes,
+                    boundary_escape_detected=False,
+                    git_write_detected=False,
+                )
+                path = self._write_report(f"noncanonical-writes-{index}.json", document)
+
+                with self.assertRaisesRegex(ValueError, "sorted and unique"):
+                    load_conformance_report(path, source_root=self.source_root)
+
+    def test_parent_paths_remain_forbidden_outside_import_measured_evidence(self) -> None:
+        import_document = self._document("codex", "import")
+        import_document["identity_probe_unexpected_writes"] = ["../probe-state"]
+        import_path = self._write_report("unsafe-identity-write.json", import_document)
+        with self.assertRaisesRegex(ValueError, "contains an unsafe path"):
+            load_conformance_report(import_path, source_root=self.source_root)
+
+        export_document = self._document("codex", "export")
+        export_document["results"][0]["unexpected_writes"] = [  # type: ignore[index]
+            "../export-state"
+        ]
+        export_path = self._write_report("unsafe-export-write.json", export_document)
+        with self.assertRaisesRegex(ValueError, "contains an unsafe path"):
+            load_conformance_report(export_path, source_root=self.source_root)
 
     def test_import_report_requires_current_manual_safety_contract(self) -> None:
         cases: list[tuple[dict[str, object], str]] = []

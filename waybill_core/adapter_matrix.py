@@ -29,6 +29,11 @@ from .export_conformance import REQUIRED_EXPORT_SCENARIO_IDS
 REPORT_SCHEMA_VERSION = "2"
 DEFAULT_SOURCE_ROOT = Path(__file__).resolve().parents[1]
 
+# Import workspaces are nested at <snapshot>/guard/sandbox/workspace. Measured
+# paths may therefore escape at most three parents while remaining inside the
+# disposable root that the runner actually snapshots.
+_IMPORT_MEASURED_PARENT_DEPTH_LIMIT = 3
+
 ADAPTER_CAPABILITY_REQUIREMENTS = {
     "claude-code": {"export": True, "import": True},
     "codex": {"export": True, "import": True},
@@ -976,7 +981,7 @@ def _load_import_result(
             f"{report_path}: {label}.semantic_match does not match "
             "scenario observation"
         )
-    measured_writes = _validated_path_list(
+    measured_writes = _validated_import_measured_path_list(
         result["measured_unexpected_writes"],
         report_path=report_path,
         field=f"{label}.measured_unexpected_writes",
@@ -991,17 +996,46 @@ def _load_import_result(
         raise ValueError(
             f"{report_path}: {label}.effects_match does not match measured effects"
         )
-    safety_signals = [
+    boundary_escape_detected = _validated_boolean(
+        result["boundary_escape_detected"],
+        report_path,
+        f"{label}.boundary_escape_detected",
+    )
+    actual_boundary_escape_detected = any(
+        PurePosixPath(path).parts[0] == ".." for path in measured_writes
+    )
+    if boundary_escape_detected is not actual_boundary_escape_detected:
+        raise ValueError(
+            f"{report_path}: {label}.boundary_escape_detected does not match "
+            "measured paths"
+        )
+    git_write_detected = _validated_boolean(
+        result["git_write_detected"],
+        report_path,
+        f"{label}.git_write_detected",
+    )
+    actual_git_write_detected = any(
+        ".git" in PurePosixPath(path).parts for path in measured_writes
+    )
+    if git_write_detected is not actual_git_write_detected:
+        raise ValueError(
+            f"{report_path}: {label}.git_write_detected does not match "
+            "measured paths"
+        )
+    other_safety_signals = [
         _validated_boolean(result[field], report_path, f"{label}.{field}")
         for field in (
-            "boundary_escape_detected",
-            "git_write_detected",
             "stdout_truncated",
             "stderr_truncated",
             "residual_process_detected",
             "command_canary_triggered",
             "network_canary_triggered",
         )
+    ]
+    safety_signals = [
+        boundary_escape_detected,
+        git_write_detected,
+        *other_safety_signals,
     ]
     errors = _validated_errors(result["errors"], report_path, label)
     derived = (
@@ -1274,6 +1308,38 @@ def _validated_path_list(
             or any(ord(character) < 32 for character in item)
             or path.is_absolute()
             or ".." in path.parts
+        ):
+            raise ValueError(f"{report_path}: {field} contains an unsafe path")
+    return list(value)
+
+
+def _validated_import_measured_path_list(
+    value: object,
+    *,
+    report_path: Path,
+    field: str,
+) -> list[str]:
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise ValueError(f"{report_path}: {field} must be a list of paths")
+    if value != sorted(value) or len(value) != len(set(value)):
+        raise ValueError(f"{report_path}: {field} paths must be sorted and unique")
+    for item in value:
+        path = PurePosixPath(item)
+        parts = path.parts
+        parent_depth = 0
+        while parent_depth < len(parts) and parts[parent_depth] == "..":
+            parent_depth += 1
+        if (
+            not item
+            or item == "."
+            or item.endswith("/")
+            or "\\" in item
+            or any(ord(character) < 32 for character in item)
+            or path.is_absolute()
+            or path.as_posix() != item
+            or parent_depth > _IMPORT_MEASURED_PARENT_DEPTH_LIMIT
+            or parent_depth == len(parts)
+            or ".." in parts[parent_depth:]
         ):
             raise ValueError(f"{report_path}: {field} contains an unsafe path")
     return list(value)

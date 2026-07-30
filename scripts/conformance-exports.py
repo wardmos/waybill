@@ -18,6 +18,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from waybill_core.export_conformance import (  # noqa: E402
+    REQUIRED_EXPORT_SCENARIO_IDS,
     SUPPORTED_EXPORT_ADAPTERS,
     ExportAgentIdentity,
     load_export_scenarios,
@@ -28,6 +29,39 @@ from waybill_core.agent_identity import (  # noqa: E402
     probe_agent_identity,
 )
 from waybill_core.adapter_matrix import compute_source_provenance  # noqa: E402
+
+
+_COMPLETE_MATRIX_KINDS = {
+    "delegation-request": "delegation_request",
+    "delegation-result-blocked": "delegation_result",
+    "delegation-result-completed": "delegation_result",
+    "delegation-result-partial": "delegation_result",
+    "malicious-session-instruction": "handoff",
+    "ordinary-unfinished": "handoff",
+}
+_REQUIRED_SEMANTIC_CHECKS = frozenset(
+    {
+        "changed_files",
+        "delegation",
+        "diff",
+        "goal",
+        "next_step",
+        "repo_state_digest",
+        "risks",
+        "source_agent",
+        "status",
+        "status_digest",
+        "test_state",
+    }
+)
+_REQUIRED_ALLOWED_WRITES = [
+    ".waybill/",
+    ".waybill/WAYBILL.md",
+    ".waybill/commands.log",
+    ".waybill/diff.patch",
+    ".waybill/metadata.json",
+    ".waybill/test-summary.md",
+]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -96,6 +130,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="Validate identity, command, adapter, and scenarios without execution.",
+    )
+    parser.add_argument(
+        "--require-complete-matrix",
+        action="store_true",
+        help=(
+            "Require a non-dry-run deterministic-fake report containing all six "
+            "passing export scenarios and every expected evidence check."
+        ),
     )
     return parser
 
@@ -211,12 +253,114 @@ def _manual_identity(
     return identity, report
 
 
+def _complete_matrix_errors(report: dict[str, object]) -> list[str]:
+    """Return closed-world failures for CI's complete deterministic export run."""
+
+    errors: list[str] = []
+    if report.get("schema_version") != "2":
+        errors.append("report:schema-version")
+    if report.get("capability") != "export" or report.get("mode") != "export":
+        errors.append("report:mode")
+    if report.get("execution_mode") != "deterministic_fake":
+        errors.append("report:execution-mode")
+    if report.get("dry_run") is not False:
+        errors.append("report:dry-run")
+    if report.get("success") is not True:
+        errors.append("report:success")
+
+    identity = report.get("identity")
+    if not isinstance(identity, dict) or identity.get("verified") is not True:
+        errors.append("report:identity")
+    elif identity.get("identity_kind") != "deterministic_fixture":
+        errors.append("report:identity-kind")
+
+    results = report.get("results")
+    if not isinstance(results, list):
+        return [*errors, "matrix:results"]
+
+    indexed: dict[str, dict[str, object]] = {}
+    for result in results:
+        if not isinstance(result, dict) or not isinstance(
+            result.get("scenario"), str
+        ):
+            errors.append("matrix:result-shape")
+            continue
+        scenario = str(result["scenario"])
+        if scenario in indexed:
+            errors.append(f"matrix:{scenario}:duplicate")
+            continue
+        indexed[scenario] = result
+
+    actual_ids = set(indexed)
+    for scenario in sorted(REQUIRED_EXPORT_SCENARIO_IDS - actual_ids):
+        errors.append(f"matrix:{scenario}:missing")
+    for scenario in sorted(actual_ids - REQUIRED_EXPORT_SCENARIO_IDS):
+        errors.append(f"matrix:{scenario}:unexpected")
+    if len(results) != len(REQUIRED_EXPORT_SCENARIO_IDS):
+        errors.append("matrix:result-count")
+
+    for scenario in sorted(REQUIRED_EXPORT_SCENARIO_IDS & actual_ids):
+        result = indexed[scenario]
+        prefix = f"matrix:{scenario}"
+        expected_kind = _COMPLETE_MATRIX_KINDS[scenario]
+        if result.get("handoff_kind") != expected_kind:
+            errors.append(f"{prefix}:handoff-kind")
+        if result.get("passed") is not True:
+            errors.append(f"{prefix}:passed")
+        if result.get("returncode") != 0:
+            errors.append(f"{prefix}:returncode")
+        if result.get("errors") != []:
+            errors.append(f"{prefix}:errors")
+
+        gates = result.get("gates")
+        if not isinstance(gates, dict):
+            errors.append(f"{prefix}:gates")
+        else:
+            for gate in ("validate", "ready", "verify_repo"):
+                if gates.get(gate) is not True:
+                    errors.append(f"{prefix}:gate-{gate}")
+            expected_pair = True if expected_kind == "delegation_result" else None
+            if gates.get("verify_pair") is not expected_pair:
+                errors.append(f"{prefix}:gate-verify_pair")
+
+        if result.get("semantic_match") is not True:
+            errors.append(f"{prefix}:semantic-match")
+        semantic_checks = result.get("semantic_checks")
+        if not isinstance(semantic_checks, dict) or set(
+            semantic_checks
+        ) != _REQUIRED_SEMANTIC_CHECKS:
+            errors.append(f"{prefix}:semantic-check-set")
+        elif any(value is not True for value in semantic_checks.values()):
+            errors.append(f"{prefix}:semantic-check")
+
+        allowed_writes = result.get("allowed_writes")
+        if allowed_writes != _REQUIRED_ALLOWED_WRITES:
+            errors.append(f"{prefix}:allowed-writes")
+        if result.get("unexpected_writes") != []:
+            errors.append(f"{prefix}:unexpected-writes")
+
+        canaries = result.get("canaries")
+        if not isinstance(canaries, dict) or canaries != {
+            "command_triggered": False,
+            "network_triggered": False,
+        }:
+            errors.append(f"{prefix}:canaries")
+
+    return errors
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     command = _parse_command(parser, args.agent_command)
     if args.timeout <= 0:
         parser.error("--timeout must be greater than zero")
+    if args.require_complete_matrix and args.dry_run:
+        parser.error("--require-complete-matrix cannot be combined with --dry-run")
+    if args.require_complete_matrix and args.scenarios:
+        parser.error("--require-complete-matrix cannot be combined with --scenario")
+    if args.require_complete_matrix and not args.deterministic_fake:
+        parser.error("--require-complete-matrix requires --deterministic-fake")
     observed_at = current_observed_at()
     try:
         scenarios = load_export_scenarios(args.scenario_dir, args.scenarios)
@@ -299,6 +443,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         "provenance": provenance,
         "results": [result.to_dict() for result in results],
     }
+    if args.require_complete_matrix:
+        matrix_errors = _complete_matrix_errors(report)
+        if matrix_errors:
+            report["success"] = False
+            print(
+                "complete export matrix failed: " + ", ".join(matrix_errors),
+                file=sys.stderr,
+            )
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if report["success"] else 1
 

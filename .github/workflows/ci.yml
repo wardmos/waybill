@@ -34,6 +34,18 @@ jobs:
       - name: Run tests
         run: python3 -m unittest discover -s tests -t . -v
 
+      - name: Run deterministic export conformance
+        run: >-
+          python3 scripts/conformance-exports.py
+          --agent-name deterministic-fake
+          --agent-product deterministic-fake
+          --agent-version 1.0.0
+          --deterministic-fake
+          --adapter codex
+          --agent-command "python3 tests/conformance/fixtures/fake_export_agent.py"
+          --require-complete-matrix
+          --timeout 20
+
       - name: Compile Python files
         run: python3 -m py_compile cli/waybill waybill_core/*.py scripts/*.py
 

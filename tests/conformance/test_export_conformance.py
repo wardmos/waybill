@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -498,6 +499,108 @@ class ExportExecutionTests(unittest.TestCase):
 
 
 class ExportRunnerCliTests(unittest.TestCase):
+    def test_deterministic_fake_cli_verifies_the_complete_export_matrix(self) -> None:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(REPO_ROOT / "scripts" / "conformance-exports.py"),
+                "--agent-name",
+                "deterministic-fake",
+                "--agent-product",
+                "deterministic-fake",
+                "--agent-version",
+                "1.0.0",
+                "--deterministic-fake",
+                "--adapter",
+                "codex",
+                "--agent-command",
+                f"{sys.executable} {FAKE_AGENT}",
+                "--require-complete-matrix",
+                "--timeout",
+                "20",
+            ],
+            cwd=REPO_ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        report = json.loads(completed.stdout)
+        self.assertFalse(report["dry_run"])
+        self.assertTrue(report["success"])
+        results = report["results"]
+        self.assertEqual(
+            REQUIRED_EXPORT_SCENARIO_IDS,
+            {result["scenario"] for result in results},
+        )
+        self.assertEqual(len(REQUIRED_EXPORT_SCENARIO_IDS), len(results))
+        for result in results:
+            with self.subTest(scenario=result["scenario"]):
+                self.assertTrue(result["passed"])
+                self.assertTrue(result["gates"]["validate"])
+                self.assertTrue(result["gates"]["ready"])
+                self.assertTrue(result["gates"]["verify_repo"])
+                if result["handoff_kind"] == "delegation_result":
+                    self.assertTrue(result["gates"]["verify_pair"])
+                else:
+                    self.assertIsNone(result["gates"]["verify_pair"])
+                self.assertTrue(result["semantic_match"])
+                self.assertTrue(all(result["semantic_checks"].values()))
+                self.assertEqual([], result["unexpected_writes"])
+                self.assertFalse(result["canaries"]["command_triggered"])
+                self.assertFalse(result["canaries"]["network_triggered"])
+
+        forged = json.loads(json.dumps(report))
+        forged_result = forged["results"][0]
+        forged_result["allowed_writes"] = []
+        forged_result["semantic_checks"].pop("goal")
+        forged_result["unexpected_writes"] = ["outside.txt"]
+        check_report = runpy.run_path(
+            str(REPO_ROOT / "scripts" / "conformance-exports.py")
+        )["_complete_matrix_errors"]
+        matrix_errors = check_report(forged)
+        prefix = f"matrix:{forged_result['scenario']}"
+        self.assertIn(f"{prefix}:allowed-writes", matrix_errors)
+        self.assertIn(f"{prefix}:semantic-check-set", matrix_errors)
+        self.assertIn(f"{prefix}:unexpected-writes", matrix_errors)
+
+    def test_complete_matrix_mode_rejects_dry_runs_and_selected_scenarios(self) -> None:
+        common = [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "conformance-exports.py"),
+            "--agent-name",
+            "deterministic-fake",
+            "--agent-product",
+            "deterministic-fake",
+            "--agent-version",
+            "1.0.0",
+            "--deterministic-fake",
+            "--adapter",
+            "codex",
+            "--agent-command",
+            f"{sys.executable} {FAKE_AGENT}",
+            "--require-complete-matrix",
+        ]
+        for extra, expected in (
+            (["--dry-run"], "cannot be combined with --dry-run"),
+            (
+                ["--scenario", "ordinary-unfinished"],
+                "cannot be combined with --scenario",
+            ),
+        ):
+            with self.subTest(extra=extra):
+                completed = subprocess.run(
+                    [*common, *extra],
+                    cwd=REPO_ROOT,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+
+                self.assertEqual(2, completed.returncode)
+                self.assertIn(expected, completed.stderr)
+
     def test_manual_dry_run_binds_the_observed_executable_identity(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             executable = Path(temporary) / "codex"
