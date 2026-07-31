@@ -237,13 +237,13 @@ This repository includes project-scoped Gemini CLI skills:
 To smoke test them in read-only plan mode:
 
 ```bash
-gemini --skip-trust --approval-mode plan --model gemini-3.1-flash-lite -p "handoff import examples/claude-to-codex. Do not modify files; only read the bundle, verify repository state, and summarize the handoff."
+gemini --skip-trust --approval-mode plan -p "handoff import examples/claude-to-codex. Do not modify files; only read the bundle, verify repository state, and summarize the handoff."
 ```
 
 For scriptable output:
 
 ```bash
-gemini --skip-trust --approval-mode plan --model gemini-3.1-flash-lite --output-format json -p "handoff import examples/claude-to-codex. Do not modify files; only summarize."
+gemini --skip-trust --approval-mode plan --output-format json -p "handoff import examples/claude-to-codex. Do not modify files; only summarize."
 ```
 
 Expected result: Gemini CLI reads the example bundle, checks the repository

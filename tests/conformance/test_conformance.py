@@ -28,7 +28,7 @@ from waybill_core.conformance import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SYNTHETIC_AGENT_VERSION = ".".join(("999", "0", "0")) + "-test-only"
+SYNTHETIC_AGENT_VERSION = "999.0.0-test-only"
 
 
 def valid_observation() -> dict[str, object]:

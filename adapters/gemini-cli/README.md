@@ -45,13 +45,13 @@ Or use the Waybill CLI:
 Inspect an example bundle in read-only plan mode:
 
 ```bash
-gemini --skip-trust --approval-mode plan --model gemini-3.1-flash-lite -p "handoff import examples/claude-to-codex. Do not modify files; only read the bundle, verify repository state, and summarize the handoff."
+gemini --skip-trust --approval-mode plan -p "handoff import examples/claude-to-codex. Do not modify files; only read the bundle, verify repository state, and summarize the handoff."
 ```
 
 Use JSON output for scriptable checks:
 
 ```bash
-gemini --skip-trust --approval-mode plan --model gemini-3.1-flash-lite --output-format json -p "handoff import examples/claude-to-codex. Do not modify files; only summarize."
+gemini --skip-trust --approval-mode plan --output-format json -p "handoff import examples/claude-to-codex. Do not modify files; only summarize."
 ```
 
 Expected behavior:

@@ -29,7 +29,7 @@ from waybill_core.export_conformance import (
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCENARIO_DIR = REPO_ROOT / "conformance" / "export-scenarios"
 FAKE_AGENT = REPO_ROOT / "tests" / "conformance" / "fixtures" / "fake_export_agent.py"
-SYNTHETIC_AGENT_VERSION = ".".join(("999", "0", "0")) + "-test-only"
+SYNTHETIC_AGENT_VERSION = "999.0.0-test-only"
 
 
 def scenario_document(**overrides: object) -> dict[str, object]:
@@ -215,7 +215,7 @@ class ExportExecutionTests(unittest.TestCase):
         cls.identity = ExportAgentIdentity(
             agent="deterministic-fake",
             product="waybill-test-agent",
-            version="1.0.0",
+            version=SYNTHETIC_AGENT_VERSION,
         )
 
     def _run(self, scenario_id: str, *faults: str):
@@ -466,7 +466,7 @@ class ExportExecutionTests(unittest.TestCase):
 
         self.assertEqual("deterministic-fake", report["agent"]["agent"])
         self.assertEqual("waybill-test-agent", report["agent"]["product"])
-        self.assertEqual("1.0.0", report["agent"]["version"])
+        self.assertEqual(SYNTHETIC_AGENT_VERSION, report["agent"]["version"])
         self.assertEqual("codex", report["adapter"])
         self.assertRegex(str(report["date"]), r"^\d{4}-\d{2}-\d{2}$")
         self.assertTrue(report["semantic_match"])
@@ -509,7 +509,7 @@ class ExportRunnerCliTests(unittest.TestCase):
                 "--agent-product",
                 "deterministic-fake",
                 "--agent-version",
-                "1.0.0",
+                SYNTHETIC_AGENT_VERSION,
                 "--deterministic-fake",
                 "--adapter",
                 "codex",
@@ -574,7 +574,7 @@ class ExportRunnerCliTests(unittest.TestCase):
             "--agent-product",
             "deterministic-fake",
             "--agent-version",
-            "1.0.0",
+            SYNTHETIC_AGENT_VERSION,
             "--deterministic-fake",
             "--adapter",
             "codex",
@@ -658,7 +658,7 @@ class ExportRunnerCliTests(unittest.TestCase):
                     "--agent-product",
                     "deterministic-fake",
                     "--agent-version",
-                    "1.0.0",
+                    SYNTHETIC_AGENT_VERSION,
                     "--deterministic-fake",
                     "--adapter",
                     "codex",
@@ -702,7 +702,7 @@ class ExportRunnerCliTests(unittest.TestCase):
                 "--agent-product",
                 "deterministic-fake",
                 "--agent-version",
-                "1.0.0",
+                SYNTHETIC_AGENT_VERSION,
                 "--adapter",
                 "codex",
                 "--agent-command",

@@ -39,7 +39,7 @@ jobs:
           python3 scripts/conformance-exports.py
           --agent-name deterministic-fake
           --agent-product deterministic-fake
-          --agent-version 1.0.0
+          --agent-version deterministic-fixture
           --deterministic-fake
           --adapter codex
           --agent-command "python3 tests/conformance/fixtures/fake_export_agent.py"

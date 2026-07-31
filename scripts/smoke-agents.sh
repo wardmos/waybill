@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE="examples/claude-to-codex"
 DRY_RUN=0
 TIMEOUT_SECONDS="${WAYBILL_SMOKE_TIMEOUT:-180}"
-GEMINI_MODEL="${WAYBILL_GEMINI_MODEL:-gemini-3.1-flash-lite}"
+GEMINI_MODEL="${WAYBILL_GEMINI_MODEL:-}"
 CLAUDE_BINARY="${WAYBILL_CLAUDE_BINARY:-claude}"
 CODEX_BINARY="${WAYBILL_CODEX_BINARY:-codex}"
 CURSOR_BINARY="${WAYBILL_CURSOR_BINARY:-agent}"
@@ -29,7 +29,7 @@ Options:
 
 Environment:
   WAYBILL_SMOKE_TIMEOUT       Per-tool timeout in seconds. Defaults to 180.
-  WAYBILL_GEMINI_MODEL        Gemini model. Defaults to gemini-3.1-flash-lite.
+  WAYBILL_GEMINI_MODEL        Optional Gemini model. Omit to use the CLI default.
   WAYBILL_CLAUDE_BINARY       Claude Code executable. Defaults to claude.
   WAYBILL_CODEX_BINARY        Codex executable. Defaults to codex.
   WAYBILL_CURSOR_BINARY       Cursor executable. Defaults to agent.
@@ -157,7 +157,11 @@ command_for_tool() {
       COMMAND=("$OPENCODE_BINARY" run --command handoff "import $BUNDLE. Do not modify files; only read the bundle, verify repository state, and summarize the handoff.")
       ;;
     gemini)
-      COMMAND=("$GEMINI_BINARY" --skip-trust --approval-mode plan --model "$GEMINI_MODEL" -p "$prompt")
+      COMMAND=("$GEMINI_BINARY" --skip-trust --approval-mode plan)
+      if [[ -n "$GEMINI_MODEL" ]]; then
+        COMMAND+=(--model "$GEMINI_MODEL")
+      fi
+      COMMAND+=(-p "$prompt")
       ;;
     *)
       echo "Unknown tool: $tool" >&2

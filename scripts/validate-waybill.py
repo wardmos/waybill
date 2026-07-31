@@ -168,7 +168,6 @@ COMMAND_CLASSIFICATION_TERMS = [
     "commands.log",
 ]
 
-
 class ValidationError(Exception):
     pass
 
@@ -581,7 +580,7 @@ def validate_codex_plugin() -> None:
     if manifest["name"] != "waybill":
         fail("Codex plugin name must be waybill")
     if not re.fullmatch(r"\d+\.\d+\.\d+", manifest["version"]):
-        fail("Codex plugin version must be strict semver")
+        fail("Waybill plugin manifest version must be strict semver")
     if manifest["skills"] != "./skills/":
         fail("Codex plugin skills path must be ./skills/")
 
@@ -1166,7 +1165,7 @@ def validate_export_conformance_runner_dry_run() -> None:
                 "--agent-product",
                 "deterministic-fake",
                 "--agent-version",
-                "1.0.0",
+                "deterministic-fixture",
                 "--deterministic-fake",
                 "--adapter",
                 "codex",

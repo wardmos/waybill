@@ -13,7 +13,7 @@ from pathlib import Path
 from waybill_core.agent_identity import probe_agent_identity
 
 
-SYNTHETIC_AGENT_VERSION = ".".join(("999", "0", "0")) + "-test-only"
+SYNTHETIC_AGENT_VERSION = "999.0.0-test-only"
 
 
 class AgentIdentityTests(unittest.TestCase):

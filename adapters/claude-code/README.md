@@ -10,9 +10,8 @@ The repository also includes project-scoped Claude Code skills at:
 .claude/skills/waybill/SKILL.md
 ```
 
-Prefer those skills for current Claude Code versions. The files in
-`commands/` are kept as a compatibility reference for setups that still use
-`.claude/commands/`.
+Prefer those project-scoped skills. The files in `commands/` are kept as a
+compatibility reference for setups that still use `.claude/commands/`.
 
 Supported commands:
 

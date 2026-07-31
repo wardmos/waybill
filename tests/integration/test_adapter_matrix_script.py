@@ -25,7 +25,7 @@ from waybill_core.adapter_matrix import (
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "adapter-matrix.py"
-SYNTHETIC_AGENT_VERSION = ".".join(("999", "0", "0")) + "-test-only"
+SYNTHETIC_AGENT_VERSION = "999.0.0-test-only"
 
 
 class AdapterMatrixScriptTests(unittest.TestCase):
@@ -185,7 +185,9 @@ raise SystemExit(0)
             "codex",
             version_output=f"codex-cli {SYNTHETIC_AGENT_VERSION}",
         )
-        report = self._report("codex", "import", codex, SYNTHETIC_AGENT_VERSION)
+        report = self._report(
+            "codex", "import", codex, SYNTHETIC_AGENT_VERSION
+        )
         document = json.loads(report.read_text(encoding="utf-8"))
         del document["results"][0]["effects_match"]
         report.write_text(json.dumps(document), encoding="utf-8")
@@ -210,7 +212,9 @@ raise SystemExit(0)
             "codex",
             version_output=f"codex-cli {SYNTHETIC_AGENT_VERSION}",
         )
-        report = self._report("codex", "export", codex, SYNTHETIC_AGENT_VERSION)
+        report = self._report(
+            "codex", "export", codex, SYNTHETIC_AGENT_VERSION
+        )
         document = json.loads(report.read_text(encoding="utf-8"))
         document["results"][0]["gates"]["ready"] = False
         report.write_text(json.dumps(document), encoding="utf-8")
@@ -233,7 +237,9 @@ raise SystemExit(0)
             "codex",
             version_output=f"codex-cli {SYNTHETIC_AGENT_VERSION}",
         )
-        report = self._report("codex", "import", codex, SYNTHETIC_AGENT_VERSION)
+        report = self._report(
+            "codex", "import", codex, SYNTHETIC_AGENT_VERSION
+        )
         entrypoint = self.source_root / ADAPTER_ENTRYPOINT_PATHS["codex"]
         entrypoint.write_text("changed adapter\n", encoding="utf-8")
         subprocess.run(
@@ -281,7 +287,9 @@ raise SystemExit(0)
         self.assertEqual(2, completed.returncode)
         self.assertIn("scenario coverage mismatch", completed.stderr)
 
-        legacy = self._report("codex", "import", codex, SYNTHETIC_AGENT_VERSION)
+        legacy = self._report(
+            "codex", "import", codex, SYNTHETIC_AGENT_VERSION
+        )
         document = json.loads(legacy.read_text(encoding="utf-8"))
         document["schema_version"] = "1"
         legacy.write_text(json.dumps(document), encoding="utf-8")

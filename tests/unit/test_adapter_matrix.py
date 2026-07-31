@@ -26,6 +26,7 @@ from waybill_core.conformance import REQUIRED_IMPORT_SCENARIO_SEMANTICS
 
 
 OBSERVED_AT = "2026-07-01T12:34:56Z"
+SYNTHETIC_AGENT_VERSION = "999.0.0-test-only"
 PUBLIC_ROOT = Path(__file__).resolve().parents[2]
 SEMANTIC_CHECKS = {
     "changed_files": True,
@@ -57,7 +58,7 @@ def verified_identity(
     executable: str,
     *,
     sha256: str = "sha256:" + "a" * 64,
-    version: str = "1.2.3",
+    version: str = SYNTHETIC_AGENT_VERSION,
 ) -> AgentIdentity:
     return AgentIdentity(
         adapter=adapter,
@@ -170,7 +171,7 @@ def conformance_report(
     dry_run: bool = False,
     identity_sha256: str = "sha256:" + "a" * 64,
     identity_product: str | None = None,
-    identity_version: str = "1.2.3",
+    identity_version: str = SYNTHETIC_AGENT_VERSION,
     scenarios: list[str] | None = None,
 ) -> dict[str, object]:
     selected = list(
