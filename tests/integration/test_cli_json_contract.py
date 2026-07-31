@@ -8,11 +8,11 @@ import shutil
 import subprocess
 import tempfile
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-from waybill_core.cli import main
+from waybill_core.cli import APPLICATION, main
 from waybill_core.scaffold import create_draft_bundle
 
 
@@ -23,6 +23,13 @@ RESULT = ROOT / "examples" / "claude-parent-codex-child-result"
 
 
 class CliJsonContractTests(unittest.TestCase):
+    def _run_raw(self, arguments: list[str]) -> tuple[int, str, str]:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            exit_code = main(arguments)
+        return exit_code, stdout.getvalue(), stderr.getvalue()
+
     def _run_json(self, arguments: list[str]) -> tuple[int, dict[str, object]]:
         stdout = io.StringIO()
         stderr = io.StringIO()
@@ -173,6 +180,50 @@ class CliJsonContractTests(unittest.TestCase):
                 observed,
             )
 
+    def test_facade_result_is_the_single_source_for_json_success_and_exit(self) -> None:
+        contradictory = mock.Mock(
+            payload=[],
+            success=False,
+            valid=False,
+            problems=(),
+        )
+        with mock.patch(
+            "waybill_core.cli.APPLICATION.validate",
+            return_value=contradictory,
+        ):
+            exit_code, report = self._run_json(
+                ["validate", str(ORDINARY), "--json"]
+            )
+
+        self.assertEqual(1, exit_code)
+        self.assertFalse(report["success"])
+        self.assertFalse(report["valid"])
+
+    def test_operational_facade_failure_is_rendered_without_payload_access(self) -> None:
+        failed = mock.Mock(
+            payload=None,
+            success=False,
+            valid=None,
+            problems=(mock.Mock(message="synthetic operational failure"),),
+        )
+        with mock.patch(
+            "waybill_core.cli.APPLICATION.verify_repo",
+            return_value=failed,
+        ):
+            exit_code, report = self._run_json(
+                [
+                    "verify-repo",
+                    str(ORDINARY),
+                    "--repo",
+                    str(ROOT),
+                    "--json",
+                ]
+            )
+
+        self.assertEqual(1, exit_code)
+        self.assertFalse(report["success"])
+        self.assertEqual("synthetic operational failure", report["error"])
+
     def test_all_json_commands_have_machine_readable_failure_envelopes(self) -> None:
         with tempfile.TemporaryDirectory(prefix="waybill-json-failure-") as temporary:
             root = Path(temporary)
@@ -284,6 +335,147 @@ class CliJsonContractTests(unittest.TestCase):
 
         self.assertEqual(1, exit_code)
         self.assertEqual("synthetic unexpected failure", report["error"])
+
+    def test_inspect_renderers_use_only_controller_captured_evidence(self) -> None:
+        operation = APPLICATION.inspect(ORDINARY)
+        self.assertTrue(operation.success, operation.problems)
+
+        for output_mode in ([], ["--json"]):
+            arguments = ["inspect", str(ORDINARY), *output_mode]
+            with self.subTest(arguments=arguments):
+                with ExitStack() as stack:
+                    stack.enter_context(
+                        mock.patch(
+                            "waybill_core.cli.APPLICATION.inspect",
+                            return_value=operation,
+                        )
+                    )
+                    for method in (
+                        "absolute",
+                        "exists",
+                        "is_dir",
+                        "is_file",
+                        "is_symlink",
+                        "lstat",
+                        "open",
+                        "read_bytes",
+                        "read_text",
+                        "resolve",
+                        "stat",
+                    ):
+                        stack.enter_context(
+                            mock.patch.object(
+                                Path,
+                                method,
+                                side_effect=AssertionError(
+                                    f"renderer attempted Path.{method}"
+                                ),
+                            )
+                        )
+                    exit_code, _, stderr = self._run_raw(arguments)
+
+                self.assertEqual(0, exit_code)
+                self.assertEqual("", stderr)
+
+    def test_inspect_text_output_is_exactly_compatible(self) -> None:
+        exit_code, stdout, stderr = self._run_raw(["inspect", str(ORDINARY)])
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual("", stderr)
+        self.assertEqual(
+            """Bundle: <BUNDLE>
+Schema version status: current
+Schema version: 0.2
+Source agent: claude-code
+Created at: 2026-07-01T12:00:00Z
+Repo root: .
+Git branch: fix/payment-retry-limit
+Git base ref: main
+Git head SHA: unknown
+Git dirty: True
+Handoff kind: handoff
+Parent agent: unknown
+Child agent: unknown
+Artifacts:
+  - waybill: WAYBILL.md (present)
+  - diff: diff.patch (present)
+  - commands: commands.log (present)
+  - test_summary: test-summary.md (present)
+Validation: 0 error(s), 0 warning(s)
+""",
+            stdout.replace(str(ORDINARY), "<BUNDLE>"),
+        )
+
+    def test_inspect_json_output_is_exactly_compatible(self) -> None:
+        exit_code, stdout, stderr = self._run_raw(
+            ["inspect", str(ORDINARY), "--json"]
+        )
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual("", stderr)
+        self.assertEqual(
+            """{
+  "bundle": "<BUNDLE>",
+  "success": true,
+  "valid": true,
+  "schema_version_status": "current",
+  "handoff": {
+    "kind": "handoff"
+  },
+  "metadata": {
+    "schema_version": "0.2",
+    "source_agent": "claude-code",
+    "created_at": "2026-07-01T12:00:00Z",
+    "repo_root": ".",
+    "git": {
+      "branch": "fix/payment-retry-limit",
+      "base_ref": "main",
+      "head_sha": "unknown",
+      "dirty": true
+    },
+    "artifacts": {
+      "waybill": "WAYBILL.md",
+      "diff": "diff.patch",
+      "commands": "commands.log",
+      "test_summary": "test-summary.md"
+    }
+  },
+  "metadata_error": null,
+  "artifacts": [
+    {
+      "name": "waybill",
+      "path": "WAYBILL.md",
+      "status": "present",
+      "bytes": 2310
+    },
+    {
+      "name": "diff",
+      "path": "diff.patch",
+      "status": "present",
+      "bytes": 698
+    },
+    {
+      "name": "commands",
+      "path": "commands.log",
+      "status": "present",
+      "bytes": 416
+    },
+    {
+      "name": "test_summary",
+      "path": "test-summary.md",
+      "status": "present",
+      "bytes": 209
+    }
+  ],
+  "validation": {
+    "errors": 0,
+    "warnings": 0,
+    "issues": []
+  }
+}
+""",
+            stdout.replace(str(ORDINARY), "<BUNDLE>"),
+        )
 
 
 if __name__ == "__main__":

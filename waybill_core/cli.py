@@ -7,7 +7,6 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -15,11 +14,13 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from waybill_core import __version__  # noqa: E402
-from waybill_core.application import WaybillApplication  # noqa: E402
+from waybill_core.application import (  # noqa: E402
+    InspectBundleReport,
+    WaybillApplication,
+)
 from waybill_core.doctor import (  # noqa: E402
     DoctorCheck,
     DoctorReport,
-    doctor_repository,
 )
 from waybill_core.delegation import (  # noqa: E402
     DelegationPairCheck,
@@ -28,15 +29,12 @@ from waybill_core.delegation import (  # noqa: E402
 from waybill_core.install import (  # noqa: E402
     InstallAction,
     InstallReport,
-    install_adapters,
 )
 from waybill_core.limits import MAX_DIFF_BYTES  # noqa: E402
 from waybill_core.packing import (  # noqa: E402
     PackReport,
     PackedFile,
     UnpackReport,
-    pack_bundle,
-    unpack_bundle,
 )
 from waybill_core.preflight import (  # noqa: E402
     ImportPreflightReport,
@@ -48,27 +46,19 @@ from waybill_core.readiness import (  # noqa: E402
 from waybill_core.redaction import (  # noqa: E402
     RedactedFile,
     RedactionReport,
-    redact_bundle,
 )
 from waybill_core.repo import (  # noqa: E402
     RepoCheck,
     RepoVerificationReport,
 )
-from waybill_core.rendering import render_bundle  # noqa: E402
-from waybill_core.scaffold import DraftBundleReport, create_draft_bundle  # noqa: E402
+from waybill_core.scaffold import DraftBundleReport  # noqa: E402
 from waybill_core.schema_versions import schema_version_status  # noqa: E402
 from waybill_core.sharing import (  # noqa: E402
     ShareCheckReport,
     ShareFinding,
     ShareReport,
-    check_shareability,
-    share_bundle,
 )
-from waybill_core.validation import (  # noqa: E402
-    ValidationIssue,
-    has_errors,
-    validate_bundle,
-)
+from waybill_core.validation import ValidationIssue  # noqa: E402
 
 
 JSON_HELP = (
@@ -96,6 +86,33 @@ class WaybillArgumentParser(argparse.ArgumentParser):
 
 def print_json_error(message: str) -> None:
     print(json.dumps({"success": False, "error": message}, indent=2))
+
+
+def operation_error(operation: object) -> str:
+    problems = getattr(operation, "problems", ())
+    if problems:
+        return str(problems[0].message)
+    return "operation failed"
+
+
+def operation_json_report(
+    operation: object,
+    report: dict[str, object],
+) -> dict[str, object]:
+    """Bind transport status fields to the facade result, not payload details."""
+
+    rendered = dict(report)
+    rendered["success"] = bool(getattr(operation, "success", False))
+    valid = getattr(operation, "valid", None)
+    if "valid" in rendered and valid is not None:
+        rendered["valid"] = bool(valid)
+    return rendered
+
+
+def operation_exit_code(operation: object) -> int:
+    """Return the process status represented by an application result."""
+
+    return 0 if getattr(operation, "success", False) else 1
 
 
 def print_field(label: str, value: object) -> None:
@@ -385,48 +402,18 @@ def build_readiness_report(report: ExportReadinessReport) -> dict[str, object]:
     }
 
 
-def build_inspect_report(
-    bundle: Path,
-    metadata: dict[str, Any] | None,
-    metadata_error: str | None,
-    issues: list[ValidationIssue],
-) -> dict[str, object]:
+def build_inspect_report(inspection: InspectBundleReport) -> dict[str, object]:
+    bundle = inspection.bundle
+    metadata = inspection.metadata
+    metadata_error = inspection.metadata_error
+    issues = inspection.validation_issues
     errors = [issue for issue in issues if issue.severity == "error"]
     warnings = [issue for issue in issues if issue.severity == "warning"]
-    artifacts = []
     handoff_metadata = (
         metadata.get("handoff")
         if isinstance(metadata, dict) and isinstance(metadata.get("handoff"), dict)
         else {"kind": "handoff"}
     )
-    artifact_metadata = (
-        metadata.get("artifacts")
-        if isinstance(metadata, dict) and isinstance(metadata.get("artifacts"), dict)
-        else {}
-    )
-
-    for name, artifact in artifact_metadata.items():
-        if not isinstance(artifact, str):
-            artifacts.append(
-                {
-                    "name": name,
-                    "path": None,
-                    "status": "invalid",
-                    "bytes": 0,
-                }
-            )
-            continue
-
-        path = bundle / artifact
-        present = path.is_file()
-        artifacts.append(
-            {
-                "name": name,
-                "path": artifact,
-                "status": "present" if present else "missing",
-                "bytes": path.stat().st_size if present else 0,
-            }
-        )
 
     return {
         "bundle": str(bundle),
@@ -440,7 +427,15 @@ def build_inspect_report(
         "handoff": handoff_metadata,
         "metadata": metadata,
         "metadata_error": metadata_error,
-        "artifacts": artifacts,
+        "artifacts": [
+            {
+                "name": artifact.name,
+                "path": artifact.path,
+                "status": artifact.status,
+                "bytes": artifact.byte_count,
+            }
+            for artifact in inspection.artifacts
+        ],
         "validation": {
             "errors": len(errors),
             "warnings": len(warnings),
@@ -452,46 +447,61 @@ def build_inspect_report(
 def cmd_validate(args: argparse.Namespace) -> int:
     operation = APPLICATION.validate(args.bundle)
     issues = operation.payload
+    if issues is None:
+        message = operation_error(operation)
+        if args.json:
+            print_json_error(message)
+            return operation_exit_code(operation)
+        print(f"FAIL {message}", file=sys.stderr)
+        return operation_exit_code(operation)
     if args.json:
-        print(json.dumps(build_validation_report(args.bundle, issues), indent=2))
-        return 1 if has_errors(issues) else 0
+        print(
+            json.dumps(
+                operation_json_report(
+                    operation,
+                    build_validation_report(args.bundle, issues),
+                ),
+                indent=2,
+            )
+        )
+        return operation_exit_code(operation)
 
     if issues:
         for issue in issues:
             output = sys.stderr if issue.severity == "error" else sys.stdout
             print(issue.format(), file=output)
-    if has_errors(issues):
+    if not operation.success:
         print(f"FAIL invalid Waybill Bundle: {args.bundle}", file=sys.stderr)
-        return 1
+        return operation_exit_code(operation)
     print(f"PASS valid Waybill Bundle: {args.bundle}")
-    return 0
+    return operation_exit_code(operation)
 
 
 def cmd_init(args: argparse.Namespace) -> int:
-    try:
-        report = install_adapters(
-            REPO_ROOT,
-            args.target,
-            args.adapter or ["all"],
-            force=args.force,
-            dry_run=args.dry_run,
-        )
-    except (
-        FileExistsError,
-        FileNotFoundError,
-        NotADirectoryError,
-        ValueError,
-        OSError,
-    ) as exc:
+    operation = APPLICATION.install_adapters(
+        REPO_ROOT,
+        args.target,
+        args.adapter or ["all"],
+        force=args.force,
+        dry_run=args.dry_run,
+    )
+    report = operation.payload
+    if report is None:
+        message = operation_error(operation)
         if args.json:
-            print(json.dumps({"success": False, "error": str(exc)}, indent=2))
-            return 1
-        print(f"FAIL {exc}", file=sys.stderr)
-        return 1
+            print(json.dumps({"success": False, "error": message}, indent=2))
+            return operation_exit_code(operation)
+        print(f"FAIL {message}", file=sys.stderr)
+        return operation_exit_code(operation)
 
     if args.json:
-        print(json.dumps(build_install_report(report), indent=2))
-        return 1 if report.has_conflicts else 0
+        print(
+            json.dumps(
+                operation_json_report(operation, build_install_report(report)),
+                indent=2,
+            )
+        )
+        return operation_exit_code(operation)
 
     if report.dry_run:
         print(f"Waybill adapter installation plan for: {report.target}")
@@ -500,48 +510,66 @@ def cmd_init(args: argparse.Namespace) -> int:
     print(f"Adapters: {', '.join(report.adapters)}")
     for action in report.actions:
         print(f"  - {action.action}: {action.path}")
-    if report.has_conflicts:
+    if not operation.success:
         print("FAIL adapter installation has conflicts", file=sys.stderr)
-        return 1
-    return 0
+        return operation_exit_code(operation)
+    return operation_exit_code(operation)
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
-    try:
-        report = doctor_repository(
-            args.target,
-            args.adapter or ["all"],
-            source_root=REPO_ROOT,
-        )
-    except ValueError as exc:
+    operation = APPLICATION.doctor(
+        args.target,
+        args.adapter or ["all"],
+        source_root=REPO_ROOT,
+    )
+    report = operation.payload
+    if report is None:
+        message = operation_error(operation)
         if args.json:
-            print_json_error(str(exc))
-            return 1
-        print(f"FAIL {exc}", file=sys.stderr)
-        return 1
+            print_json_error(message)
+            return operation_exit_code(operation)
+        print(f"FAIL {message}", file=sys.stderr)
+        return operation_exit_code(operation)
     if args.json:
-        print(json.dumps(build_doctor_report(report), indent=2))
-        return 1 if report.has_errors else 0
+        print(
+            json.dumps(
+                operation_json_report(operation, build_doctor_report(report)),
+                indent=2,
+            )
+        )
+        return operation_exit_code(operation)
 
     print(f"Waybill doctor target: {report.target}")
     print(f"Adapters: {', '.join(report.adapters)}")
     for check in report.checks:
         print(f"  - {check.status.upper()}: {check.name}: {check.message}")
 
-    if report.has_errors:
+    if not operation.success:
         print("FAIL Waybill adapter installation has problems", file=sys.stderr)
-        return 1
+        return operation_exit_code(operation)
 
     print("PASS Waybill adapter installation looks ready")
-    return 0
+    return operation_exit_code(operation)
 
 
 def cmd_verify_repo(args: argparse.Namespace) -> int:
     operation = APPLICATION.verify_repo(args.bundle, args.repo)
     report = operation.payload
+    if report is None:
+        message = operation_error(operation)
+        if args.json:
+            print_json_error(message)
+            return operation_exit_code(operation)
+        print(f"FAIL {message}", file=sys.stderr)
+        return operation_exit_code(operation)
     if args.json:
-        print(json.dumps(build_repo_report(report), indent=2))
-        return 1 if report.has_errors else 0
+        print(
+            json.dumps(
+                operation_json_report(operation, build_repo_report(report)),
+                indent=2,
+            )
+        )
+        return operation_exit_code(operation)
 
     print(f"Bundle: {report.bundle}")
     print(f"Repo: {report.repo}")
@@ -551,21 +579,36 @@ def cmd_verify_repo(args: argparse.Namespace) -> int:
             f"expected={check.expected!r} actual={check.actual!r} - {check.message}"
         )
 
-    if report.has_errors:
+    if not operation.success:
         sys.stdout.flush()
         print("FAIL bundle repo state does not match current repo", file=sys.stderr)
-        return 1
+        return operation_exit_code(operation)
 
     print("PASS bundle repo state matches current repo")
-    return 0
+    return operation_exit_code(operation)
 
 
 def cmd_verify_pair(args: argparse.Namespace) -> int:
     operation = APPLICATION.verify_pair(args.request, args.result)
     report = operation.payload
+    if report is None:
+        message = operation_error(operation)
+        if args.json:
+            print_json_error(message)
+            return operation_exit_code(operation)
+        print(f"FAIL {message}", file=sys.stderr)
+        return operation_exit_code(operation)
     if args.json:
-        print(json.dumps(build_delegation_pair_report(report), indent=2))
-        return 1 if report.has_errors else 0
+        print(
+            json.dumps(
+                operation_json_report(
+                    operation,
+                    build_delegation_pair_report(report),
+                ),
+                indent=2,
+            )
+        )
+        return operation_exit_code(operation)
 
     print(f"Delegation request: {report.request}")
     print(f"Delegation result: {report.result}")
@@ -575,41 +618,41 @@ def cmd_verify_pair(args: argparse.Namespace) -> int:
             f"expected={check.expected!r} actual={check.actual!r} - {check.message}"
         )
 
-    if report.has_errors:
+    if not operation.success:
         sys.stdout.flush()
         print("FAIL delegation result does not match request", file=sys.stderr)
-        return 1
+        return operation_exit_code(operation)
 
     print("PASS delegation result matches request")
-    return 0
+    return operation_exit_code(operation)
 
 
 def cmd_new(args: argparse.Namespace) -> int:
-    try:
-        report = create_draft_bundle(
-            args.output,
-            args.repo,
-            source_agent=args.source_agent,
-            goal=args.goal,
-            force=args.force,
-            max_diff_bytes=args.max_diff_bytes,
-        )
-    except (
-        FileExistsError,
-        FileNotFoundError,
-        NotADirectoryError,
-        ValueError,
-        OSError,
-    ) as exc:
+    operation = APPLICATION.create_draft(
+        args.output,
+        args.repo,
+        source_agent=args.source_agent,
+        goal=args.goal,
+        force=args.force,
+        max_diff_bytes=args.max_diff_bytes,
+    )
+    report = operation.payload
+    if report is None:
+        message = operation_error(operation)
         if args.json:
-            print(json.dumps({"success": False, "error": str(exc)}, indent=2))
-            return 1
-        print(f"FAIL {exc}", file=sys.stderr)
-        return 1
+            print(json.dumps({"success": False, "error": message}, indent=2))
+            return operation_exit_code(operation)
+        print(f"FAIL {message}", file=sys.stderr)
+        return operation_exit_code(operation)
 
     if args.json:
-        print(json.dumps(build_draft_report(report), indent=2))
-        return 0
+        print(
+            json.dumps(
+                operation_json_report(operation, build_draft_report(report)),
+                indent=2,
+            )
+        )
+        return operation_exit_code(operation)
 
     print(f"Draft bundle: {report.output}")
     print(f"Repo: {report.repo}")
@@ -619,17 +662,29 @@ def cmd_new(args: argparse.Namespace) -> int:
     for file in report.files:
         print(f"  - {file}")
     print("Review and edit the draft bundle before importing it elsewhere.")
-    return 0
+    return operation_exit_code(operation)
 
 
 def cmd_preflight(args: argparse.Namespace) -> int:
     operation = APPLICATION.preflight(args.bundle, args.repo)
     report = operation.payload
+    if report is None:
+        message = operation_error(operation)
+        if args.json:
+            print_json_error(message)
+            return operation_exit_code(operation)
+        print(f"FAIL {message}", file=sys.stderr)
+        return operation_exit_code(operation)
     errors = report.validation_errors
     warnings = report.validation_warnings
     if args.json:
-        print(json.dumps(build_preflight_report(report), indent=2))
-        return 1 if report.has_errors else 0
+        print(
+            json.dumps(
+                operation_json_report(operation, build_preflight_report(report)),
+                indent=2,
+            )
+        )
+        return operation_exit_code(operation)
 
     print(f"Bundle: {report.bundle}")
     print(f"Repo: {report.repo}")
@@ -644,18 +699,25 @@ def cmd_preflight(args: argparse.Namespace) -> int:
             f"expected={check.expected!r} actual={check.actual!r} - {check.message}"
         )
 
-    if report.has_errors:
+    if not operation.success:
         sys.stdout.flush()
         print("FAIL import preflight found blocking issues", file=sys.stderr)
-        return 1
+        return operation_exit_code(operation)
 
     print("PASS import preflight passed")
-    return 0
+    return operation_exit_code(operation)
 
 
 def cmd_ready(args: argparse.Namespace) -> int:
     operation = APPLICATION.ready(args.bundle, args.repo)
     report = operation.payload
+    if report is None:
+        message = operation_error(operation)
+        if args.json:
+            print_json_error(message)
+            return operation_exit_code(operation)
+        print(f"FAIL {message}", file=sys.stderr)
+        return operation_exit_code(operation)
     errors = [
         issue for issue in report.validation_issues if issue.severity == "error"
     ]
@@ -663,8 +725,13 @@ def cmd_ready(args: argparse.Namespace) -> int:
         issue for issue in report.validation_issues if issue.severity == "warning"
     ]
     if args.json:
-        print(json.dumps(build_readiness_report(report), indent=2))
-        return 1 if report.has_errors else 0
+        print(
+            json.dumps(
+                operation_json_report(operation, build_readiness_report(report)),
+                indent=2,
+            )
+        )
+        return operation_exit_code(operation)
 
     print(f"Bundle: {report.bundle}")
     print(f"Repo: {report.repo}")
@@ -684,18 +751,25 @@ def cmd_ready(args: argparse.Namespace) -> int:
         path = f" {check.path}" if check.path else ""
         print(f"  - {check.status.upper()}: {check.name}{path}: {check.message}")
 
-    if report.has_errors:
+    if not operation.success:
         sys.stdout.flush()
         print("FAIL bundle is not ready for handoff", file=sys.stderr)
-        return 1
+        return operation_exit_code(operation)
 
     print("PASS bundle is ready for handoff")
-    return 0
+    return operation_exit_code(operation)
 
 
 def cmd_inspect(args: argparse.Namespace) -> int:
     operation = APPLICATION.inspect(args.bundle)
     inspection = operation.payload
+    if inspection is None:
+        message = operation_error(operation)
+        if args.json:
+            print_json_error(message)
+            return operation_exit_code(operation)
+        print(f"FAIL {message}", file=sys.stderr)
+        return operation_exit_code(operation)
     bundle = inspection.bundle
     issues = inspection.validation_issues
     errors = [issue for issue in issues if issue.severity == "error"]
@@ -704,9 +778,9 @@ def cmd_inspect(args: argparse.Namespace) -> int:
     metadata_error = inspection.metadata_error
 
     if args.json:
-        report = build_inspect_report(bundle, metadata, metadata_error, issues)
-        print(json.dumps(report, indent=2))
-        return 1 if errors else 0
+        report = build_inspect_report(inspection)
+        print(json.dumps(operation_json_report(operation, report), indent=2))
+        return operation_exit_code(operation)
 
     print(f"Bundle: {bundle}")
     print_field(
@@ -727,12 +801,6 @@ def cmd_inspect(args: argparse.Namespace) -> int:
             if isinstance(metadata.get("handoff"), dict)
             else {}
         )
-        artifacts = (
-            metadata.get("artifacts")
-            if isinstance(metadata.get("artifacts"), dict)
-            else {}
-        )
-
         print_field("Schema version", metadata.get("schema_version"))
         print_field("Source agent", metadata.get("source_agent"))
         print_field("Created at", metadata.get("created_at"))
@@ -751,33 +819,38 @@ def cmd_inspect(args: argparse.Namespace) -> int:
             print_field("Delegation result status", handoff.get("result_status"))
 
         print("Artifacts:")
-        for name, artifact in artifacts.items():
-            if not isinstance(artifact, str):
-                print(f"  - {name}: invalid path")
+        for artifact in inspection.artifacts:
+            if artifact.status == "invalid":
+                print(f"  - {artifact.name}: invalid path")
                 continue
-            status = "present" if (bundle / artifact).is_file() else "missing"
-            print(f"  - {name}: {artifact} ({status})")
+            print(f"  - {artifact.name}: {artifact.path} ({artifact.status})")
 
     print(f"Validation: {len(errors)} error(s), {len(warnings)} warning(s)")
     for issue in issues:
         print(f"  - {issue.format()}")
 
-    return 1 if errors else 0
+    return operation_exit_code(operation)
 
 
 def cmd_redact(args: argparse.Namespace) -> int:
-    try:
-        report = redact_bundle(args.bundle, args.output, force=args.force)
-    except (FileExistsError, FileNotFoundError, NotADirectoryError, ValueError) as exc:
+    operation = APPLICATION.redact(args.bundle, args.output, force=args.force)
+    report = operation.payload
+    if report is None:
+        message = operation_error(operation)
         if args.json:
-            print(json.dumps({"success": False, "error": str(exc)}, indent=2))
-            return 1
-        print(f"FAIL {exc}", file=sys.stderr)
-        return 1
+            print(json.dumps({"success": False, "error": message}, indent=2))
+            return operation_exit_code(operation)
+        print(f"FAIL {message}", file=sys.stderr)
+        return operation_exit_code(operation)
 
     if args.json:
-        print(json.dumps(build_redaction_report(report), indent=2))
-        return 0
+        print(
+            json.dumps(
+                operation_json_report(operation, build_redaction_report(report)),
+                indent=2,
+            )
+        )
+        return operation_exit_code(operation)
 
     print(f"Redacted bundle: {report.output}")
     print(f"Source bundle: {report.source}")
@@ -789,12 +862,23 @@ def cmd_redact(args: argparse.Namespace) -> int:
         print(f"  - {file.path}: {file.replacements} replacement(s){suffix}")
 
     print("Review the redacted bundle before sharing it.")
-    return 0
+    return operation_exit_code(operation)
 
 
 def cmd_pack(args: argparse.Namespace) -> int:
-    issues = validate_bundle(args.bundle)
-    if has_errors(issues):
+    operation = APPLICATION.pack(args.bundle, args.output, force=args.force)
+    application_report = operation.payload
+    if application_report is None:
+        message = operation_error(operation)
+        if args.json:
+            print(json.dumps({"success": False, "error": message}, indent=2))
+            return operation_exit_code(operation)
+        print(f"FAIL {message}", file=sys.stderr)
+        return operation_exit_code(operation)
+
+    issues = application_report.validation_issues
+    report = application_report.pack
+    if report is None and operation.valid is False:
         if args.json:
             print(
                 json.dumps(
@@ -806,31 +890,38 @@ def cmd_pack(args: argparse.Namespace) -> int:
                     indent=2,
                 )
             )
-            return 1
+            return operation_exit_code(operation)
         for issue in issues:
             if issue.severity == "error":
                 print(issue.format(), file=sys.stderr)
         print("FAIL bundle is invalid; refusing to pack", file=sys.stderr)
-        return 1
+        return operation_exit_code(operation)
 
     warnings = [issue for issue in issues if issue.severity == "warning"]
     if not args.json:
         for warning in warnings:
             print(warning.format())
 
-    try:
-        report = pack_bundle(args.bundle, args.output, force=args.force)
-    except (FileExistsError, FileNotFoundError, NotADirectoryError, ValueError) as exc:
+    if report is None:
+        message = operation_error(operation)
         if args.json:
-            print(json.dumps({"success": False, "error": str(exc)}, indent=2))
-            return 1
-        print(f"FAIL {exc}", file=sys.stderr)
-        return 1
+            print(json.dumps({"success": False, "error": message}, indent=2))
+            return operation_exit_code(operation)
+        print(f"FAIL {message}", file=sys.stderr)
+        return operation_exit_code(operation)
 
     if args.json:
         validation = build_validation_report(args.bundle, issues)
-        print(json.dumps(build_pack_report(report, validation), indent=2))
-        return 0
+        print(
+            json.dumps(
+                operation_json_report(
+                    operation,
+                    build_pack_report(report, validation),
+                ),
+                indent=2,
+            )
+        )
+        return operation_exit_code(operation)
 
     print(f"Packed bundle: {report.output}")
     print(f"Source bundle: {report.source}")
@@ -838,15 +929,31 @@ def cmd_pack(args: argparse.Namespace) -> int:
     print(f"Files packed: {report.file_count}")
     print(f"Bytes packed: {report.byte_count}")
     print("Review the archive before sharing it.")
-    return 0
+    return operation_exit_code(operation)
 
 
 def cmd_share(args: argparse.Namespace) -> int:
     if args.check:
-        report = check_shareability(args.bundle)
+        operation = APPLICATION.share_check(args.bundle)
+        report = operation.payload
+        if report is None:
+            message = operation_error(operation)
+            if args.json:
+                print(json.dumps({"success": False, "error": message}, indent=2))
+                return operation_exit_code(operation)
+            print(f"FAIL {message}", file=sys.stderr)
+            return operation_exit_code(operation)
         if args.json:
-            print(json.dumps(build_share_check_report(report), indent=2))
-            return 0 if report.shareable else 1
+            print(
+                json.dumps(
+                    operation_json_report(
+                        operation,
+                        build_share_check_report(report),
+                    ),
+                    indent=2,
+                )
+            )
+            return operation_exit_code(operation)
 
         print(f"Shareability check: {report.source}")
         for finding in report.findings:
@@ -857,9 +964,9 @@ def cmd_share(args: argparse.Namespace) -> int:
             )
         if not report.shareable:
             print("FAIL bundle is not shareable", file=sys.stderr)
-            return 1
+            return operation_exit_code(operation)
         print("PASS bundle is shareable after planned redactions")
-        return 0
+        return operation_exit_code(operation)
 
     if args.output is None:
         message = "--output is required unless --check is used"
@@ -869,32 +976,32 @@ def cmd_share(args: argparse.Namespace) -> int:
         print(f"FAIL {message}", file=sys.stderr)
         return 1
 
-    try:
-        report = share_bundle(
-            args.bundle,
-            args.output,
-            redacted_output=args.redacted_output,
-            force=args.force,
-        )
-    except (
-        FileExistsError,
-        FileNotFoundError,
-        NotADirectoryError,
-        ValueError,
-        OSError,
-    ) as exc:
+    operation = APPLICATION.share(
+        args.bundle,
+        args.output,
+        redacted_output=args.redacted_output,
+        force=args.force,
+    )
+    report = operation.payload
+    if report is None:
+        message = operation_error(operation)
         if args.json:
-            print(json.dumps({"success": False, "error": str(exc)}, indent=2))
-            return 1
-        print(f"FAIL {exc}", file=sys.stderr)
-        return 1
+            print(json.dumps({"success": False, "error": message}, indent=2))
+            return operation_exit_code(operation)
+        print(f"FAIL {message}", file=sys.stderr)
+        return operation_exit_code(operation)
 
     warnings = [
         issue for issue in report.validation_issues if issue.severity == "warning"
     ]
     if args.json:
-        print(json.dumps(build_share_report(report), indent=2))
-        return 0
+        print(
+            json.dumps(
+                operation_json_report(operation, build_share_report(report)),
+                indent=2,
+            )
+        )
+        return operation_exit_code(operation)
 
     print(f"Source bundle: {report.source}")
     print(f"Redacted review bundle: {report.redacted}")
@@ -907,29 +1014,25 @@ def cmd_share(args: argparse.Namespace) -> int:
         for warning in warnings:
             print(f"  - {warning.format()}")
     print("Review the redacted bundle and archive before sharing them.")
-    return 0
+    return operation_exit_code(operation)
 
 
 def cmd_unpack(args: argparse.Namespace) -> int:
-    try:
-        report = unpack_bundle(args.archive, args.output, force=args.force)
-    except (
-        FileExistsError,
-        FileNotFoundError,
-        NotADirectoryError,
-        ValueError,
-        OSError,
-    ) as exc:
+    operation = APPLICATION.unpack(args.archive, args.output, force=args.force)
+    application_report = operation.payload
+    if application_report is None:
+        message = operation_error(operation)
         if args.json:
-            print(json.dumps({"success": False, "error": str(exc)}, indent=2))
-            return 1
-        print(f"FAIL {exc}", file=sys.stderr)
-        return 1
+            print(json.dumps({"success": False, "error": message}, indent=2))
+            return operation_exit_code(operation)
+        print(f"FAIL {message}", file=sys.stderr)
+        return operation_exit_code(operation)
 
-    issues = validate_bundle(report.bundle)
+    report = application_report.unpack
+    issues = application_report.validation_issues
     if args.json:
         validation = build_validation_report(report.bundle, issues)
-        if has_errors(issues):
+        if not operation.success:
             failure = build_unpack_report(report, validation)
             failure["success"] = False
             failure["error"] = "unpacked bundle is invalid"
@@ -939,9 +1042,17 @@ def cmd_unpack(args: argparse.Namespace) -> int:
                     indent=2,
                 )
             )
-            return 1
-        print(json.dumps(build_unpack_report(report, validation), indent=2))
-        return 0
+            return operation_exit_code(operation)
+        print(
+            json.dumps(
+                operation_json_report(
+                    operation,
+                    build_unpack_report(report, validation),
+                ),
+                indent=2,
+            )
+        )
+        return operation_exit_code(operation)
 
     print(f"Unpacked archive: {report.source}")
     print(f"Output directory: {report.output}")
@@ -954,25 +1065,15 @@ def cmd_unpack(args: argparse.Namespace) -> int:
         for issue in issues:
             output = sys.stderr if issue.severity == "error" else sys.stdout
             print(issue.format(), file=output)
-    if has_errors(issues):
+    if not operation.success:
         print("FAIL unpacked bundle is invalid", file=sys.stderr)
-        return 1
+        return operation_exit_code(operation)
 
     print(f"PASS valid Waybill Bundle: {report.bundle}")
-    return 0
+    return operation_exit_code(operation)
 
 
 def cmd_render(args: argparse.Namespace) -> int:
-    try:
-        issues = validate_bundle(args.bundle)
-        rendered = render_bundle(args.bundle, validation_issues=issues)
-    except (FileNotFoundError, NotADirectoryError, OSError) as exc:
-        if args.json:
-            print(json.dumps({"success": False, "error": str(exc)}, indent=2))
-            return 1
-        print(f"FAIL {exc}", file=sys.stderr)
-        return 1
-
     if args.json and not args.output:
         print(
             json.dumps(
@@ -985,57 +1086,45 @@ def cmd_render(args: argparse.Namespace) -> int:
         )
         return 1
 
-    if not args.output:
-        print(rendered, end="")
-        return 0
-
-    output = Path(args.output)
-    bundle = Path(args.bundle)
-    if bundle.resolve() in output.resolve().parents:
+    operation = APPLICATION.render(
+        args.bundle,
+        output=args.output,
+        force=args.force,
+    )
+    report = operation.payload
+    if report is None:
+        message = operation_error(operation)
         if args.json:
-            print(
-                json.dumps(
-                    {
-                        "success": False,
-                        "error": "output path must not be inside the source bundle",
-                    },
-                    indent=2,
-                )
-            )
-            return 1
-        print("FAIL output path must not be inside the source bundle", file=sys.stderr)
-        return 1
+            print(json.dumps({"success": False, "error": message}, indent=2))
+            return operation_exit_code(operation)
+        print(f"FAIL {message}", file=sys.stderr)
+        return operation_exit_code(operation)
 
-    if output.exists() and not args.force:
-        if args.json:
-            print(
-                json.dumps(
-                    {
-                        "success": False,
-                        "error": f"output path already exists: {output}",
-                    },
-                    indent=2,
-                )
-            )
-            return 1
-        print(f"FAIL output path already exists: {output}", file=sys.stderr)
-        return 1
+    if report.output is None:
+        print(report.rendered, end="")
+        return operation_exit_code(operation)
 
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(rendered)
     if args.json:
-        validation = build_validation_report(args.bundle, issues)
+        validation = build_validation_report(args.bundle, report.validation_issues)
         print(
             json.dumps(
-                build_render_report(args.bundle, output, rendered, validation),
+                operation_json_report(
+                    operation,
+                    build_render_report(
+                        args.bundle,
+                        report.output,
+                        report.rendered,
+                        validation,
+                    ),
+                ),
                 indent=2,
             )
         )
-        return 0
+        return operation_exit_code(operation)
 
-    print(f"Rendered bundle report: {output}")
+    print(f"Rendered bundle report: {report.output}")
     print("Review the report before sharing it.")
-    return 0
+    return operation_exit_code(operation)
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -2,6 +2,20 @@
 
 __version__ = "0.1.1"
 
+from .application import (
+    AccessIntent,
+    AccessIntentName,
+    InspectArtifactReport,
+    InspectBundleReport,
+    OperationResult,
+    PackBundleReport,
+    Problem,
+    RenderBundleReport,
+    RootAccess,
+    RootIntentName,
+    UnpackBundleReport,
+    WaybillApplication,
+)
 from .doctor import DoctorCheck, DoctorReport, doctor_repository
 from .install import InstallAction, InstallReport, install_adapters
 from .packing import (
@@ -26,22 +40,34 @@ from .sharing import ShareReport, share_bundle
 from .validation import ValidationIssue, validate_bundle
 
 __all__ = [
+    "AccessIntent",
+    "AccessIntentName",
     "DoctorCheck",
     "DoctorReport",
     "DraftBundleReport",
     "ExportReadinessReport",
     "ImportPreflightReport",
+    "InspectArtifactReport",
+    "InspectBundleReport",
+    "OperationResult",
     "PackReport",
+    "PackBundleReport",
     "PackedFile",
     "InstallAction",
     "InstallReport",
+    "Problem",
     "RedactionReport",
+    "RenderBundleReport",
     "ReadinessCheck",
     "RepoCheck",
     "RepoVerificationReport",
+    "RootAccess",
+    "RootIntentName",
     "ShareReport",
+    "UnpackBundleReport",
     "UnpackReport",
     "ValidationIssue",
+    "WaybillApplication",
     "CURRENT_SCHEMA_VERSION",
     "__version__",
     "check_export_readiness",
