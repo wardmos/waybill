@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path, PurePosixPath
 
-from .adapter_sources import REFERENCE_NAMES
+from .adapter_sources import SHARED_RESOURCE_PATHS
 from .agent_identity import (
     DEFAULT_EXECUTABLES,
     AgentIdentity,
@@ -62,20 +62,20 @@ ADAPTER_ENTRYPOINT_PATHS = {
     "opencode": "adapters/opencode/skills/handoff/SKILL.md",
 }
 
-ADAPTER_REFERENCE_ROOTS = {
-    "claude-code": "adapters/claude-code/skills/handoff/references",
-    "codex": "adapters/codex/skills/handoff/references",
-    "cursor": "adapters/cursor/rules/waybill-handoff/references",
-    "gemini-cli": "adapters/gemini-cli/skills/handoff/references",
-    "opencode": "adapters/opencode/skills/handoff/references",
+ADAPTER_RESOURCE_ROOTS = {
+    "claude-code": "adapters/claude-code/skills/handoff",
+    "codex": "adapters/codex/skills/handoff",
+    "cursor": "adapters/cursor/rules/waybill-handoff",
+    "gemini-cli": "adapters/gemini-cli/skills/handoff",
+    "opencode": "adapters/opencode/skills/handoff",
 }
 
 ADAPTER_INSTRUCTION_PATHS = {
     adapter: (
         entrypoint,
         *(
-            f"{ADAPTER_REFERENCE_ROOTS[adapter]}/{name}"
-            for name in REFERENCE_NAMES
+            f"{ADAPTER_RESOURCE_ROOTS[adapter]}/{relative_path}"
+            for relative_path in SHARED_RESOURCE_PATHS
         ),
     )
     for adapter, entrypoint in ADAPTER_ENTRYPOINT_PATHS.items()

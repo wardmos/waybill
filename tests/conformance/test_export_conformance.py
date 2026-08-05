@@ -161,6 +161,22 @@ class SyntheticRepositoryTests(unittest.TestCase):
                     ).read_bytes(),
                     (installed_references / name).read_bytes(),
                 )
+            installed_assets = installed_adapter.parent / "assets/bundle-template"
+            for name in (
+                "WAYBILL.md",
+                "metadata.json",
+                "diff.patch",
+                "commands.log",
+                "test-summary.md",
+            ):
+                self.assertEqual(
+                    (
+                        REPO_ROOT
+                        / "adapters/codex/skills/handoff/assets/bundle-template"
+                        / name
+                    ).read_bytes(),
+                    (installed_assets / name).read_bytes(),
+                )
             self.assertTrue(prepared.evidence.canonical_diff.startswith(b"diff --git "))
             self.assertRegex(
                 prepared.evidence.status_digest,

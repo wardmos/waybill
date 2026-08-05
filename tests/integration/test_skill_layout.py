@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import unittest
 from pathlib import Path
 
@@ -9,6 +10,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SKILL_ROOT = ROOT / "skills/handoff"
 REFERENCE_NAMES = ("bundle-format.md", "export.md", "import.md")
+BUNDLE_ASSET_NAMES = (
+    "WAYBILL.md",
+    "metadata.json",
+    "diff.patch",
+    "commands.log",
+    "test-summary.md",
+)
 
 
 class CanonicalSkillLayoutTests(unittest.TestCase):
@@ -57,6 +65,30 @@ class CanonicalSkillLayoutTests(unittest.TestCase):
         self.assertNotIn("stop and report that the export is not ready", export)
         self.assertIn("does not require the Waybill CLI", normalized_import)
         self.assertIn("compare the fields directly", normalized_import.lower())
+
+    def test_copyable_bundle_assets_cover_the_standard_bundle(self) -> None:
+        asset_root = SKILL_ROOT / "assets/bundle-template"
+        self.assertEqual(
+            set(BUNDLE_ASSET_NAMES),
+            {path.name for path in asset_root.iterdir() if path.is_file()},
+        )
+
+        metadata = json.loads((asset_root / "metadata.json").read_text())
+        self.assertEqual("0.2", metadata["schema_version"])
+        self.assertIn("{{SOURCE_AGENT}}", metadata["source_agent"])
+        self.assertEqual("WAYBILL.md", metadata["artifacts"]["waybill"])
+
+        waybill = (asset_root / "WAYBILL.md").read_text(encoding="utf-8")
+        for heading in (
+            "Original Goal",
+            "Current Status",
+            "Risks / Unknowns",
+            "Instructions For Next Agent",
+        ):
+            self.assertIn(f"## {heading}", waybill)
+
+        export = (SKILL_ROOT / "references/export.md").read_text(encoding="utf-8")
+        self.assertIn("../assets/bundle-template/", export)
 
 
 if __name__ == "__main__":

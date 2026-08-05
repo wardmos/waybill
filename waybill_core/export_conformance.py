@@ -18,7 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
 from typing import Any, Sequence
 
-from .adapter_sources import REFERENCE_NAMES
+from .adapter_sources import SHARED_RESOURCE_PATHS
 from .delegation import verify_delegation_pair
 from .limits import BundleLimitError, list_bundle_files
 from .readiness import check_export_readiness
@@ -117,26 +117,26 @@ _ADAPTER_ENTRYPOINTS = {
     ),
 }
 
-_ADAPTER_REFERENCE_ROOTS = {
+_ADAPTER_RESOURCE_ROOTS = {
     "claude-code": (
-        "adapters/claude-code/skills/handoff/references",
-        ".claude/skills/handoff/references",
+        "adapters/claude-code/skills/handoff",
+        ".claude/skills/handoff",
     ),
     "codex": (
-        "adapters/codex/skills/handoff/references",
-        ".waybill-conformance/codex/skills/handoff/references",
+        "adapters/codex/skills/handoff",
+        ".waybill-conformance/codex/skills/handoff",
     ),
     "cursor": (
-        "adapters/cursor/rules/waybill-handoff/references",
-        ".cursor/rules/waybill-handoff/references",
+        "adapters/cursor/rules/waybill-handoff",
+        ".cursor/rules/waybill-handoff",
     ),
     "gemini-cli": (
-        "adapters/gemini-cli/skills/handoff/references",
-        ".gemini/skills/handoff/references",
+        "adapters/gemini-cli/skills/handoff",
+        ".gemini/skills/handoff",
     ),
     "opencode": (
-        "adapters/opencode/skills/handoff/references",
-        ".opencode/skills/handoff/references",
+        "adapters/opencode/skills/handoff",
+        ".opencode/skills/handoff",
     ),
 }
 
@@ -617,17 +617,17 @@ def _install_canonical_adapter(repo: Path, adapter: str, source_root: Path) -> s
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(canonical, target)
 
-    source_reference_root, target_reference_root = _ADAPTER_REFERENCE_ROOTS[adapter]
-    for name in REFERENCE_NAMES:
-        source_reference = source_root / source_reference_root / name
-        if not source_reference.is_file():
+    source_resource_root, target_resource_root = _ADAPTER_RESOURCE_ROOTS[adapter]
+    for relative_path in SHARED_RESOURCE_PATHS:
+        source_resource = source_root / source_resource_root / relative_path
+        if not source_resource.is_file():
             raise FileNotFoundError(
-                "canonical adapter reference is missing: "
-                f"{source_reference_root}/{name}"
+                "canonical adapter resource is missing: "
+                f"{source_resource_root}/{relative_path}"
             )
-        target_reference = repo / target_reference_root / name
-        target_reference.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source_reference, target_reference)
+        target_resource = repo / target_resource_root / relative_path
+        target_resource.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_resource, target_resource)
     return target_relative
 
 

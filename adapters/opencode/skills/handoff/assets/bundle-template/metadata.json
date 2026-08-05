@@ -1,0 +1,18 @@
+{
+  "schema_version": "0.2",
+  "source_agent": "{{SOURCE_AGENT}}",
+  "created_at": "{{CREATED_AT_UTC}}",
+  "repo_root": ".",
+  "git": {
+    "branch": "{{GIT_BRANCH}}",
+    "base_ref": "{{GIT_BASE_REF_OR_UNKNOWN}}",
+    "head_sha": "{{GIT_HEAD_SHA}}",
+    "dirty": "{{GIT_DIRTY_BOOLEAN}}"
+  },
+  "artifacts": {
+    "waybill": "WAYBILL.md",
+    "diff": "diff.patch",
+    "commands": "commands.log",
+    "test_summary": "test-summary.md"
+  }
+}

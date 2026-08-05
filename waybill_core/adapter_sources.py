@@ -7,8 +7,19 @@ from pathlib import Path
 
 
 CANONICAL_SKILL = "skills/handoff/SKILL.md"
-CANONICAL_REFERENCE_ROOT = "skills/handoff/references"
+CANONICAL_SKILL_ROOT = "skills/handoff"
 REFERENCE_NAMES = ("bundle-format.md", "export.md", "import.md")
+BUNDLE_ASSET_NAMES = (
+    "WAYBILL.md",
+    "metadata.json",
+    "diff.patch",
+    "commands.log",
+    "test-summary.md",
+)
+SHARED_RESOURCE_PATHS = (
+    *(f"references/{name}" for name in REFERENCE_NAMES),
+    *(f"assets/bundle-template/{name}" for name in BUNDLE_ASSET_NAMES),
+)
 
 
 @dataclass(frozen=True)
@@ -48,7 +59,7 @@ def _packaged(install_target: str) -> str:
     return f"waybill_core/template-files/{install_target}"
 
 
-def _reference_sources(
+def _shared_resource_sources(
     adapter: str,
     *,
     install_root: str,
@@ -57,12 +68,12 @@ def _reference_sources(
     return tuple(
         AdapterSource(
             adapter=adapter,
-            canonical=f"{CANONICAL_REFERENCE_ROOT}/{name}",
-            install_target=f"{install_root}/{name}",
-            repository_mirror=f"{adapter_root}/{name}",
-            packaged_mirror=_packaged(f"{install_root}/{name}"),
+            canonical=f"{CANONICAL_SKILL_ROOT}/{relative_path}",
+            install_target=f"{install_root}/{relative_path}",
+            repository_mirror=f"{adapter_root}/{relative_path}",
+            packaged_mirror=_packaged(f"{install_root}/{relative_path}"),
         )
-        for name in REFERENCE_NAMES
+        for relative_path in SHARED_RESOURCE_PATHS
     )
 
 
@@ -73,10 +84,10 @@ ADAPTER_SOURCES = (
         install_target=".claude/skills/handoff/SKILL.md",
         packaged_mirror=_packaged(".claude/skills/handoff/SKILL.md"),
     ),
-    *_reference_sources(
+    *_shared_resource_sources(
         "claude-code",
-        install_root=".claude/skills/handoff/references",
-        adapter_root="adapters/claude-code/skills/handoff/references",
+        install_root=".claude/skills/handoff",
+        adapter_root="adapters/claude-code/skills/handoff",
     ),
     AdapterSource(
         adapter="claude-code",
@@ -102,10 +113,10 @@ ADAPTER_SOURCES = (
         install_target=".opencode/skills/handoff/SKILL.md",
         packaged_mirror=_packaged(".opencode/skills/handoff/SKILL.md"),
     ),
-    *_reference_sources(
+    *_shared_resource_sources(
         "opencode",
-        install_root=".opencode/skills/handoff/references",
-        adapter_root="adapters/opencode/skills/handoff/references",
+        install_root=".opencode/skills/handoff",
+        adapter_root="adapters/opencode/skills/handoff",
     ),
     AdapterSource(
         adapter="opencode",
@@ -119,10 +130,10 @@ ADAPTER_SOURCES = (
         install_target=".cursor/rules/handoff.mdc",
         packaged_mirror=_packaged(".cursor/rules/handoff.mdc"),
     ),
-    *_reference_sources(
+    *_shared_resource_sources(
         "cursor",
-        install_root=".cursor/rules/waybill-handoff/references",
-        adapter_root="adapters/cursor/rules/waybill-handoff/references",
+        install_root=".cursor/rules/waybill-handoff",
+        adapter_root="adapters/cursor/rules/waybill-handoff",
     ),
     AdapterSource(
         adapter="cursor",
@@ -136,10 +147,10 @@ ADAPTER_SOURCES = (
         install_target=".gemini/skills/handoff/SKILL.md",
         packaged_mirror=_packaged(".gemini/skills/handoff/SKILL.md"),
     ),
-    *_reference_sources(
+    *_shared_resource_sources(
         "gemini-cli",
-        install_root=".gemini/skills/handoff/references",
-        adapter_root="adapters/gemini-cli/skills/handoff/references",
+        install_root=".gemini/skills/handoff",
+        adapter_root="adapters/gemini-cli/skills/handoff",
     ),
     AdapterSource(
         adapter="gemini-cli",
@@ -149,17 +160,17 @@ ADAPTER_SOURCES = (
     ),
 )
 
-CODEX_REFERENCE_MIRRORS = tuple(
+CODEX_RESOURCE_MIRRORS = tuple(
     MirrorSource(
-        canonical=f"{CANONICAL_REFERENCE_ROOT}/{name}",
-        mirrors=(f"adapters/codex/skills/handoff/references/{name}",),
+        canonical=f"{CANONICAL_SKILL_ROOT}/{relative_path}",
+        mirrors=(f"adapters/codex/skills/handoff/{relative_path}",),
     )
-    for name in REFERENCE_NAMES
+    for relative_path in SHARED_RESOURCE_PATHS
 )
 
 MIRROR_SOURCES = tuple(
     MirrorSource(source.canonical, source.mirrors) for source in ADAPTER_SOURCES
-) + CODEX_REFERENCE_MIRRORS
+) + CODEX_RESOURCE_MIRRORS
 
 # Codex is delivered directly from its plugin under adapters/codex. The CLI
 # manages only adapters that install project-local files.

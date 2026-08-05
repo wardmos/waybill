@@ -28,6 +28,7 @@ from waybill_core.limits import (  # noqa: E402
 from waybill_core.adapter_installation import MANIFEST_FILENAME  # noqa: E402
 from waybill_core.adapter_sources import (  # noqa: E402
     ADAPTER_SOURCES,
+    BUNDLE_ASSET_NAMES,
     CANONICAL_SKILL,
     MIRROR_SOURCES,
     find_adapter_drift,
@@ -45,7 +46,7 @@ from waybill_core.doctor import doctor_repository  # noqa: E402
 from waybill_core.install import install_adapters  # noqa: E402
 from waybill_core.scaffold import STANDARD_FILES  # noqa: E402
 from waybill_core.schema_versions import CURRENT_SCHEMA_VERSION  # noqa: E402
-from waybill_core.validation import validate_bundle  # noqa: E402
+from waybill_core.validation import WAYBILL_SECTIONS, validate_bundle  # noqa: E402
 
 REQUIRED_FILES = [
     "README.md",
@@ -176,6 +177,17 @@ REQUIRED_FILES = [
     "conformance/export-scenarios/malicious-session-instruction.json",
     "conformance/export-scenarios/ordinary-unfinished.json",
 ]
+
+REQUIRED_FILES.extend(
+    sorted(
+        {
+            path
+            for source in MIRROR_SOURCES
+            for path in (source.canonical, *source.mirrors)
+        }
+        - set(REQUIRED_FILES)
+    )
+)
 
 EXAMPLES = [
     "examples/claude-to-codex",
@@ -640,6 +652,25 @@ def validate_canonical_handoff_skill() -> None:
     ):
         if required.lower() not in import_text:
             fail(f"canonical import reference missing requirement: {required}")
+
+    asset_root = ROOT / "skills/handoff/assets/bundle-template"
+    asset_names = {path.name for path in asset_root.iterdir() if path.is_file()}
+    if asset_names != set(BUNDLE_ASSET_NAMES):
+        fail("canonical bundle assets must cover the standard bundle files")
+    metadata = read_json(asset_root / "metadata.json")
+    if metadata.get("schema_version") != CURRENT_SCHEMA_VERSION:
+        fail("bundle metadata asset must use the current schema version")
+    if "{{SOURCE_AGENT}}" not in str(metadata.get("source_agent")):
+        fail("bundle metadata asset must expose source-agent substitution")
+    artifacts = metadata.get("artifacts")
+    if not isinstance(artifacts, dict) or artifacts.get("waybill") != "WAYBILL.md":
+        fail("bundle metadata asset must declare WAYBILL.md")
+    waybill_asset = (asset_root / "WAYBILL.md").read_text(encoding="utf-8")
+    for heading in WAYBILL_SECTIONS:
+        if f"## {heading}" not in waybill_asset:
+            fail(f"bundle WAYBILL asset missing heading: {heading}")
+    if "../assets/bundle-template/" not in references["export"]:
+        fail("canonical export reference must route to copyable bundle assets")
 
 
 def validate_handoff_wrapper(

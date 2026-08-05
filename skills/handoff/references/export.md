@@ -26,10 +26,12 @@ agent identity selected by the canonical skill.
    - `git rev-parse HEAD`
    - `git diff`
 3. Create the bundle directory directly with the active agent's file-writing
-   tools. Existing bundle files must not be overwritten without the user's
-   approval.
-4. Write `WAYBILL.md` using the exact headings described in the bundle-format
-   reference and the repository templates when present.
+   tools. When available, copy the five draft files from the
+   [bundle template](../assets/bundle-template/) into it. Existing bundle files
+   must not be overwritten without the user's approval.
+4. Replace every `{{PLACEHOLDER}}` in the copied assets. Write `WAYBILL.md`
+   using the exact headings described in the bundle-format reference when the
+   assets are unavailable.
 5. Write `metadata.json` using the bundle-format reference. Record the observed
    branch, HEAD, and dirty state. Omit optional digest fields unless exact values
    came from a trusted helper.
@@ -40,7 +42,8 @@ agent identity selected by the canonical skill.
 8. Write `test-summary.md` with passing, failing, and not-run checks.
 9. Re-read the finished files and perform the basic checks directly:
    - `WAYBILL.md` and `metadata.json` exist as regular files.
-   - `metadata.json` is one JSON object with no unresolved placeholders.
+   - Every copied asset has no unresolved `{{PLACEHOLDER}}` values, and
+     `metadata.json` is one JSON object.
    - `WAYBILL.md` contains every required heading for its handoff kind.
    - `source_agent`, branch, HEAD, and dirty state match the captured context.
    - Every declared artifact path stays inside the bundle.

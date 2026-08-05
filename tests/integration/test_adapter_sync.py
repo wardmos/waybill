@@ -27,6 +27,11 @@ EXPECTED_TARGETS = {
         ".claude/skills/handoff/references/bundle-format.md",
         ".claude/skills/handoff/references/export.md",
         ".claude/skills/handoff/references/import.md",
+        ".claude/skills/handoff/assets/bundle-template/WAYBILL.md",
+        ".claude/skills/handoff/assets/bundle-template/metadata.json",
+        ".claude/skills/handoff/assets/bundle-template/diff.patch",
+        ".claude/skills/handoff/assets/bundle-template/commands.log",
+        ".claude/skills/handoff/assets/bundle-template/test-summary.md",
         ".claude/skills/waybill/SKILL.md",
     ),
     "opencode": (
@@ -36,6 +41,11 @@ EXPECTED_TARGETS = {
         ".opencode/skills/handoff/references/bundle-format.md",
         ".opencode/skills/handoff/references/export.md",
         ".opencode/skills/handoff/references/import.md",
+        ".opencode/skills/handoff/assets/bundle-template/WAYBILL.md",
+        ".opencode/skills/handoff/assets/bundle-template/metadata.json",
+        ".opencode/skills/handoff/assets/bundle-template/diff.patch",
+        ".opencode/skills/handoff/assets/bundle-template/commands.log",
+        ".opencode/skills/handoff/assets/bundle-template/test-summary.md",
         ".opencode/skills/waybill/SKILL.md",
     ),
     "cursor": (
@@ -43,6 +53,11 @@ EXPECTED_TARGETS = {
         ".cursor/rules/waybill-handoff/references/bundle-format.md",
         ".cursor/rules/waybill-handoff/references/export.md",
         ".cursor/rules/waybill-handoff/references/import.md",
+        ".cursor/rules/waybill-handoff/assets/bundle-template/WAYBILL.md",
+        ".cursor/rules/waybill-handoff/assets/bundle-template/metadata.json",
+        ".cursor/rules/waybill-handoff/assets/bundle-template/diff.patch",
+        ".cursor/rules/waybill-handoff/assets/bundle-template/commands.log",
+        ".cursor/rules/waybill-handoff/assets/bundle-template/test-summary.md",
         ".cursor/rules/waybill.mdc",
     ),
     "gemini-cli": (
@@ -50,6 +65,11 @@ EXPECTED_TARGETS = {
         ".gemini/skills/handoff/references/bundle-format.md",
         ".gemini/skills/handoff/references/export.md",
         ".gemini/skills/handoff/references/import.md",
+        ".gemini/skills/handoff/assets/bundle-template/WAYBILL.md",
+        ".gemini/skills/handoff/assets/bundle-template/metadata.json",
+        ".gemini/skills/handoff/assets/bundle-template/diff.patch",
+        ".gemini/skills/handoff/assets/bundle-template/commands.log",
+        ".gemini/skills/handoff/assets/bundle-template/test-summary.md",
         ".gemini/skills/waybill/SKILL.md",
     ),
 }
@@ -70,7 +90,7 @@ class AdapterSourceManifestTests(unittest.TestCase):
                     f"waybill_core/template-files/{source.install_target}",
                     source.packaged_mirror,
                 )
-                if source.canonical.startswith("skills/handoff/references/"):
+                if source.canonical.startswith("skills/handoff/"):
                     self.assertIsNotNone(source.repository_mirror)
                     assert source.repository_mirror is not None
                     self.assertTrue(
@@ -98,16 +118,16 @@ class AdapterSourceManifestTests(unittest.TestCase):
             )
         )
 
-    def test_codex_references_are_generated_from_the_shared_skill(self) -> None:
+    def test_codex_resources_are_generated_from_the_shared_skill(self) -> None:
         codex_mirrors = [
             source
             for source in MIRROR_SOURCES
             if any(path.startswith("adapters/codex/") for path in source.mirrors)
         ]
-        self.assertEqual(3, len(codex_mirrors))
+        self.assertEqual(8, len(codex_mirrors))
         self.assertTrue(
             all(
-                source.canonical.startswith("skills/handoff/references/")
+                source.canonical.startswith("skills/handoff/")
                 for source in codex_mirrors
             )
         )
