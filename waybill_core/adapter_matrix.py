@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path, PurePosixPath
 
+from .adapter_sources import REFERENCE_NAMES
 from .agent_identity import (
     DEFAULT_EXECUTABLES,
     AgentIdentity,
@@ -61,9 +62,29 @@ ADAPTER_ENTRYPOINT_PATHS = {
     "opencode": "adapters/opencode/skills/handoff/SKILL.md",
 }
 
-# These files define report production, identity binding, and the gates whose
-# booleans are summarized by each result. The Git revision binds the rest of the
-# tree; this narrower digest makes runner-contract drift independently visible.
+ADAPTER_REFERENCE_ROOTS = {
+    "claude-code": "adapters/claude-code/skills/handoff/references",
+    "codex": "adapters/codex/skills/handoff/references",
+    "cursor": "adapters/cursor/rules/waybill-handoff/references",
+    "gemini-cli": "adapters/gemini-cli/skills/handoff/references",
+    "opencode": "adapters/opencode/skills/handoff/references",
+}
+
+ADAPTER_INSTRUCTION_PATHS = {
+    adapter: (
+        entrypoint,
+        *(
+            f"{ADAPTER_REFERENCE_ROOTS[adapter]}/{name}"
+            for name in REFERENCE_NAMES
+        ),
+    )
+    for adapter, entrypoint in ADAPTER_ENTRYPOINT_PATHS.items()
+}
+
+# Adapter instruction digests cover each thin entrypoint plus its synchronized
+# shared references. These files define report production, identity binding,
+# and the gates whose booleans are summarized by each result. The Git revision
+# binds the rest of the tree; the narrower digests expose focused drift.
 RUNNER_CONTRACT_PATHS = {
     "import": (
         "scripts/conformance-agents.py",
@@ -393,7 +414,7 @@ def compute_source_provenance(
         raise ValueError("Waybill source worktree must be clean")
 
     scenario_paths = _scenario_corpus_paths(git_root, capability)
-    adapter_paths = (ADAPTER_ENTRYPOINT_PATHS[adapter],)
+    adapter_paths = ADAPTER_INSTRUCTION_PATHS[adapter]
     runner_paths = RUNNER_CONTRACT_PATHS[capability]
     all_paths = tuple(sorted(set(scenario_paths + adapter_paths + runner_paths)))
     _require_tracked_files(git_root, all_paths)

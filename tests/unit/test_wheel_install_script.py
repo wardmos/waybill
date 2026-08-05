@@ -36,6 +36,12 @@ class WheelInstallScriptTests(unittest.TestCase):
             package = source / "waybill_core"
             package.mkdir()
             (package / "__init__.py").write_text("package\n", encoding="utf-8")
+            skill = source / "skills" / "handoff"
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text("skill\n", encoding="utf-8")
+            adapter = source / "adapters" / "codex"
+            adapter.mkdir(parents=True)
+            (adapter / "README.md").write_text("adapter\n", encoding="utf-8")
             for ignored in [
                 ".git",
                 ".waybill",
@@ -56,7 +62,15 @@ class WheelInstallScriptTests(unittest.TestCase):
             module.copy_source_tree(source, destination)
 
             self.assertEqual(
-                {"LICENSE", "MANIFEST.in", "README.md", "pyproject.toml", "waybill_core"},
+                {
+                    "LICENSE",
+                    "MANIFEST.in",
+                    "README.md",
+                    "pyproject.toml",
+                    "waybill_core",
+                    "skills",
+                    "adapters",
+                },
                 {path.name for path in destination.iterdir()},
             )
             self.assertEqual("pyproject.toml\n", (destination / "pyproject.toml").read_text())
@@ -82,6 +96,8 @@ class WheelInstallScriptTests(unittest.TestCase):
             destination = root / "copy"
             package = source / "waybill_core"
             package.mkdir(parents=True)
+            (source / "skills").mkdir()
+            (source / "adapters").mkdir()
             for name in ["LICENSE", "MANIFEST.in", "README.md", "pyproject.toml"]:
                 (source / name).write_text(f"{name}\n", encoding="utf-8")
             outside = root / "outside.txt"

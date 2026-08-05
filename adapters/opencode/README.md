@@ -3,6 +3,9 @@
 This adapter provides native OpenCode commands and skills for exporting and
 importing Waybill Bundles.
 
+The commands and skills are thin OpenCode wrappers around `skills/handoff/`;
+the handoff `references/` files are generated from that canonical Skill.
+
 OpenCode supports project-local custom commands in:
 
 ```text

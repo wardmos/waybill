@@ -151,6 +151,16 @@ class SyntheticRepositoryTests(unittest.TestCase):
                 (REPO_ROOT / "adapters/codex/skills/handoff/SKILL.md").read_bytes(),
                 installed_adapter.read_bytes(),
             )
+            installed_references = installed_adapter.parent / "references"
+            for name in ("bundle-format.md", "export.md", "import.md"):
+                self.assertEqual(
+                    (
+                        REPO_ROOT
+                        / "adapters/codex/skills/handoff/references"
+                        / name
+                    ).read_bytes(),
+                    (installed_references / name).read_bytes(),
+                )
             self.assertTrue(prepared.evidence.canonical_diff.startswith(b"diff --git "))
             self.assertRegex(
                 prepared.evidence.status_digest,
@@ -192,7 +202,18 @@ class SyntheticRepositoryTests(unittest.TestCase):
                         source_root=REPO_ROOT,
                     )
                     entrypoint = prepared.repo / prepared.evidence.adapter_entrypoint
-                    instructions = entrypoint.read_text(encoding="utf-8")
+                    reference_root = entrypoint.parent / "references"
+                    if adapter == "cursor":
+                        reference_root = (
+                            entrypoint.parent / "waybill-handoff/references"
+                        )
+                    instructions = "\n".join(
+                        [entrypoint.read_text(encoding="utf-8")]
+                        + [
+                            (reference_root / name).read_text(encoding="utf-8")
+                            for name in ("bundle-format.md", "export.md", "import.md")
+                        ]
+                    )
 
                     for required in (
                         "status_digest",

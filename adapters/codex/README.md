@@ -3,6 +3,9 @@
 This adapter provides a Codex plugin for exporting and importing Waybill
 Bundles.
 
+Its handoff entrypoint is a thin Codex wrapper around `skills/handoff/`; the
+plugin-local `references/` directory is generated from that canonical Skill.
+
 Supported commands:
 
 ```text
@@ -22,6 +25,7 @@ Supported commands:
 skills/
   handoff/
     SKILL.md
+    references/
 ```
 
 ## Behavior

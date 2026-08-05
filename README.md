@@ -28,6 +28,24 @@ local handoff format plus thin adapters for existing coding agents.
 
 For the shortest setup path, see `QUICKSTART.md`.
 
+## Skill And Adapter Layout
+
+Waybill keeps one agent-neutral Skill as the source of truth:
+
+```text
+skills/
+  handoff/
+    SKILL.md
+    references/
+```
+
+`SKILL.md` dispatches to focused bundle-format, export, or import references so
+an agent loads only the guidance needed for the current operation. The
+`adapters/` directory contains thin product-specific entrypoints and generated
+copies of those references for Claude Code, Codex, OpenCode, Cursor CLI, and
+Gemini CLI. Agent-local `.claude/`, `.cursor/`, `.gemini/`, and `.opencode/`
+files are installation outputs and are not canonical repository sources.
+
 ## At A Glance
 
 | Area | Status |
@@ -212,14 +230,14 @@ See `INSTALL.md` for full local installation and smoke-test instructions.
 
 ### Claude Code
 
-Use the project-scoped Claude Code skills in:
+`waybill init --adapter claude-code` installs project-scoped skills into:
 
 ```text
 .claude/skills/
 ```
 
-Compatibility command instructions are also available in
-`adapters/claude-code/commands/`.
+The thin source wrapper and compatibility command instructions are in
+`adapters/claude-code/`.
 
 ### Codex
 
@@ -231,13 +249,13 @@ adapters/codex/
 
 ### OpenCode
 
-Use the OpenCode project commands and skills in:
+`waybill init --adapter opencode` installs project commands and skills into:
 
 ```text
 .opencode/
 ```
 
-Reusable adapter files are available in:
+Thin adapter sources are available in:
 
 ```text
 adapters/opencode/
@@ -245,13 +263,13 @@ adapters/opencode/
 
 ### Cursor CLI
 
-Use the Cursor project rules in:
+`waybill init --adapter cursor` installs project rules into:
 
 ```text
 .cursor/rules/
 ```
 
-Reusable adapter files are available in:
+Thin adapter sources are available in:
 
 ```text
 adapters/cursor/
@@ -259,13 +277,13 @@ adapters/cursor/
 
 ### Gemini CLI
 
-Use the Gemini CLI workspace skills in:
+`waybill init --adapter gemini-cli` installs workspace skills into:
 
 ```text
 .gemini/skills/
 ```
 
-Reusable adapter files are available in:
+Thin adapter sources are available in:
 
 ```text
 adapters/gemini-cli/

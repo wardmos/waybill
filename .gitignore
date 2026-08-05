@@ -15,6 +15,20 @@ CLAUDE.local.md
 .agents/plugins/*
 !.agents/plugins/marketplace.json
 
+# Generated agent-local adapter installations in this source checkout
+/.claude/skills/handoff/
+/.claude/skills/waybill/
+/.cursor/rules/handoff.mdc
+/.cursor/rules/waybill.mdc
+/.cursor/rules/waybill-handoff/
+/.gemini/skills/handoff/
+/.gemini/skills/waybill/
+/.opencode/commands/handoff.md
+/.opencode/commands/waybill.md
+/.opencode/skills/handoff/
+/.opencode/skills/waybill/
+/.waybill-adapters.json
+
 # Local OpenCode package installs
 .opencode/node_modules/
 .opencode/package.json

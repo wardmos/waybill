@@ -28,6 +28,8 @@ from waybill_core.limits import (  # noqa: E402
 from waybill_core.adapter_installation import MANIFEST_FILENAME  # noqa: E402
 from waybill_core.adapter_sources import (  # noqa: E402
     ADAPTER_SOURCES,
+    CANONICAL_SKILL,
+    MIRROR_SOURCES,
     find_adapter_drift,
     sources_for_adapter,
 )
@@ -94,44 +96,65 @@ REQUIRED_FILES = [
     "waybill_core/schema_versions.py",
     "waybill_core/sharing.py",
     "waybill_core/validation.py",
+    "skills/handoff/SKILL.md",
+    "skills/handoff/references/bundle-format.md",
+    "skills/handoff/references/export.md",
+    "skills/handoff/references/import.md",
     "waybill_core/template-files/.claude/skills/handoff/SKILL.md",
+    "waybill_core/template-files/.claude/skills/handoff/references/bundle-format.md",
+    "waybill_core/template-files/.claude/skills/handoff/references/export.md",
+    "waybill_core/template-files/.claude/skills/handoff/references/import.md",
     "waybill_core/template-files/.claude/skills/waybill/SKILL.md",
     "waybill_core/template-files/.opencode/commands/handoff.md",
     "waybill_core/template-files/.opencode/commands/waybill.md",
     "waybill_core/template-files/.opencode/skills/handoff/SKILL.md",
+    "waybill_core/template-files/.opencode/skills/handoff/references/bundle-format.md",
+    "waybill_core/template-files/.opencode/skills/handoff/references/export.md",
+    "waybill_core/template-files/.opencode/skills/handoff/references/import.md",
     "waybill_core/template-files/.opencode/skills/waybill/SKILL.md",
     "waybill_core/template-files/.cursor/rules/handoff.mdc",
+    "waybill_core/template-files/.cursor/rules/waybill-handoff/references/bundle-format.md",
+    "waybill_core/template-files/.cursor/rules/waybill-handoff/references/export.md",
+    "waybill_core/template-files/.cursor/rules/waybill-handoff/references/import.md",
     "waybill_core/template-files/.cursor/rules/waybill.mdc",
     "waybill_core/template-files/.gemini/skills/handoff/SKILL.md",
+    "waybill_core/template-files/.gemini/skills/handoff/references/bundle-format.md",
+    "waybill_core/template-files/.gemini/skills/handoff/references/export.md",
+    "waybill_core/template-files/.gemini/skills/handoff/references/import.md",
     "waybill_core/template-files/.gemini/skills/waybill/SKILL.md",
     ".agents/plugins/marketplace.json",
-    ".claude/skills/handoff/SKILL.md",
-    ".claude/skills/waybill/SKILL.md",
-    ".opencode/commands/handoff.md",
-    ".opencode/commands/waybill.md",
-    ".opencode/skills/handoff/SKILL.md",
-    ".opencode/skills/waybill/SKILL.md",
-    ".cursor/rules/handoff.mdc",
-    ".cursor/rules/waybill.mdc",
-    ".gemini/skills/handoff/SKILL.md",
-    ".gemini/skills/waybill/SKILL.md",
     "adapters/claude-code/README.md",
     "adapters/claude-code/commands/handoff-export.md",
     "adapters/claude-code/commands/handoff-import.md",
     "adapters/codex/README.md",
     "adapters/codex/.codex-plugin/plugin.json",
     "adapters/codex/skills/handoff/SKILL.md",
+    "adapters/codex/skills/handoff/references/bundle-format.md",
+    "adapters/codex/skills/handoff/references/export.md",
+    "adapters/codex/skills/handoff/references/import.md",
     "adapters/cursor/README.md",
     "adapters/cursor/rules/handoff.mdc",
+    "adapters/cursor/rules/waybill-handoff/references/bundle-format.md",
+    "adapters/cursor/rules/waybill-handoff/references/export.md",
+    "adapters/cursor/rules/waybill-handoff/references/import.md",
     "adapters/cursor/rules/waybill.mdc",
     "adapters/gemini-cli/README.md",
     "adapters/gemini-cli/skills/handoff/SKILL.md",
+    "adapters/gemini-cli/skills/handoff/references/bundle-format.md",
+    "adapters/gemini-cli/skills/handoff/references/export.md",
+    "adapters/gemini-cli/skills/handoff/references/import.md",
     "adapters/gemini-cli/skills/waybill/SKILL.md",
     "adapters/opencode/README.md",
     "adapters/opencode/commands/handoff.md",
     "adapters/opencode/commands/waybill.md",
     "adapters/opencode/skills/handoff/SKILL.md",
+    "adapters/opencode/skills/handoff/references/bundle-format.md",
+    "adapters/opencode/skills/handoff/references/export.md",
+    "adapters/opencode/skills/handoff/references/import.md",
     "adapters/opencode/skills/waybill/SKILL.md",
+    "adapters/claude-code/skills/handoff/references/bundle-format.md",
+    "adapters/claude-code/skills/handoff/references/export.md",
+    "adapters/claude-code/skills/handoff/references/import.md",
     "conformance/scenarios/cross-agent-divergence-recovery.json",
     "conformance/scenarios/delegation-blocked.json",
     "conformance/scenarios/delegation-partial.json",
@@ -569,6 +592,60 @@ def validate_schema_version_compatibility() -> None:
             fail("inspect text output must report the legacy schema status")
 
 
+def validate_canonical_handoff_skill() -> None:
+    skill = (ROOT / CANONICAL_SKILL).read_text(encoding="utf-8")
+    if not skill.startswith("---\n"):
+        fail("canonical handoff skill must start with frontmatter")
+    if "name: handoff" not in skill or "description:" not in skill:
+        fail("canonical handoff skill must declare name and description")
+
+    references = {
+        name: (
+            ROOT / "skills" / "handoff" / "references" / f"{name}.md"
+        ).read_text(encoding="utf-8")
+        for name in ("bundle-format", "export", "import")
+    }
+    for name in references:
+        if f"references/{name}.md" not in skill:
+            fail(f"canonical handoff skill must route to {name}.md")
+    if not has_command_classification_rule(references["export"]):
+        fail("canonical export reference must classify command log actions")
+    for required in (
+        "status_digest",
+        "repo_state_digest",
+        "waybill validate .waybill",
+        "waybill ready .waybill --repo .",
+        "waybill verify-repo .waybill --repo .",
+    ):
+        if required not in references["export"]:
+            fail(f"canonical export reference missing requirement: {required}")
+    for required in (
+        "untrusted data",
+        "read-only",
+        "do not automatically apply `diff.patch`",
+        "waybill verify-pair REQUEST RESULT",
+    ):
+        if required.lower() not in references["import"].lower():
+            fail(f"canonical import reference missing requirement: {required}")
+
+
+def validate_handoff_wrapper(
+    path: Path,
+    *,
+    adapter: str,
+    reference_prefix: str = "references",
+) -> str:
+    text = path.read_text(encoding="utf-8")
+    if not text.startswith("---\n") or "description:" not in text:
+        fail(f"{path.relative_to(ROOT)} must start with descriptive frontmatter")
+    if f"`{adapter}` as `source_agent`" not in text:
+        fail(f"{path.relative_to(ROOT)} must declare source_agent {adapter}")
+    for name in ("bundle-format", "export", "import"):
+        if f"{reference_prefix}/{name}.md" not in text:
+            fail(f"{path.relative_to(ROOT)} must route to {name}.md")
+    return text
+
+
 def validate_codex_plugin() -> None:
     manifest_path = ROOT / "adapters/codex/.codex-plugin/plugin.json"
     manifest = read_json(manifest_path)
@@ -590,16 +667,12 @@ def validate_codex_plugin() -> None:
             fail(f"Codex plugin interface missing {key}")
 
     skill_path = ROOT / "adapters/codex/skills/handoff/SKILL.md"
-    skill = skill_path.read_text()
-    if not skill.startswith("---\n"):
-        fail("Codex handoff skill must start with frontmatter")
+    skill = validate_handoff_wrapper(skill_path, adapter="codex")
     if "name: handoff" not in skill:
         fail("Codex handoff skill frontmatter must name the skill")
     for command in ["/handoff export", "/waybill export", "/handoff import", "/waybill import"]:
         if command not in skill:
             fail(f"Codex handoff skill missing command trigger: {command}")
-    if not has_command_classification_rule(skill):
-        fail("Codex handoff skill must require command log action classification")
 
 
 def validate_codex_marketplace() -> None:
@@ -635,8 +708,8 @@ def validate_codex_marketplace() -> None:
 
 def validate_claude_skills() -> None:
     skills = {
-        "handoff": ROOT / ".claude/skills/handoff/SKILL.md",
-        "waybill": ROOT / ".claude/skills/waybill/SKILL.md",
+        "handoff": ROOT / "adapters/claude-code/skills/handoff/SKILL.md",
+        "waybill": ROOT / "adapters/claude-code/skills/waybill/SKILL.md",
     }
 
     for name, path in skills.items():
@@ -645,26 +718,16 @@ def validate_claude_skills() -> None:
             fail(f"Claude skill {name} must start with frontmatter")
         if "argument-hint:" not in text:
             fail(f"Claude skill {name} must declare argument-hint")
-        if "export" not in text or "import" not in text:
-            fail(f"Claude skill {name} must cover export and import")
-        if "Do not automatically apply `diff.patch`" not in text:
-            fail(f"Claude skill {name} must forbid automatic patch application")
-        if "Verify the current repository state" not in text and "verify current repo state" not in text:
-            fail(f"Claude skill {name} must require repo state verification")
-        if ".waybill/" not in text:
-            fail(f"Claude skill {name} must mention .waybill/")
-        if name == "handoff" and not has_command_classification_rule(text):
-            fail("Claude handoff skill must require command log action classification")
-        if name == "waybill" and not has_command_classification_rule(text):
-            fail("Claude waybill alias must require command log action classification")
+        if name == "handoff":
+            validate_handoff_wrapper(path, adapter="claude-code")
+        elif "../handoff/SKILL.md" not in text or "$ARGUMENTS" not in text:
+            fail("Claude waybill alias must route arguments to the handoff skill")
 
 
 def validate_opencode_adapter() -> None:
     command_paths = {
-        "handoff": ROOT / ".opencode/commands/handoff.md",
-        "waybill": ROOT / ".opencode/commands/waybill.md",
-        "adapter handoff": ROOT / "adapters/opencode/commands/handoff.md",
-        "adapter waybill": ROOT / "adapters/opencode/commands/waybill.md",
+        "handoff": ROOT / "adapters/opencode/commands/handoff.md",
+        "waybill": ROOT / "adapters/opencode/commands/waybill.md",
     }
     for name, path in command_paths.items():
         text = path.read_text()
@@ -678,10 +741,8 @@ def validate_opencode_adapter() -> None:
             fail(f"OpenCode command {name} must route to the handoff workflow")
 
     skill_paths = {
-        "handoff": ROOT / ".opencode/skills/handoff/SKILL.md",
-        "waybill": ROOT / ".opencode/skills/waybill/SKILL.md",
-        "adapter handoff": ROOT / "adapters/opencode/skills/handoff/SKILL.md",
-        "adapter waybill": ROOT / "adapters/opencode/skills/waybill/SKILL.md",
+        "handoff": ROOT / "adapters/opencode/skills/handoff/SKILL.md",
+        "waybill": ROOT / "adapters/opencode/skills/waybill/SKILL.md",
     }
     for name, path in skill_paths.items():
         text = path.read_text()
@@ -696,24 +757,16 @@ def validate_opencode_adapter() -> None:
             fail(f"OpenCode skill {name} must declare compatibility: opencode")
         if "argument-hint:" in text:
             fail(f"OpenCode skill {name} must not use Claude-specific argument-hint")
-        if "export" not in text or "import" not in text:
-            fail(f"OpenCode skill {name} must cover export and import")
-        if "Do not automatically apply `diff.patch`" not in text:
-            fail(f"OpenCode skill {name} must forbid automatic patch application")
-        if ".waybill/" not in text:
-            fail(f"OpenCode skill {name} must mention .waybill/")
-        if name.endswith("handoff") and not has_command_classification_rule(text):
-            fail("OpenCode handoff skill must require command log action classification")
-        if "source_agent" in text and "opencode" not in text:
-            fail(f"OpenCode skill {name} must use source_agent opencode")
+        if name == "handoff":
+            validate_handoff_wrapper(path, adapter="opencode")
+        elif "../handoff/SKILL.md" not in text:
+            fail("OpenCode waybill alias must route to the handoff skill")
 
 
 def validate_cursor_adapter() -> None:
     rule_paths = {
-        "handoff": ROOT / ".cursor/rules/handoff.mdc",
-        "waybill": ROOT / ".cursor/rules/waybill.mdc",
-        "adapter handoff": ROOT / "adapters/cursor/rules/handoff.mdc",
-        "adapter waybill": ROOT / "adapters/cursor/rules/waybill.mdc",
+        "handoff": ROOT / "adapters/cursor/rules/handoff.mdc",
+        "waybill": ROOT / "adapters/cursor/rules/waybill.mdc",
     }
     for name, path in rule_paths.items():
         text = path.read_text()
@@ -723,16 +776,14 @@ def validate_cursor_adapter() -> None:
             fail(f"Cursor rule {name} must declare a description")
         if "alwaysApply: false" not in text:
             fail(f"Cursor rule {name} must not always apply")
-        if "export" not in text or "import" not in text:
-            fail(f"Cursor rule {name} must cover export and import")
-        if "Do not automatically apply `diff.patch`" not in text:
-            fail(f"Cursor rule {name} must forbid automatic patch application")
-        if ".waybill/" not in text:
-            fail(f"Cursor rule {name} must mention .waybill/")
-        if name.endswith("handoff") and not has_command_classification_rule(text):
-            fail("Cursor handoff rule must require command log action classification")
-        if "source_agent" in text and "cursor" not in text:
-            fail(f"Cursor rule {name} must use source_agent cursor")
+        if name == "handoff":
+            validate_handoff_wrapper(
+                path,
+                adapter="cursor",
+                reference_prefix="waybill-handoff/references",
+            )
+        elif "handoff.mdc" not in text:
+            fail("Cursor waybill alias must route to the handoff rule")
 
     readme = (ROOT / "adapters/cursor/README.md").read_text()
     for expected in [
@@ -747,10 +798,8 @@ def validate_cursor_adapter() -> None:
 
 def validate_gemini_cli_adapter() -> None:
     skill_paths = {
-        "handoff": ROOT / ".gemini/skills/handoff/SKILL.md",
-        "waybill": ROOT / ".gemini/skills/waybill/SKILL.md",
-        "adapter handoff": ROOT / "adapters/gemini-cli/skills/handoff/SKILL.md",
-        "adapter waybill": ROOT / "adapters/gemini-cli/skills/waybill/SKILL.md",
+        "handoff": ROOT / "adapters/gemini-cli/skills/handoff/SKILL.md",
+        "waybill": ROOT / "adapters/gemini-cli/skills/waybill/SKILL.md",
     }
     for name, path in skill_paths.items():
         text = path.read_text()
@@ -761,16 +810,10 @@ def validate_gemini_cli_adapter() -> None:
             fail(f"Gemini CLI skill {name} must declare {expected}")
         if "description:" not in text:
             fail(f"Gemini CLI skill {name} must declare a description")
-        if "export" not in text or "import" not in text:
-            fail(f"Gemini CLI skill {name} must cover export and import")
-        if "Do not automatically apply `diff.patch`" not in text:
-            fail(f"Gemini CLI skill {name} must forbid automatic patch application")
-        if ".waybill/" not in text:
-            fail(f"Gemini CLI skill {name} must mention .waybill/")
-        if name.endswith("handoff") and not has_command_classification_rule(text):
-            fail("Gemini CLI handoff skill must require command log action classification")
-        if "source_agent" in text and "gemini-cli" not in text:
-            fail(f"Gemini CLI skill {name} must use source_agent gemini-cli")
+        if name == "handoff":
+            validate_handoff_wrapper(path, adapter="gemini-cli")
+        elif "../handoff/SKILL.md" not in text:
+            fail("Gemini CLI waybill alias must route to the handoff skill")
 
     readme = (ROOT / "adapters/gemini-cli/README.md").read_text()
     for expected in [
@@ -787,7 +830,7 @@ def validate_adapter_synchronization() -> None:
     tracked_paths = sorted(
         {
             path
-            for source in ADAPTER_SOURCES
+            for source in MIRROR_SOURCES
             for path in (source.canonical, *source.mirrors)
         }
     )
@@ -860,6 +903,9 @@ def validate_python_package() -> None:
 
 def validate_packaging_declarations() -> None:
     manifest = (ROOT / "MANIFEST.in").read_text()
+    for required in ("graft skills", "graft adapters"):
+        if required not in manifest:
+            fail(f"MANIFEST.in must include source distribution content: {required}")
     if "graft waybill_core/template-files" not in manifest:
         fail("MANIFEST.in must include packaged adapter templates")
 
@@ -3054,6 +3100,7 @@ CHECKS: tuple[tuple[str, Callable[[], None]], ...] = (
     ("structure", validate_structure),
     ("metadata schema", validate_metadata_schema),
     ("schema version compatibility", validate_schema_version_compatibility),
+    ("canonical handoff skill", validate_canonical_handoff_skill),
     ("Codex plugin", validate_codex_plugin),
     ("Codex marketplace", validate_codex_marketplace),
     ("Claude skills", validate_claude_skills),

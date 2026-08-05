@@ -28,6 +28,11 @@ tests/conformance/  deterministic agent observation scenarios
 All three directories are Python packages so `unittest discover -s tests -t .`
 recurses consistently on Python 3.10, 3.11, and 3.12.
 
+The canonical handoff Skill is `skills/handoff/SKILL.md`; its bundle-format,
+export, and import references are tested separately from the thin adapter
+entrypoints. `sync-adapters.py --check` verifies every generated adapter and
+packaged reference copy.
+
 ## Continuous Integration
 
 The `CI` GitHub Actions workflow runs on every push and pull request with a
@@ -398,6 +403,8 @@ Expected result:
 - OpenCode commands and skills are copied into `.opencode/`.
 - Cursor rules are copied into `.cursor/rules/`.
 - Gemini CLI skills are copied into `.gemini/skills/`.
+- Each handoff entrypoint is installed with the shared files in its
+  `references/` directory.
 - `.gitignore` includes `.waybill/`.
 - Dry-run reports `would-create`, `would-update`, `unchanged`, and
   `would-conflict` without writing any file.
@@ -757,7 +764,14 @@ Use the same flow in the opposite direction:
 
 ## Claude Code Skill Smoke Test
 
-This repository includes project-scoped Claude Code skills:
+The source repository does not track agent-local installation outputs. Generate
+the Claude Code files before this smoke test:
+
+```bash
+./cli/waybill init --target . --adapter claude-code
+```
+
+The generated project-scoped skills are:
 
 ```text
 .claude/skills/handoff/SKILL.md
@@ -808,7 +822,13 @@ Expected result:
 
 ## OpenCode Smoke Test
 
-This repository includes project-scoped OpenCode commands and skills:
+Generate the OpenCode files before this smoke test:
+
+```bash
+./cli/waybill init --target . --adapter opencode
+```
+
+The generated project commands and skills are:
 
 ```text
 .opencode/commands/handoff.md
@@ -862,7 +882,13 @@ Expected result:
 
 ## Cursor CLI Smoke Test
 
-This repository includes project-scoped Cursor rules:
+Generate the Cursor files before this smoke test:
+
+```bash
+./cli/waybill init --target . --adapter cursor
+```
+
+The generated project rules are:
 
 ```text
 .cursor/rules/handoff.mdc
@@ -893,7 +919,13 @@ Expected result:
 
 ## Gemini CLI Smoke Test
 
-This repository includes project-scoped Gemini CLI skills:
+Generate the Gemini CLI files before this smoke test:
+
+```bash
+./cli/waybill init --target . --adapter gemini-cli
+```
+
+The generated workspace skills are:
 
 ```text
 .gemini/skills/handoff/SKILL.md

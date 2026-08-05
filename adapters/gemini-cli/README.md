@@ -3,6 +3,9 @@
 This adapter provides Gemini CLI workspace skills for exporting and importing
 Waybill Bundles.
 
+The handoff entrypoint is a thin Gemini CLI wrapper around `skills/handoff/`;
+its `references/` files are generated from that canonical Skill.
+
 Gemini CLI discovers workspace skills from:
 
 ```text

@@ -72,13 +72,18 @@ class InstallPlanningTests(unittest.TestCase):
             self.assertTrue(report.dry_run)
             self.assertFalse(report.has_conflicts)
             self.assertEqual(before, snapshot_tree(target))
-            self.assertEqual(
+            expected_actions = {
+                source.install_target: "would-create"
+                for source in sources_for_adapter("claude-code")
+            }
+            expected_actions.update(
                 {
-                    ".claude/skills/handoff/SKILL.md": "would-create",
-                    ".claude/skills/waybill/SKILL.md": "would-create",
                     ".gitignore": "would-create",
                     MANIFEST_FILENAME: "would-create",
-                },
+                }
+            )
+            self.assertEqual(
+                expected_actions,
                 {action.path: action.action for action in report.actions},
             )
 
@@ -137,7 +142,10 @@ class InstallPlanningTests(unittest.TestCase):
             with self.assertRaises(InstallConflictError) as raised:
                 install_adapters(source, target, ["claude-code"])
 
-            self.assertEqual(2, len(raised.exception.conflicts))
+            self.assertEqual(
+                len(sources_for_adapter("claude-code")),
+                len(raised.exception.conflicts),
+            )
             self.assertEqual(before, snapshot_tree(target))
             self.assertFalse((target / ".gitignore").exists())
             self.assertFalse((target / MANIFEST_FILENAME).exists())

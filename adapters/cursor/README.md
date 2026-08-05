@@ -3,6 +3,9 @@
 This adapter provides Cursor project rules for exporting and importing Waybill
 Bundles from Cursor Agent and Cursor CLI.
 
+The rules are thin Cursor wrappers around `skills/handoff/`. Shared workflow
+references are generated under `rules/waybill-handoff/references/`.
+
 Cursor supports project rules in:
 
 ```text
@@ -32,6 +35,7 @@ Copy the adapter files into the target repository:
 ```text
 adapters/cursor/rules/handoff.mdc  -> .cursor/rules/handoff.mdc
 adapters/cursor/rules/waybill.mdc  -> .cursor/rules/waybill.mdc
+adapters/cursor/rules/waybill-handoff/ -> .cursor/rules/waybill-handoff/
 ```
 
 Or use the Waybill CLI:

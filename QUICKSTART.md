@@ -15,6 +15,10 @@ local handoff bundle in the repository:
 This guide uses the project-local adapters and the standard-library CLI. No
 package manager install is required when running from a Waybill checkout.
 
+The shared workflow lives in `skills/handoff/`. Agent-specific files under
+`adapters/` are thin entrypoints plus synchronized reference copies; `init`
+installs those files into each target agent's native project directory.
+
 ## 1. Install Adapters Into A Repo
 
 Install the file-based project adapters for Claude Code, OpenCode, Cursor CLI,

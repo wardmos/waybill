@@ -105,7 +105,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--adapter",
         required=True,
         choices=SUPPORTED_EXPORT_ADAPTERS,
-        help="Canonical adapter entrypoint installed in each synthetic repository.",
+        help=(
+            "Adapter entrypoint and shared references installed in each "
+            "synthetic repository."
+        ),
     )
     parser.add_argument(
         "--scenario",

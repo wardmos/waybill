@@ -3,7 +3,10 @@
 This adapter provides Markdown command instructions for exporting and importing
 Waybill Bundles in Claude Code.
 
-The repository also includes project-scoped Claude Code skills at:
+The handoff entrypoint is a thin wrapper around the canonical workflow in
+`skills/handoff/`. Its `references/` files are generated from that shared Skill.
+
+`waybill init --adapter claude-code` installs project-scoped skills at:
 
 ```text
 .claude/skills/handoff/SKILL.md
@@ -30,6 +33,12 @@ Supported commands:
 commands/
   handoff-export.md
   handoff-import.md
+skills/
+  handoff/
+    SKILL.md
+    references/
+  waybill/
+    SKILL.md
 ```
 
 ## Behavior

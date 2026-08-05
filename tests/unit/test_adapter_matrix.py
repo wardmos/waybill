@@ -13,6 +13,7 @@ from pathlib import Path
 from waybill_core.adapter_matrix import (
     ADAPTER_CAPABILITY_REQUIREMENTS,
     ADAPTER_ENTRYPOINT_PATHS,
+    ADAPTER_INSTRUCTION_PATHS,
     CAPABILITY_SCENARIO_REQUIREMENTS,
     RUNNER_CONTRACT_PATHS,
     SCENARIO_DIRECTORIES,
@@ -270,8 +271,9 @@ def create_source_repository(root: Path) -> None:
                 f"{directory}/{scenario}.json",
                 json.dumps(scenario_document, sort_keys=True) + "\n",
             )
-    for adapter, relative in ADAPTER_ENTRYPOINT_PATHS.items():
-        _write_source_file(root, relative, f"adapter {adapter}\n")
+    for adapter, relative_paths in ADAPTER_INSTRUCTION_PATHS.items():
+        for relative in relative_paths:
+            _write_source_file(root, relative, f"adapter {adapter}: {relative}\n")
     for paths in RUNNER_CONTRACT_PATHS.values():
         for relative in paths:
             _write_source_file(root, relative, f"contract {relative}\n")
@@ -414,7 +416,8 @@ class AdapterMatrixTests(unittest.TestCase):
         self.assertTrue(
             all(
                 (PUBLIC_ROOT / relative).is_file()
-                for relative in ADAPTER_ENTRYPOINT_PATHS.values()
+                for paths in ADAPTER_INSTRUCTION_PATHS.values()
+                for relative in paths
             )
         )
         self.assertTrue(

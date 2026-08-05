@@ -20,7 +20,10 @@ from waybill_core.adapter_sources import (  # noqa: E402
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Synchronize adapter mirrors from adapters/ canonical files."
+        description=(
+            "Synchronize generated adapter and package files from the "
+            "canonical Skill and thin wrappers."
+        )
     )
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument(

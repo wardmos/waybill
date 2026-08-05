@@ -8,6 +8,12 @@ required when running it from a Waybill checkout.
 For the shortest setup path, start with `QUICKSTART.md`. This document keeps
 the fuller per-adapter details.
 
+The agent-neutral source of truth is `skills/handoff/`. Each directory under
+`adapters/` contains only a product-specific entrypoint or command wrapper plus
+generated reference copies needed to make that adapter self-contained. Run
+`python3 scripts/sync-adapters.py --write` after changing the canonical Skill;
+`--check` verifies that adapter and packaged copies have not drifted.
+
 ## Managed Project Adapter Lifecycle
 
 `waybill init` manages the file-based Claude Code, OpenCode, Cursor CLI, and
@@ -116,7 +122,7 @@ Instead of installing from the CLI, you can install from the plugin directory:
 
 ## Claude Code
 
-This repository includes project-scoped Claude Code skills:
+After installation, the target repository contains Claude Code skills at:
 
 ```text
 .claude/skills/handoff/SKILL.md
@@ -125,9 +131,11 @@ This repository includes project-scoped Claude Code skills:
 
 To try them:
 
-1. Open this repository in Claude Code:
+1. Generate the local adapter files in this checkout, then open it in Claude
+   Code:
 
    ```bash
+   ./cli/waybill init --target . --adapter claude-code
    claude
    ```
 
@@ -158,7 +166,8 @@ style custom commands instead of skills.
 
 ## OpenCode
 
-This repository includes project-scoped OpenCode commands and skills:
+After installation, the target repository contains OpenCode commands and
+skills at:
 
 ```text
 .opencode/commands/handoff.md
@@ -169,9 +178,10 @@ This repository includes project-scoped OpenCode commands and skills:
 
 To try them:
 
-1. Open this repository in OpenCode:
+1. Generate the local adapter files in this checkout, then open it in OpenCode:
 
    ```bash
+   ./cli/waybill init --target . --adapter opencode
    opencode
    ```
 
@@ -199,13 +209,19 @@ adapters/opencode/
 
 ## Cursor CLI
 
-This repository includes project-scoped Cursor rules:
+After installation, the target repository contains Cursor rules under:
 
 ```text
 .cursor/rules/
 ```
 
-To smoke test them with Cursor CLI in read-only ask mode:
+Install the adapter before starting Cursor CLI:
+
+```bash
+./cli/waybill init --target . --adapter cursor
+```
+
+Then smoke test it in read-only ask mode:
 
 ```bash
 agent -p --trust --mode=ask "handoff import examples/claude-to-codex. Do not modify files; only read the bundle, verify repository state, and summarize the handoff."
@@ -228,13 +244,19 @@ adapters/cursor/
 
 ## Gemini CLI
 
-This repository includes project-scoped Gemini CLI skills:
+After installation, the target repository contains Gemini CLI skills under:
 
 ```text
 .gemini/skills/
 ```
 
-To smoke test them in read-only plan mode:
+Install the adapter before starting Gemini CLI:
+
+```bash
+./cli/waybill init --target . --adapter gemini-cli
+```
+
+Then smoke test it in read-only plan mode:
 
 ```bash
 gemini --skip-trust --approval-mode plan -p "handoff import examples/claude-to-codex. Do not modify files; only read the bundle, verify repository state, and summarize the handoff."

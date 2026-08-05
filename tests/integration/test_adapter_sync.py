@@ -10,6 +10,7 @@ from pathlib import Path
 
 from waybill_core.adapter_sources import (
     ADAPTER_SOURCES,
+    MIRROR_SOURCES,
     find_adapter_drift,
     sources_for_adapter,
     sync_adapter_mirrors,
@@ -23,27 +24,39 @@ SYNC_SCRIPT = ROOT / "scripts" / "sync-adapters.py"
 EXPECTED_TARGETS = {
     "claude-code": (
         ".claude/skills/handoff/SKILL.md",
+        ".claude/skills/handoff/references/bundle-format.md",
+        ".claude/skills/handoff/references/export.md",
+        ".claude/skills/handoff/references/import.md",
         ".claude/skills/waybill/SKILL.md",
     ),
     "opencode": (
         ".opencode/commands/handoff.md",
         ".opencode/commands/waybill.md",
         ".opencode/skills/handoff/SKILL.md",
+        ".opencode/skills/handoff/references/bundle-format.md",
+        ".opencode/skills/handoff/references/export.md",
+        ".opencode/skills/handoff/references/import.md",
         ".opencode/skills/waybill/SKILL.md",
     ),
     "cursor": (
         ".cursor/rules/handoff.mdc",
+        ".cursor/rules/waybill-handoff/references/bundle-format.md",
+        ".cursor/rules/waybill-handoff/references/export.md",
+        ".cursor/rules/waybill-handoff/references/import.md",
         ".cursor/rules/waybill.mdc",
     ),
     "gemini-cli": (
         ".gemini/skills/handoff/SKILL.md",
+        ".gemini/skills/handoff/references/bundle-format.md",
+        ".gemini/skills/handoff/references/export.md",
+        ".gemini/skills/handoff/references/import.md",
         ".gemini/skills/waybill/SKILL.md",
     ),
 }
 
 
 class AdapterSourceManifestTests(unittest.TestCase):
-    def test_manifest_maps_canonical_files_to_both_mirror_kinds(self) -> None:
+    def test_manifest_maps_shared_references_and_thin_wrappers(self) -> None:
         actual_targets = {
             adapter: tuple(source.install_target for source in sources_for_adapter(adapter))
             for adapter in EXPECTED_TARGETS
@@ -53,20 +66,51 @@ class AdapterSourceManifestTests(unittest.TestCase):
         seen_mirrors: set[str] = set()
         for source in ADAPTER_SOURCES:
             with self.subTest(canonical=source.canonical):
-                self.assertTrue(
-                    source.canonical.startswith(f"adapters/{source.adapter}/")
-                )
-                self.assertEqual(source.install_target, source.workspace_mirror)
                 self.assertEqual(
                     f"waybill_core/template-files/{source.install_target}",
                     source.packaged_mirror,
                 )
-                self.assertEqual(
-                    (source.workspace_mirror, source.packaged_mirror),
-                    source.mirrors,
-                )
+                if source.canonical.startswith("skills/handoff/references/"):
+                    self.assertIsNotNone(source.repository_mirror)
+                    assert source.repository_mirror is not None
+                    self.assertTrue(
+                        source.repository_mirror.startswith(
+                            f"adapters/{source.adapter}/"
+                        )
+                    )
+                    self.assertEqual(
+                        (source.repository_mirror, source.packaged_mirror),
+                        source.mirrors,
+                    )
+                else:
+                    self.assertTrue(
+                        source.canonical.startswith(f"adapters/{source.adapter}/")
+                    )
+                    self.assertIsNone(source.repository_mirror)
+                    self.assertEqual((source.packaged_mirror,), source.mirrors)
                 self.assertTrue(seen_mirrors.isdisjoint(source.mirrors))
                 seen_mirrors.update(source.mirrors)
+
+        self.assertTrue(
+            all(
+                not mirror.startswith((".claude/", ".cursor/", ".gemini/", ".opencode/"))
+                for mirror in seen_mirrors
+            )
+        )
+
+    def test_codex_references_are_generated_from_the_shared_skill(self) -> None:
+        codex_mirrors = [
+            source
+            for source in MIRROR_SOURCES
+            if any(path.startswith("adapters/codex/") for path in source.mirrors)
+        ]
+        self.assertEqual(3, len(codex_mirrors))
+        self.assertTrue(
+            all(
+                source.canonical.startswith("skills/handoff/references/")
+                for source in codex_mirrors
+            )
+        )
 
     def test_repository_mirrors_are_byte_for_byte_in_sync(self) -> None:
         self.assertEqual([], find_adapter_drift(ROOT))
@@ -74,8 +118,12 @@ class AdapterSourceManifestTests(unittest.TestCase):
 
 class AdapterSyncTests(unittest.TestCase):
     def populate_adapter_tree(self, root: Path) -> None:
-        for index, source in enumerate(ADAPTER_SOURCES):
-            content = f"canonical adapter content {index}\n".encode()
+        contents: dict[str, bytes] = {}
+        for source in MIRROR_SOURCES:
+            content = contents.setdefault(
+                source.canonical,
+                f"canonical adapter content {len(contents)}\n".encode(),
+            )
             canonical = root / source.canonical
             canonical.parent.mkdir(parents=True, exist_ok=True)
             canonical.write_bytes(content)
@@ -90,15 +138,18 @@ class AdapterSyncTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="waybill-adapter-sync-") as tmp:
             root = Path(tmp)
             self.populate_adapter_tree(root)
-            changed_source = ADAPTER_SOURCES[0]
-            missing_source = ADAPTER_SOURCES[1]
-            (root / changed_source.workspace_mirror).write_bytes(b"drift\n")
+            changed_source = next(
+                source for source in ADAPTER_SOURCES if source.repository_mirror
+            )
+            missing_source = ADAPTER_SOURCES[0]
+            assert changed_source.repository_mirror is not None
+            (root / changed_source.repository_mirror).write_bytes(b"drift\n")
             (root / missing_source.packaged_mirror).unlink()
 
             drift = find_adapter_drift(root)
             self.assertEqual(
                 {
-                    (changed_source.workspace_mirror, "different"),
+                    (changed_source.repository_mirror, "different"),
                     (missing_source.packaged_mirror, "missing"),
                 },
                 {(issue.mirror, issue.reason) for issue in drift},
@@ -108,7 +159,7 @@ class AdapterSyncTests(unittest.TestCase):
 
             self.assertEqual(
                 {
-                    changed_source.workspace_mirror,
+                    changed_source.repository_mirror,
                     missing_source.packaged_mirror,
                 },
                 set(repaired),
@@ -162,14 +213,19 @@ class AdapterInstallSourceTests(unittest.TestCase):
             source_root = Path(source_tmp)
             target_root = Path(target_tmp)
             expected: dict[str, bytes] = {}
-            for index, source in enumerate(ADAPTER_SOURCES):
-                canonical_content = f"canonical adapter file {index}\n".encode()
+            canonical_contents: dict[str, bytes] = {}
+            for source in ADAPTER_SOURCES:
+                canonical_content = canonical_contents.setdefault(
+                    source.canonical,
+                    f"canonical adapter file {len(canonical_contents)}\n".encode(),
+                )
                 canonical = source_root / source.canonical
                 canonical.parent.mkdir(parents=True, exist_ok=True)
                 canonical.write_bytes(canonical_content)
-                stale_mirror = source_root / source.workspace_mirror
-                stale_mirror.parent.mkdir(parents=True, exist_ok=True)
-                stale_mirror.write_bytes(b"stale workspace mirror\n")
+                if source.repository_mirror is not None:
+                    stale_mirror = source_root / source.repository_mirror
+                    stale_mirror.parent.mkdir(parents=True, exist_ok=True)
+                    stale_mirror.write_bytes(b"stale repository mirror\n")
                 expected[source.install_target] = canonical_content
 
             report = install_adapters(

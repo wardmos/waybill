@@ -36,24 +36,36 @@ IGNORED_SOURCE_NAMES = {
     "venv",
 }
 SOURCE_COPY_FILES = ("LICENSE", "MANIFEST.in", "README.md", "pyproject.toml")
-SOURCE_COPY_DIRECTORIES = ("waybill_core",)
+SOURCE_COPY_DIRECTORIES = ("waybill_core", "skills", "adapters")
 EXPECTED_TEMPLATE_TARGETS = {
     "claude-code": {
         ".claude/skills/handoff/SKILL.md",
+        ".claude/skills/handoff/references/bundle-format.md",
+        ".claude/skills/handoff/references/export.md",
+        ".claude/skills/handoff/references/import.md",
         ".claude/skills/waybill/SKILL.md",
     },
     "opencode": {
         ".opencode/commands/handoff.md",
         ".opencode/commands/waybill.md",
         ".opencode/skills/handoff/SKILL.md",
+        ".opencode/skills/handoff/references/bundle-format.md",
+        ".opencode/skills/handoff/references/export.md",
+        ".opencode/skills/handoff/references/import.md",
         ".opencode/skills/waybill/SKILL.md",
     },
     "cursor": {
         ".cursor/rules/handoff.mdc",
+        ".cursor/rules/waybill-handoff/references/bundle-format.md",
+        ".cursor/rules/waybill-handoff/references/export.md",
+        ".cursor/rules/waybill-handoff/references/import.md",
         ".cursor/rules/waybill.mdc",
     },
     "gemini-cli": {
         ".gemini/skills/handoff/SKILL.md",
+        ".gemini/skills/handoff/references/bundle-format.md",
+        ".gemini/skills/handoff/references/export.md",
+        ".gemini/skills/handoff/references/import.md",
         ".gemini/skills/waybill/SKILL.md",
     },
 }

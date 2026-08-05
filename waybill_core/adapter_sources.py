@@ -1,4 +1,4 @@
-"""Canonical adapter source manifest and mirror synchronization."""
+"""Canonical Skill sources, adapter wrappers, and generated mirror mapping."""
 
 from __future__ import annotations
 
@@ -6,28 +6,64 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+CANONICAL_SKILL = "skills/handoff/SKILL.md"
+CANONICAL_REFERENCE_ROOT = "skills/handoff/references"
+REFERENCE_NAMES = ("bundle-format.md", "export.md", "import.md")
+
+
 @dataclass(frozen=True)
 class AdapterSource:
-    """One canonical adapter file and its generated repository mirrors."""
+    """One installable adapter file and its generated repository copies."""
 
     adapter: str
     canonical: str
     install_target: str
-    workspace_mirror: str
     packaged_mirror: str
+    repository_mirror: str | None = None
 
     @property
-    def mirrors(self) -> tuple[str, str]:
-        return (self.workspace_mirror, self.packaged_mirror)
+    def mirrors(self) -> tuple[str, ...]:
+        mirrors = () if self.repository_mirror is None else (self.repository_mirror,)
+        return (*mirrors, self.packaged_mirror)
+
+
+@dataclass(frozen=True)
+class MirrorSource:
+    """One canonical file and every generated copy kept in the repository."""
+
+    canonical: str
+    mirrors: tuple[str, ...]
 
 
 @dataclass(frozen=True)
 class AdapterMirrorIssue:
-    """A missing or byte-different adapter mirror."""
+    """A missing canonical source or a missing or byte-different mirror."""
 
     canonical: str
     mirror: str
     reason: str
+
+
+def _packaged(install_target: str) -> str:
+    return f"waybill_core/template-files/{install_target}"
+
+
+def _reference_sources(
+    adapter: str,
+    *,
+    install_root: str,
+    adapter_root: str,
+) -> tuple[AdapterSource, ...]:
+    return tuple(
+        AdapterSource(
+            adapter=adapter,
+            canonical=f"{CANONICAL_REFERENCE_ROOT}/{name}",
+            install_target=f"{install_root}/{name}",
+            repository_mirror=f"{adapter_root}/{name}",
+            packaged_mirror=_packaged(f"{install_root}/{name}"),
+        )
+        for name in REFERENCE_NAMES
+    )
 
 
 ADAPTER_SOURCES = (
@@ -35,98 +71,104 @@ ADAPTER_SOURCES = (
         adapter="claude-code",
         canonical="adapters/claude-code/skills/handoff/SKILL.md",
         install_target=".claude/skills/handoff/SKILL.md",
-        workspace_mirror=".claude/skills/handoff/SKILL.md",
-        packaged_mirror=(
-            "waybill_core/template-files/.claude/skills/handoff/SKILL.md"
-        ),
+        packaged_mirror=_packaged(".claude/skills/handoff/SKILL.md"),
+    ),
+    *_reference_sources(
+        "claude-code",
+        install_root=".claude/skills/handoff/references",
+        adapter_root="adapters/claude-code/skills/handoff/references",
     ),
     AdapterSource(
         adapter="claude-code",
         canonical="adapters/claude-code/skills/waybill/SKILL.md",
         install_target=".claude/skills/waybill/SKILL.md",
-        workspace_mirror=".claude/skills/waybill/SKILL.md",
-        packaged_mirror=(
-            "waybill_core/template-files/.claude/skills/waybill/SKILL.md"
-        ),
+        packaged_mirror=_packaged(".claude/skills/waybill/SKILL.md"),
     ),
     AdapterSource(
         adapter="opencode",
         canonical="adapters/opencode/commands/handoff.md",
         install_target=".opencode/commands/handoff.md",
-        workspace_mirror=".opencode/commands/handoff.md",
-        packaged_mirror=(
-            "waybill_core/template-files/.opencode/commands/handoff.md"
-        ),
+        packaged_mirror=_packaged(".opencode/commands/handoff.md"),
     ),
     AdapterSource(
         adapter="opencode",
         canonical="adapters/opencode/commands/waybill.md",
         install_target=".opencode/commands/waybill.md",
-        workspace_mirror=".opencode/commands/waybill.md",
-        packaged_mirror=(
-            "waybill_core/template-files/.opencode/commands/waybill.md"
-        ),
+        packaged_mirror=_packaged(".opencode/commands/waybill.md"),
     ),
     AdapterSource(
         adapter="opencode",
         canonical="adapters/opencode/skills/handoff/SKILL.md",
         install_target=".opencode/skills/handoff/SKILL.md",
-        workspace_mirror=".opencode/skills/handoff/SKILL.md",
-        packaged_mirror=(
-            "waybill_core/template-files/.opencode/skills/handoff/SKILL.md"
-        ),
+        packaged_mirror=_packaged(".opencode/skills/handoff/SKILL.md"),
+    ),
+    *_reference_sources(
+        "opencode",
+        install_root=".opencode/skills/handoff/references",
+        adapter_root="adapters/opencode/skills/handoff/references",
     ),
     AdapterSource(
         adapter="opencode",
         canonical="adapters/opencode/skills/waybill/SKILL.md",
         install_target=".opencode/skills/waybill/SKILL.md",
-        workspace_mirror=".opencode/skills/waybill/SKILL.md",
-        packaged_mirror=(
-            "waybill_core/template-files/.opencode/skills/waybill/SKILL.md"
-        ),
+        packaged_mirror=_packaged(".opencode/skills/waybill/SKILL.md"),
     ),
     AdapterSource(
         adapter="cursor",
         canonical="adapters/cursor/rules/handoff.mdc",
         install_target=".cursor/rules/handoff.mdc",
-        workspace_mirror=".cursor/rules/handoff.mdc",
-        packaged_mirror="waybill_core/template-files/.cursor/rules/handoff.mdc",
+        packaged_mirror=_packaged(".cursor/rules/handoff.mdc"),
+    ),
+    *_reference_sources(
+        "cursor",
+        install_root=".cursor/rules/waybill-handoff/references",
+        adapter_root="adapters/cursor/rules/waybill-handoff/references",
     ),
     AdapterSource(
         adapter="cursor",
         canonical="adapters/cursor/rules/waybill.mdc",
         install_target=".cursor/rules/waybill.mdc",
-        workspace_mirror=".cursor/rules/waybill.mdc",
-        packaged_mirror="waybill_core/template-files/.cursor/rules/waybill.mdc",
+        packaged_mirror=_packaged(".cursor/rules/waybill.mdc"),
     ),
     AdapterSource(
         adapter="gemini-cli",
         canonical="adapters/gemini-cli/skills/handoff/SKILL.md",
         install_target=".gemini/skills/handoff/SKILL.md",
-        workspace_mirror=".gemini/skills/handoff/SKILL.md",
-        packaged_mirror=(
-            "waybill_core/template-files/.gemini/skills/handoff/SKILL.md"
-        ),
+        packaged_mirror=_packaged(".gemini/skills/handoff/SKILL.md"),
+    ),
+    *_reference_sources(
+        "gemini-cli",
+        install_root=".gemini/skills/handoff/references",
+        adapter_root="adapters/gemini-cli/skills/handoff/references",
     ),
     AdapterSource(
         adapter="gemini-cli",
         canonical="adapters/gemini-cli/skills/waybill/SKILL.md",
         install_target=".gemini/skills/waybill/SKILL.md",
-        workspace_mirror=".gemini/skills/waybill/SKILL.md",
-        packaged_mirror=(
-            "waybill_core/template-files/.gemini/skills/waybill/SKILL.md"
-        ),
+        packaged_mirror=_packaged(".gemini/skills/waybill/SKILL.md"),
     ),
 )
 
-# Codex is already delivered directly from its canonical plugin under
-# adapters/codex, so it has no generated workspace or package-template mirror.
+CODEX_REFERENCE_MIRRORS = tuple(
+    MirrorSource(
+        canonical=f"{CANONICAL_REFERENCE_ROOT}/{name}",
+        mirrors=(f"adapters/codex/skills/handoff/references/{name}",),
+    )
+    for name in REFERENCE_NAMES
+)
+
+MIRROR_SOURCES = tuple(
+    MirrorSource(source.canonical, source.mirrors) for source in ADAPTER_SOURCES
+) + CODEX_REFERENCE_MIRRORS
+
+# Codex is delivered directly from its plugin under adapters/codex. The CLI
+# manages only adapters that install project-local files.
 INSTALL_ADAPTERS = ("claude-code", "opencode", "cursor", "gemini-cli")
 PACKAGE_TEMPLATE_ROOT = Path(__file__).resolve().parent / "template-files"
 
 
 def sources_for_adapter(adapter: str) -> tuple[AdapterSource, ...]:
-    """Return canonical file mappings for one init-supported adapter."""
+    """Return installable source mappings for one managed adapter."""
 
     if adapter not in INSTALL_ADAPTERS:
         raise ValueError(f"unsupported adapter: {adapter}")
@@ -151,20 +193,23 @@ def resolve_adapter_source(
 
 
 def find_adapter_drift(repo_root: str | Path) -> list[AdapterMirrorIssue]:
-    """Return missing and byte-different mirrors under a repository root."""
+    """Return missing and byte-different generated adapter files."""
 
     root = Path(repo_root)
     issues: list[AdapterMirrorIssue] = []
-    for source in ADAPTER_SOURCES:
+    missing_canonical: set[str] = set()
+    for source in MIRROR_SOURCES:
         canonical = root / source.canonical
         if not canonical.is_file():
-            issues.append(
-                AdapterMirrorIssue(
-                    canonical=source.canonical,
-                    mirror=source.canonical,
-                    reason="canonical-missing",
+            if source.canonical not in missing_canonical:
+                missing_canonical.add(source.canonical)
+                issues.append(
+                    AdapterMirrorIssue(
+                        canonical=source.canonical,
+                        mirror=source.canonical,
+                        reason="canonical-missing",
+                    )
                 )
-            )
             continue
 
         canonical_content = canonical.read_bytes()
@@ -190,20 +235,22 @@ def find_adapter_drift(repo_root: str | Path) -> list[AdapterMirrorIssue]:
 
 
 def sync_adapter_mirrors(repo_root: str | Path) -> list[str]:
-    """Rewrite missing or different mirrors from their canonical sources."""
+    """Rewrite generated adapter and package files from canonical sources."""
 
     root = Path(repo_root)
-    missing_canonical = [
-        source.canonical
-        for source in ADAPTER_SOURCES
-        if not (root / source.canonical).is_file()
-    ]
+    missing_canonical = sorted(
+        {
+            source.canonical
+            for source in MIRROR_SOURCES
+            if not (root / source.canonical).is_file()
+        }
+    )
     if missing_canonical:
         missing = ", ".join(missing_canonical)
         raise FileNotFoundError(f"canonical adapter source does not exist: {missing}")
 
     updated: list[str] = []
-    for source in ADAPTER_SOURCES:
+    for source in MIRROR_SOURCES:
         canonical_content = (root / source.canonical).read_bytes()
         for mirror_relative in source.mirrors:
             mirror = root / mirror_relative

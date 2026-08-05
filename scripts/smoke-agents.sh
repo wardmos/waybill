@@ -140,21 +140,29 @@ run_command() {
 
 command_for_tool() {
   local tool="$1"
-  local prompt="handoff import $BUNDLE. Do not modify files; only read the bundle, verify repository state, and summarize the handoff."
-  local codex_prompt="Use the Waybill handoff skill. /handoff import $BUNDLE. Do not modify files; only read the bundle, verify repository state, and summarize the handoff."
+  local adapter_path
+  case "$tool" in
+    claude) adapter_path="adapters/claude-code/skills/handoff/SKILL.md" ;;
+    codex) adapter_path="adapters/codex/skills/handoff/SKILL.md" ;;
+    cursor) adapter_path="adapters/cursor/rules/handoff.mdc" ;;
+    opencode) adapter_path="adapters/opencode/skills/handoff/SKILL.md" ;;
+    gemini) adapter_path="adapters/gemini-cli/skills/handoff/SKILL.md" ;;
+    *) echo "Unknown tool: $tool" >&2; return 2 ;;
+  esac
+  local prompt="Read $adapter_path and follow its handoff import workflow for $BUNDLE. Do not modify files; only read the bundle, verify repository state, and summarize the handoff."
 
   case "$tool" in
     claude)
-      COMMAND=("$CLAUDE_BINARY" -p --permission-mode plan --no-session-persistence "$codex_prompt")
+      COMMAND=("$CLAUDE_BINARY" -p --permission-mode plan --no-session-persistence "$prompt")
       ;;
     codex)
-      COMMAND=("$CODEX_BINARY" exec --ephemeral -s read-only -C "$ROOT" "$codex_prompt")
+      COMMAND=("$CODEX_BINARY" exec --ephemeral -s read-only -C "$ROOT" "$prompt")
       ;;
     cursor)
       COMMAND=("$CURSOR_BINARY" -p --trust --mode=ask "$prompt")
       ;;
     opencode)
-      COMMAND=("$OPENCODE_BINARY" run --command handoff "import $BUNDLE. Do not modify files; only read the bundle, verify repository state, and summarize the handoff.")
+      COMMAND=("$OPENCODE_BINARY" run "$prompt")
       ;;
     gemini)
       COMMAND=("$GEMINI_BINARY" --skip-trust --approval-mode plan)

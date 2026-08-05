@@ -18,6 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
 from typing import Any, Sequence
 
+from .adapter_sources import REFERENCE_NAMES
 from .delegation import verify_delegation_pair
 from .limits import BundleLimitError, list_bundle_files
 from .readiness import check_export_readiness
@@ -113,6 +114,29 @@ _ADAPTER_ENTRYPOINTS = {
     "opencode": (
         "adapters/opencode/skills/handoff/SKILL.md",
         ".opencode/skills/handoff/SKILL.md",
+    ),
+}
+
+_ADAPTER_REFERENCE_ROOTS = {
+    "claude-code": (
+        "adapters/claude-code/skills/handoff/references",
+        ".claude/skills/handoff/references",
+    ),
+    "codex": (
+        "adapters/codex/skills/handoff/references",
+        ".waybill-conformance/codex/skills/handoff/references",
+    ),
+    "cursor": (
+        "adapters/cursor/rules/waybill-handoff/references",
+        ".cursor/rules/waybill-handoff/references",
+    ),
+    "gemini-cli": (
+        "adapters/gemini-cli/skills/handoff/references",
+        ".gemini/skills/handoff/references",
+    ),
+    "opencode": (
+        "adapters/opencode/skills/handoff/references",
+        ".opencode/skills/handoff/references",
     ),
 }
 
@@ -592,6 +616,18 @@ def _install_canonical_adapter(repo: Path, adapter: str, source_root: Path) -> s
     target = repo / target_relative
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(canonical, target)
+
+    source_reference_root, target_reference_root = _ADAPTER_REFERENCE_ROOTS[adapter]
+    for name in REFERENCE_NAMES:
+        source_reference = source_root / source_reference_root / name
+        if not source_reference.is_file():
+            raise FileNotFoundError(
+                "canonical adapter reference is missing: "
+                f"{source_reference_root}/{name}"
+            )
+        target_reference = repo / target_reference_root / name
+        target_reference.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_reference, target_reference)
     return target_relative
 
 
