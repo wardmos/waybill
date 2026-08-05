@@ -31,13 +31,32 @@ class CanonicalSkillLayoutTests(unittest.TestCase):
             (references / "bundle-format.md").read_text(encoding="utf-8"),
         )
         self.assertIn(
-            "waybill ready",
+            "does not require the Waybill CLI",
             (references / "export.md").read_text(encoding="utf-8"),
         )
         self.assertIn(
             "read-only",
             (references / "import.md").read_text(encoding="utf-8"),
         )
+
+    def test_basic_export_and_import_do_not_require_the_cli(self) -> None:
+        bundle_format = (
+            SKILL_ROOT / "references/bundle-format.md"
+        ).read_text(encoding="utf-8")
+        export = (SKILL_ROOT / "references/export.md").read_text(encoding="utf-8")
+        import_workflow = (
+            SKILL_ROOT / "references/import.md"
+        ).read_text(encoding="utf-8")
+        normalized_export = " ".join(export.split())
+        normalized_import = " ".join(import_workflow.split())
+
+        self.assertIn("optional", bundle_format.lower())
+        self.assertIn("omit", bundle_format.lower())
+        self.assertIn("does not require the Waybill CLI", export)
+        self.assertIn("optional enhanced verification", normalized_export)
+        self.assertNotIn("stop and report that the export is not ready", export)
+        self.assertIn("does not require the Waybill CLI", normalized_import)
+        self.assertIn("compare the fields directly", normalized_import.lower())
 
 
 if __name__ == "__main__":

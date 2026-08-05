@@ -69,9 +69,7 @@ Use this `metadata.json` shape for a current export:
     "branch": "main",
     "base_ref": "unknown",
     "head_sha": "<current-HEAD>",
-    "dirty": true,
-    "status_digest": "sha256:<exact-status-digest>",
-    "repo_state_digest": "sha256:<exact-repository-state-digest>"
+    "dirty": true
   },
   "artifacts": {
     "waybill": "WAYBILL.md",
@@ -83,6 +81,11 @@ Use this `metadata.json` shape for a current export:
 ```
 
 The angle-bracket values describe required substitutions, not literal values.
-Use `unknown` only for non-digest values that cannot be determined. A current
-export must contain exact `git.status_digest` and `git.repo_state_digest`
-values measured by `waybill new` or supplied by a trusted export context.
+Use `unknown` only for non-digest values that cannot be determined.
+
+`git.status_digest` and `git.repo_state_digest` are optional enhanced-fidelity
+fields. Include them only when a trusted tool supplies exact `sha256:` values;
+never calculate them by guessing from displayed Git output. Omit unavailable
+digest fields instead of writing `unknown`, placeholders, or stale values. A
+bundle without digests remains a valid basic-fidelity handoff, and the importer
+must report that repository digest matching was not performed.

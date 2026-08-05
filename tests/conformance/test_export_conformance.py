@@ -190,7 +190,7 @@ class SyntheticRepositoryTests(unittest.TestCase):
             )
             self.assertNotIn(str(prepared.repo), prompt)
 
-    def test_all_export_adapters_require_fidelity_and_immutable_final_gates(self) -> None:
+    def test_all_export_adapters_support_basic_and_enhanced_verification(self) -> None:
         scenario = load_export_scenario(SCENARIO_DIR / "ordinary-unfinished.json")
         with tempfile.TemporaryDirectory() as temporary:
             for adapter in SUPPORTED_EXPORT_ADAPTERS:
@@ -218,11 +218,11 @@ class SyntheticRepositoryTests(unittest.TestCase):
                     for required in (
                         "status_digest",
                         "repo_state_digest",
-                        "waybill validate .waybill",
-                        "waybill ready .waybill --repo .",
-                        "waybill verify-repo .waybill --repo .",
-                        "waybill verify-pair REQUEST .waybill",
-                        "Do not modify `.waybill/` after final validation begins.",
+                        "does not require the Waybill CLI",
+                        "Omit optional digest fields",
+                        "perform the basic checks directly",
+                        "Optional Enhanced Verification",
+                        "waybill verify-pair REQUEST RESULT",
                     ):
                         self.assertIn(required, instructions)
 

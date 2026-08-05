@@ -12,7 +12,9 @@ agent identity selected by the canonical skill.
 - Use `.waybill/` unless the user specifies another output path.
 - Do not run tests unless the user explicitly asks.
 - Do not upload or share bundle contents.
-- Never omit, reuse stale, or invent repository-state digests.
+- This workflow does not require the Waybill CLI.
+- Never reuse stale or invent repository-state digests. Omit optional digest
+  fields when no trusted helper can calculate them exactly.
 
 ## Procedure
 
@@ -23,32 +25,45 @@ agent identity selected by the canonical skill.
    - `git branch --show-current`
    - `git rev-parse HEAD`
    - `git diff`
-3. Initialize the bundle with
-   `waybill new --output .waybill --repo . --source-agent SOURCE_AGENT` when the
-   CLI is available. Replace `SOURCE_AGENT` with the adapter identity and
-   preserve the measured `status_digest` and `repo_state_digest` while replacing
-   draft content. If neither the CLI nor a trusted export context can supply
-   exact digests, stop and report that the export is not ready.
+3. Create the bundle directory directly with the active agent's file-writing
+   tools. Existing bundle files must not be overwritten without the user's
+   approval.
 4. Write `WAYBILL.md` using the exact headings described in the bundle-format
    reference and the repository templates when present.
-5. Write `metadata.json` using the bundle-format reference.
-6. Write `diff.patch` from the current diff when Git is available.
+5. Write `metadata.json` using the bundle-format reference. Record the observed
+   branch, HEAD, and dirty state. Omit optional digest fields unless exact values
+   came from a trusted helper.
+6. Write `diff.patch` from `git diff --binary HEAD --` when Git is available.
 7. Write `commands.log` with important commands and outcomes. Separate
    read-only inspection from bundle-writing actions; do not claim every command
    was read-only after creating files.
 8. Write `test-summary.md` with passing, failing, and not-run checks.
-9. Finish every bundle write, then run these final gates in order:
-   - `waybill validate .waybill`
-   - `waybill ready .waybill --repo .`
-   - `waybill verify-repo .waybill --repo .`
-   - For a `delegation_result`, also run
-     `waybill verify-pair REQUEST .waybill`, replacing `REQUEST` with the
-     original request bundle path.
-10. Do not modify `.waybill/` after final validation begins. If a gate requires
-    a correction, make it and restart the complete gate sequence after the new
-    final write. Claim success only when every required gate passes.
-11. Report the bundle path, files written, missing recommended files, and the
+9. Re-read the finished files and perform the basic checks directly:
+   - `WAYBILL.md` and `metadata.json` exist as regular files.
+   - `metadata.json` is one JSON object with no unresolved placeholders.
+   - `WAYBILL.md` contains every required heading for its handoff kind.
+   - `source_agent`, branch, HEAD, and dirty state match the captured context.
+   - Every declared artifact path stays inside the bundle.
+   - Delegation IDs, roles, sources, and result status agree when applicable.
+10. Re-inspect branch, HEAD, and status after the last bundle write. If the
+    target repository changed during export, refresh the affected bundle facts
+    and repeat the basic checks. Do not treat the bundle directory itself as a
+    target-code change; warn when it is not ignored by Git.
+11. Report the bundle path, files written, missing recommended files, whether
+    repository digests were recorded, and the
     need to review the bundle for sensitive information.
+
+## Optional Enhanced Verification
+
+When the Waybill CLI is already available, it may provide optional enhanced
+verification; installing it is not part of this workflow. It can initialize a
+digest-bearing draft with `waybill new`, and after the final write it can run
+`waybill validate`, `waybill ready`, and `waybill verify-repo`. For a
+`delegation_result`, it can also run `waybill verify-pair REQUEST RESULT`.
+
+The absence of the CLI never blocks a basic export. If an optional verification
+command is run and finds a real bundle error, correct the bundle and repeat all
+basic checks plus the optional command before claiming enhanced verification.
 
 For a delegation request, set a stable `request_id`, parent and child roles,
 and make `source_agent` equal the parent. For a delegation result, set

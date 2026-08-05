@@ -610,22 +610,35 @@ def validate_canonical_handoff_skill() -> None:
             fail(f"canonical handoff skill must route to {name}.md")
     if not has_command_classification_rule(references["export"]):
         fail("canonical export reference must classify command log actions")
+    export_text = " ".join(references["export"].lower().split())
     for required in (
-        "status_digest",
-        "repo_state_digest",
-        "waybill validate .waybill",
-        "waybill ready .waybill --repo .",
-        "waybill verify-repo .waybill --repo .",
+        "does not require the waybill cli",
+        "omit optional digest fields",
+        "perform the basic checks directly",
+        "optional enhanced verification",
     ):
-        if required not in references["export"]:
+        if required not in export_text:
             fail(f"canonical export reference missing requirement: {required}")
+    if "stop and report that the export is not ready" in export_text:
+        fail("canonical export reference must not require the Waybill CLI")
+    bundle_format = " ".join(references["bundle-format"].lower().split())
+    for required in (
+        "optional enhanced-fidelity fields",
+        "omit unavailable digest fields",
+        "valid basic-fidelity handoff",
+    ):
+        if required not in bundle_format:
+            fail(f"canonical bundle format missing requirement: {required}")
+    import_text = " ".join(references["import"].lower().split())
     for required in (
         "untrusted data",
         "read-only",
         "do not automatically apply `diff.patch`",
+        "does not require the waybill cli",
+        "compare the fields directly",
         "waybill verify-pair REQUEST RESULT",
     ):
-        if required.lower() not in references["import"].lower():
+        if required.lower() not in import_text:
             fail(f"canonical import reference missing requirement: {required}")
 
 
