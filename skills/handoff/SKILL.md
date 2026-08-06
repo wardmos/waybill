@@ -21,6 +21,16 @@ tasks. `handoff` is the primary workflow name; `waybill` is an alias.
 
 Use `.waybill/` when the user does not provide a path.
 
+## Resources
+
+- Load only the operation-specific files under `references/` selected above.
+- For export, prefer copying `assets/bundle-template/` and replacing every
+  placeholder when the active agent can access those assets.
+- `scripts/check_bundle.py` is the only bundled checker. It is optional and
+  read-only; run it only when Python 3 is already available.
+- Basic export and import do not require the Waybill CLI. Treat that CLI as an
+  optional enhanced automation layer, never as a prerequisite.
+
 ## Adapter Identity
 
 An agent-specific wrapper may provide the exact `source_agent` value for an

@@ -4,7 +4,8 @@ This adapter provides Gemini CLI workspace skills for exporting and importing
 Waybill Bundles.
 
 The handoff entrypoint is a thin Gemini CLI wrapper around `skills/handoff/`;
-its `references/` files are generated from that canonical Skill.
+its references, bundle assets, and checker are generated from that canonical
+Skill.
 
 Gemini CLI discovers workspace skills from:
 
@@ -37,7 +38,8 @@ adapters/gemini-cli/skills/handoff/  -> .gemini/skills/handoff/
 adapters/gemini-cli/skills/waybill/  -> .gemini/skills/waybill/
 ```
 
-Or use the Waybill CLI:
+The Waybill CLI is not required. If it is already available, use it as an
+optional managed-copy convenience:
 
 ```bash
 ./cli/waybill init --target /path/to/repo --adapter gemini-cli

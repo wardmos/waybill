@@ -1,7 +1,7 @@
 # Testing Waybill
 
-This document describes the checks for the Waybill handoff and CLI
-workflow.
+This document describes checks for the agent-native Waybill handoff workflow,
+its optional bundled checker, and the enhanced support CLI.
 
 ## Full Local Gate
 
@@ -29,9 +29,10 @@ All three directories are Python packages so `unittest discover -s tests -t .`
 recurses consistently on Python 3.10, 3.11, and 3.12.
 
 The canonical handoff Skill is `skills/handoff/SKILL.md`; its bundle-format,
-export, and import references are tested separately from the thin adapter
-entrypoints. `sync-adapters.py --check` verifies every generated adapter and
-packaged reference copy.
+export, and import references, copyable assets, and single read-only checker are
+tested separately from the thin adapter entrypoints. Checker tests run with no
+`waybill` executable on `PATH`. `sync-adapters.py --check` verifies every
+generated adapter and packaged resource copy.
 
 ## Continuous Integration
 

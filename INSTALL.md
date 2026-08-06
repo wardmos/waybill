@@ -2,22 +2,44 @@
 
 Waybill ships as Markdown instructions for Claude Code, a local Codex plugin,
 OpenCode commands and skills, Cursor project rules, Gemini CLI workspace
-skills, and a small Python standard-library CLI. No package manager install is
-required when running it from a Waybill checkout.
+skills, copyable bundle assets, and one optional read-only checker. Basic
+handoffs run inside those agents and do not require the Waybill CLI or a Python
+package. A small standard-library CLI is available separately as an enhanced
+automation layer.
 
 For the shortest setup path, start with `QUICKSTART.md`. This document keeps
 the fuller per-adapter details.
 
 The agent-neutral source of truth is `skills/handoff/`. Each directory under
 `adapters/` contains only a product-specific entrypoint or command wrapper plus
-generated reference copies needed to make that adapter self-contained. Run
-`python3 scripts/sync-adapters.py --write` after changing the canonical Skill;
-`--check` verifies that adapter and packaged copies have not drifted.
+generated reference, asset, and checker copies needed to make that adapter
+self-contained. Run `python3 scripts/sync-adapters.py --write` after changing
+the canonical Skill; `--check` verifies that adapter and packaged copies have
+not drifted.
 
-## Managed Project Adapter Lifecycle
+## Agent-Native Installation
 
-`waybill init` manages the file-based Claude Code, OpenCode, Cursor CLI, and
-Gemini CLI adapters. Preview the complete plan before writing:
+The default installation unit is the adapter's Skill or plugin directory:
+
+| Agent | Copy or enable |
+| --- | --- |
+| Claude Code | `adapters/claude-code/skills/*` in `.claude/skills/` |
+| Codex | the plugin at `adapters/codex/` |
+| OpenCode | `adapters/opencode/commands/*` and `skills/*` |
+| Cursor | `adapters/cursor/rules/*` in `.cursor/rules/` |
+| Gemini CLI | `adapters/gemini-cli/skills/*` in `.gemini/skills/` |
+
+These directories are self-contained. Copying or enabling the relevant one is
+enough for `/handoff export` and `/handoff import`; no Waybill CLI process runs
+behind the Skill. The per-agent sections below give exact mappings.
+
+## Optional Managed Adapter Lifecycle
+
+When the support CLI is already available, `waybill init` can manage the
+file-based Claude Code, OpenCode, Cursor CLI, and Gemini CLI adapters. This is a
+convenience for conflict preflight, multi-adapter installation, deterministic
+manifests, and drift diagnostics; it is not required by the Skills. Preview the
+complete plan before writing:
 
 ```bash
 ./cli/waybill init --target /path/to/repo --dry-run
@@ -108,7 +130,8 @@ applying `diff.patch`.
 
 ## Codex Plugin Directory Alternative
 
-Instead of installing from the CLI, you can install from the plugin directory:
+Instead of using Codex's command-line plugin management, you can install from
+the plugin directory:
 
 1. Open the plugin directory:
 
@@ -129,13 +152,19 @@ After installation, the target repository contains Claude Code skills at:
 .claude/skills/waybill/SKILL.md
 ```
 
+Install without the Waybill CLI by copying the adapter Skill directories after
+checking that the destinations will not overwrite local changes:
+
+```text
+adapters/claude-code/skills/handoff/ -> .claude/skills/handoff/
+adapters/claude-code/skills/waybill/ -> .claude/skills/waybill/
+```
+
 To try them:
 
-1. Generate the local adapter files in this checkout, then open it in Claude
-   Code:
+1. Start Claude Code in the target repository:
 
    ```bash
-   ./cli/waybill init --target . --adapter claude-code
    claude
    ```
 
@@ -154,6 +183,13 @@ To try them:
 Expected result: Claude Code reads the example bundle, checks the repository
 state, summarizes the original task, and identifies the next recommended step
 without applying `diff.patch`.
+
+If the optional support CLI is already available, this command performs the
+same copy through the managed lifecycle:
+
+```bash
+./cli/waybill init --target . --adapter claude-code
+```
 
 The older command instruction files are still provided in:
 
@@ -176,12 +212,20 @@ skills at:
 .opencode/skills/waybill/SKILL.md
 ```
 
+Install without the Waybill CLI by copying:
+
+```text
+adapters/opencode/commands/handoff.md -> .opencode/commands/handoff.md
+adapters/opencode/commands/waybill.md -> .opencode/commands/waybill.md
+adapters/opencode/skills/handoff/ -> .opencode/skills/handoff/
+adapters/opencode/skills/waybill/ -> .opencode/skills/waybill/
+```
+
 To try them:
 
-1. Generate the local adapter files in this checkout, then open it in OpenCode:
+1. Start OpenCode in the target repository:
 
    ```bash
-   ./cli/waybill init --target . --adapter opencode
    opencode
    ```
 
@@ -207,6 +251,9 @@ The reusable adapter files are available in:
 adapters/opencode/
 ```
 
+Optional managed installation is available with
+`./cli/waybill init --target . --adapter opencode`.
+
 ## Cursor CLI
 
 After installation, the target repository contains Cursor rules under:
@@ -215,10 +262,12 @@ After installation, the target repository contains Cursor rules under:
 .cursor/rules/
 ```
 
-Install the adapter before starting Cursor CLI:
+Install without the Waybill CLI by copying:
 
-```bash
-./cli/waybill init --target . --adapter cursor
+```text
+adapters/cursor/rules/handoff.mdc -> .cursor/rules/handoff.mdc
+adapters/cursor/rules/waybill.mdc -> .cursor/rules/waybill.mdc
+adapters/cursor/rules/waybill-handoff/ -> .cursor/rules/waybill-handoff/
 ```
 
 Then smoke test it in read-only ask mode:
@@ -242,6 +291,9 @@ Reusable adapter files are available in:
 adapters/cursor/
 ```
 
+Optional managed installation is available with
+`./cli/waybill init --target . --adapter cursor`.
+
 ## Gemini CLI
 
 After installation, the target repository contains Gemini CLI skills under:
@@ -250,10 +302,11 @@ After installation, the target repository contains Gemini CLI skills under:
 .gemini/skills/
 ```
 
-Install the adapter before starting Gemini CLI:
+Install without the Waybill CLI by copying:
 
-```bash
-./cli/waybill init --target . --adapter gemini-cli
+```text
+adapters/gemini-cli/skills/handoff/ -> .gemini/skills/handoff/
+adapters/gemini-cli/skills/waybill/ -> .gemini/skills/waybill/
 ```
 
 Then smoke test it in read-only plan mode:
@@ -278,15 +331,19 @@ Reusable adapter files are available in:
 adapters/gemini-cli/
 ```
 
-## Python Support Package
+Optional managed installation is available with
+`./cli/waybill init --target . --adapter gemini-cli`.
 
-The Python package provides the support CLI as a `waybill` command. It is useful
-for validation, inspection, redaction, packing, rendering, and adapter
-installation from outside a repository clone.
+## Optional Python Support Package
+
+The Python package provides the enhanced support CLI as a `waybill` command.
+Install it only when you want managed adapter installation, exact digest-bearing
+drafts, deeper validation, inspection, redaction, packing, or rendering from
+outside a repository clone.
 
 The package does not replace the agent-native `/handoff` and `/waybill`
-commands. Those still come from the project adapter files installed into a
-target repository.
+commands and is not a runtime dependency of either workflow. Those commands
+come from the project adapter files installed into a target repository.
 
 After the package is published, install or run the support CLI with:
 

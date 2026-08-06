@@ -105,6 +105,24 @@ class CanonicalSkillLayoutTests(unittest.TestCase):
             self.assertIn("../scripts/check_bundle.py", text)
             self.assertIn("optional read-only", " ".join(text.lower().split()))
 
+    def test_user_docs_make_the_waybill_cli_an_optional_enhancement(self) -> None:
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        quickstart = (ROOT / "QUICKSTART.md").read_text(encoding="utf-8")
+        install = (ROOT / "INSTALL.md").read_text(encoding="utf-8")
+        claude = (ROOT / "adapters/claude-code/README.md").read_text(
+            encoding="utf-8"
+        )
+        codex = (ROOT / "adapters/codex/README.md").read_text(encoding="utf-8")
+
+        self.assertIn("## Optional Support CLI", readme)
+        self.assertIn(
+            "does not require the Waybill CLI",
+            " ".join(quickstart.split()),
+        )
+        self.assertIn("## Optional Managed Adapter Lifecycle", install)
+        self.assertIn("without the Waybill CLI", claude)
+        self.assertIn("without the Waybill CLI", codex)
+
 
 if __name__ == "__main__":
     unittest.main()

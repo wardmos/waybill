@@ -4,7 +4,8 @@ This adapter provides Cursor project rules for exporting and importing Waybill
 Bundles from Cursor Agent and Cursor CLI.
 
 The rules are thin Cursor wrappers around `skills/handoff/`. Shared workflow
-references are generated under `rules/waybill-handoff/references/`.
+references, bundle assets, and the checker are generated under
+`rules/waybill-handoff/`.
 
 Cursor supports project rules in:
 
@@ -38,7 +39,8 @@ adapters/cursor/rules/waybill.mdc  -> .cursor/rules/waybill.mdc
 adapters/cursor/rules/waybill-handoff/ -> .cursor/rules/waybill-handoff/
 ```
 
-Or use the Waybill CLI:
+The Waybill CLI is not required. If it is already available, use it as an
+optional managed-copy convenience:
 
 ```bash
 ./cli/waybill init --target /path/to/repo --adapter cursor

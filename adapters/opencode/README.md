@@ -4,7 +4,8 @@ This adapter provides native OpenCode commands and skills for exporting and
 importing Waybill Bundles.
 
 The commands and skills are thin OpenCode wrappers around `skills/handoff/`;
-the handoff `references/` files are generated from that canonical Skill.
+the handoff references, bundle assets, and checker are generated from that
+canonical Skill.
 
 OpenCode supports project-local custom commands in:
 
@@ -45,6 +46,9 @@ Then start OpenCode from that repository:
 ```bash
 opencode
 ```
+
+The Waybill CLI is not required. If it is already available,
+`waybill init --adapter opencode` is an optional managed-copy convenience.
 
 Smoke test import with:
 

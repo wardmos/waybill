@@ -26,6 +26,12 @@ includes OpenCode, Cursor CLI, and Gemini CLI.
 Waybill is not a replacement agent or a standalone workflow runner. It is a
 local handoff format plus thin adapters for existing coding agents.
 
+The normal export and import workflows run inside the coding agent and do not
+require the Waybill CLI or a Python package. The Skill includes copyable bundle
+assets and one optional read-only checker. The CLI remains available for users
+who want managed adapter installation, exact repository digests, automation,
+redaction, or archive workflows.
+
 For the shortest setup path, see `QUICKSTART.md`.
 
 ## Skill And Adapter Layout
@@ -36,23 +42,31 @@ Waybill keeps one agent-neutral Skill as the source of truth:
 skills/
   handoff/
     SKILL.md
+    assets/
+      bundle-template/
     references/
+    scripts/
+      check_bundle.py
 ```
 
 `SKILL.md` dispatches to focused bundle-format, export, or import references so
-an agent loads only the guidance needed for the current operation. The
-`adapters/` directory contains thin product-specific entrypoints and generated
-copies of those references for Claude Code, Codex, OpenCode, Cursor CLI, and
-Gemini CLI. Agent-local `.claude/`, `.cursor/`, `.gemini/`, and `.opencode/`
-files are installation outputs and are not canonical repository sources.
+an agent loads only the guidance needed for the current operation. The assets
+are draft files an agent can copy directly; `check_bundle.py` is an optional,
+read-only, standard-library enhancement. The `adapters/` directory contains
+thin product-specific entrypoints and generated copies of those shared
+resources for Claude Code, Codex, OpenCode, Cursor CLI, and Gemini CLI.
+Agent-local `.claude/`, `.cursor/`, `.gemini/`, and `.opencode/` files are
+installation outputs and are not canonical repository sources.
 
 ## At A Glance
 
 | Area | Status |
 | --- | --- |
 | Bundle format | Draft schema `0.2` in a `.waybill/` directory |
-| Primary entrypoint | Agent commands: `/handoff` and `/waybill` |
-| Support CLI | Python 3.10+ with a standard-library-only runtime |
+| Primary entrypoint | Agent-native Skill commands: `/handoff` and `/waybill` |
+| Bundle drafts | Copyable files bundled with the Skill |
+| Bundled checker | Optional, read-only, Python 3 standard library only |
+| Support CLI | Optional enhanced automation; Python 3.10+ standard library only |
 | Adapters | Claude Code, Codex, OpenCode, Cursor CLI, Gemini CLI |
 | Data model | Local-first files in the target repository |
 | Import behavior | Non-destructive; patches are not applied automatically |
@@ -87,25 +101,15 @@ current repository state before deciding what to do.
 Give your coding agent this repository URL and ask:
 
 ```text
-Use https://github.com/wardmos/waybill to install Waybill adapters into this
-repo. Follow QUICKSTART.md, then run the doctor check.
+Use https://github.com/wardmos/waybill to enable the Waybill handoff Skill for
+this repo. Follow the agent-native setup in QUICKSTART.md. Do not install the
+Waybill Python package or CLI unless I ask for the optional enhanced tools.
 ```
 
-The agent should run:
-
-```bash
-./cli/waybill init --target /path/to/your/repo --dry-run
-./cli/waybill init --target /path/to/your/repo
-./cli/waybill doctor --target /path/to/your/repo
-```
-
-`init` installs file-based project adapters for Claude Code, OpenCode, Cursor,
-and Gemini CLI. The dry run reports every `would-create`, `would-update`,
-`unchanged`, or `would-conflict` action without writing. A successful install
-writes a deterministic `.waybill-adapters.json` manifest; `doctor` uses it to
-classify files as `current`, `missing`, `stale`, or `modified`. Codex uses the
-local plugin marketplace described in `INSTALL.md` and is never managed by
-`init`.
+Codex can enable the bundled plugin, and Claude Code can copy the two
+project-scoped Skill directories into `.claude/skills/`. Neither path needs the
+Waybill CLI. `INSTALL.md` documents these paths plus the optional managed
+adapter lifecycle.
 
 ## What Waybill Creates
 
@@ -172,7 +176,7 @@ The parent/child examples show draft delegation semantics:
 See `WALKTHROUGH.md` for an end-to-end parent/child delegation flow using these
 fixtures.
 
-Try one locally:
+With the optional support CLI already available, inspect an example locally:
 
 ```bash
 ./cli/waybill validate examples/failed-test-handoff
@@ -180,12 +184,14 @@ Try one locally:
 ./cli/waybill render examples/failed-test-handoff
 ```
 
-## Support CLI
+## Optional Support CLI
 
 The primary user flow happens inside agent CLIs with `/handoff` and `/waybill`.
-The Python CLI is a small support tool for installing file-based adapters,
-validating bundles, checking repository state, redacting, packing, unpacking,
-and rendering review reports. It uses only the Python standard library.
+It never calls the Waybill CLI for the basic export or import path. The Python
+CLI is an optional enhancement for installing file-based adapters, creating
+exact digest-bearing drafts, running deeper validation, checking repository
+state, redacting, packing, unpacking, and rendering review reports. It uses only
+the Python standard library.
 
 When installed from the `agent-waybill` Python package, it provides the
 `waybill` support command. Agent adapters are still installed into project
@@ -230,14 +236,15 @@ See `INSTALL.md` for full local installation and smoke-test instructions.
 
 ### Claude Code
 
-`waybill init --adapter claude-code` installs project-scoped skills into:
+Copy the adapter's `skills/handoff/` and `skills/waybill/` directories into:
 
 ```text
 .claude/skills/
 ```
 
 The thin source wrapper and compatibility command instructions are in
-`adapters/claude-code/`.
+`adapters/claude-code/`. `waybill init --adapter claude-code` is an optional
+managed-install convenience.
 
 ### Codex
 
@@ -249,7 +256,7 @@ adapters/codex/
 
 ### OpenCode
 
-`waybill init --adapter opencode` installs project commands and skills into:
+Copy the OpenCode adapter commands and skills into:
 
 ```text
 .opencode/
@@ -261,9 +268,11 @@ Thin adapter sources are available in:
 adapters/opencode/
 ```
 
+`waybill init --adapter opencode` is an optional managed-install convenience.
+
 ### Cursor CLI
 
-`waybill init --adapter cursor` installs project rules into:
+Copy the Cursor adapter rules into:
 
 ```text
 .cursor/rules/
@@ -275,9 +284,11 @@ Thin adapter sources are available in:
 adapters/cursor/
 ```
 
+`waybill init --adapter cursor` is an optional managed-install convenience.
+
 ### Gemini CLI
 
-`waybill init --adapter gemini-cli` installs workspace skills into:
+Copy the Gemini CLI adapter skills into:
 
 ```text
 .gemini/skills/
@@ -288,6 +299,8 @@ Thin adapter sources are available in:
 ```text
 adapters/gemini-cli/
 ```
+
+`waybill init --adapter gemini-cli` is an optional managed-install convenience.
 
 ## Safety Defaults
 

@@ -2,7 +2,9 @@
 
 This walkthrough shows how the synthetic Waybill examples map to the
 user-facing handoff flow. It uses local files only and does not require running
-an agent model.
+an agent model. The real handoff flow runs through the agent-native Skill and
+does not require the Waybill CLI; CLI commands below are optional enhanced
+inspection examples.
 
 ## Scenario
 
@@ -66,7 +68,8 @@ It also adds request-specific sections in `WAYBILL.md`:
 - `Acceptance Criteria`
 - `Return Instructions`
 
-Inspect the synthetic request:
+If the optional support CLI is already available, inspect the synthetic
+request:
 
 ```bash
 ./cli/waybill validate examples/claude-parent-codex-child-request
@@ -131,7 +134,7 @@ The result bundle still has the standard Waybill sections and adds:
 - `Parent Review Notes`
 - `Parent Next Step`
 
-Inspect the synthetic result:
+If the optional support CLI is already available, inspect the synthetic result:
 
 ```bash
 ./cli/waybill validate examples/claude-parent-codex-child-result
@@ -154,7 +157,9 @@ The parent imports the child result:
 /handoff import examples/claude-parent-codex-child-result
 ```
 
-First verify that the result belongs to the request:
+The parent compares `request_id`, `result_for`, roles, and source agents
+directly. If the optional support CLI is already available, it can repeat that
+pair check without changing either bundle:
 
 ```bash
 ./cli/waybill verify-pair examples/claude-parent-codex-child-request \

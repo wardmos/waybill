@@ -12,45 +12,53 @@ local handoff bundle in the repository:
   test-summary.md
 ```
 
-This guide uses the project-local adapters and the standard-library CLI. No
-package manager install is required when running from a Waybill checkout.
+This guide uses the agent-native Skill workflow. It does not require the
+Waybill CLI, a Python package, or a separate Waybill process.
 
 The shared workflow lives in `skills/handoff/`. Agent-specific files under
-`adapters/` are thin entrypoints plus synchronized reference copies; `init`
-installs those files into each target agent's native project directory.
+`adapters/` are thin entrypoints plus synchronized references, copyable bundle
+assets, and one optional read-only checker.
 
-## 1. Install Adapters Into A Repo
+## 1. Enable The Agent-Native Skill
 
-Install the file-based project adapters for Claude Code, OpenCode, Cursor CLI,
-and Gemini CLI:
+### Codex
 
-From the Waybill repository:
+Enable the repository's Codex plugin through Codex plugin management:
+
+```bash
+codex plugin marketplace add .
+codex plugin add waybill@waybill-local
+```
+
+You can also select `Waybill` from the `Waybill Local` marketplace in the Codex
+plugin UI. Start a new thread after enabling it. This installs the Skill plugin,
+not the Waybill CLI.
+
+### Claude Code
+
+Ask Claude Code to copy these directories from the Waybill checkout into the
+target repository, without replacing existing paths unless you approve it:
+
+```text
+adapters/claude-code/skills/handoff/ -> .claude/skills/handoff/
+adapters/claude-code/skills/waybill/ -> .claude/skills/waybill/
+```
+
+Then start a new Claude Code session in the target repository. The copied Skill
+contains everything needed for basic export and import, without the Waybill
+CLI.
+
+See `INSTALL.md` for OpenCode, Cursor, and Gemini CLI copy paths.
+
+### Optional Managed Setup
+
+Use the support CLI only when you want conflict preflight, multi-adapter
+installation, a managed-file manifest, and installation diagnostics:
 
 ```bash
 ./cli/waybill init --target /path/to/your/repo --dry-run
 ./cli/waybill init --target /path/to/your/repo
-```
-
-The dry run performs the complete conflict preflight but writes nothing. It
-reports `would-create`, `would-update`, `unchanged`, and `would-conflict`
-actions. A conflict returns non-zero without writing. Resolve every conflict
-before applying, or use `--force` only when you intend to replace conflicting
-regular files; force never follows symbolic links.
-
-Install only one adapter when needed:
-
-```bash
-./cli/waybill init --target /path/to/your/repo --adapter claude-code
-./cli/waybill init --target /path/to/your/repo --adapter opencode
-./cli/waybill init --target /path/to/your/repo --adapter cursor
-./cli/waybill init --target /path/to/your/repo --adapter gemini-cli
-```
-
-Check the installation:
-
-```bash
 ./cli/waybill doctor --target /path/to/your/repo
-./cli/waybill doctor --target /path/to/your/repo --json
 ```
 
 A successful install atomically records managed files and digests in the
@@ -58,18 +66,7 @@ deterministic, timestamp-free `.waybill-adapters.json` manifest. `doctor`
 reports each managed file as `current`, `missing`, `stale`, or `modified`. For
 an older installation without a manifest, a file that differs from the current
 template is `modified`; it cannot be reliably distinguished as an untouched
-stale install or a local edit.
-
-Codex is installed separately as a local plugin from this repository:
-
-```bash
-codex plugin marketplace add .
-codex plugin add waybill@waybill-local
-```
-
-See `INSTALL.md` for the full Codex plugin flow.
-
-The Codex plugin is not an `init` or `doctor` management target.
+stale install or a local edit. Codex remains outside this optional lifecycle.
 
 ## 2. Export A Handoff
 
@@ -90,8 +87,8 @@ Expected result:
 - `.waybill/` is created in the target repository.
 - `WAYBILL.md` summarizes the goal, status, changed files, tests, risks, and
   next step.
-- `metadata.json` records branch, dirty state, privacy-preserving repository
-  state digests, and artifact paths.
+- `metadata.json` records branch, HEAD, dirty state, and artifact paths. Exact
+  repository digests are included only when a trusted helper calculated them.
 - `diff.patch` captures staged and unstaged tracked changes. Untracked contents
   are not captured automatically.
 - `commands.log` and `test-summary.md` are included when useful context is
@@ -129,15 +126,28 @@ For parent/child delegation, see `WALKTHROUGH.md`. It shows how a
 stable `request_id`; results reference it with `result_for` and record a
 `result_status` of `completed`, `partial`, or `blocked`.
 
-Verify a request/result pair without changing either bundle:
+When Python 3 is already available, the Skill's single bundled checker can
+verify a request/result pair without changing either bundle or repository:
 
 ```bash
-./cli/waybill verify-pair /path/to/request /path/to/result
+python3 /path/to/handoff/scripts/check_bundle.py /path/to/result \
+  --repo /path/to/repo --request /path/to/request --json
 ```
 
-## 4. Validate Before Continuing
+Without Python, the importing agent compares the correlation fields directly.
 
-Use the CLI when you want a deterministic check outside an agent:
+## 4. Optional Enhanced Validation
+
+Basic export and import include direct checks performed by the agent. If
+Python 3 is already available, run the Skill's bundled read-only checker:
+
+```bash
+python3 /path/to/handoff/scripts/check_bundle.py \
+  /path/to/your/repo/.waybill --repo /path/to/your/repo --json
+```
+
+The checker is self-contained and does not import or invoke the Waybill CLI.
+Use the optional support CLI when you want deeper automation outside an agent:
 
 ```bash
 ./cli/waybill validate /path/to/your/repo/.waybill
@@ -162,8 +172,8 @@ do not include ordinary text or a traceback.
 Review `.waybill/` before sharing it. It can contain prompts, paths, diffs,
 logs, test output, tokens, cookies, API keys, or customer data.
 
-First run the read-only shareability check. It requires no output path and
-writes nothing:
+Manual review needs no CLI. If the optional support CLI is available, its
+read-only shareability check requires no output path and writes nothing:
 
 ```bash
 ./cli/waybill share /path/to/your/repo/.waybill --check
@@ -174,7 +184,7 @@ The exit code is zero only when the bundle is shareable. JSON findings expose
 only `kind`, `path`, `count`, and `blocking`; matched secret values are never
 printed.
 
-Create a redacted archive:
+The optional CLI can also create a redacted archive:
 
 ```bash
 ./cli/waybill share /path/to/your/repo/.waybill --output /tmp/waybill.zip
