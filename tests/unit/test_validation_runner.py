@@ -29,6 +29,7 @@ EXPECTED_NEW_REQUIRED_FILES = {
     "skills/handoff/assets/bundle-template/diff.patch",
     "skills/handoff/assets/bundle-template/commands.log",
     "skills/handoff/assets/bundle-template/test-summary.md",
+    "skills/handoff/scripts/check_bundle.py",
     "waybill_core/adapter_matrix.py",
     "waybill_core/adapter_installation.py",
     "waybill_core/adapter_sources.py",

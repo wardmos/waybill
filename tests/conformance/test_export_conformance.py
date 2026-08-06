@@ -177,6 +177,13 @@ class SyntheticRepositoryTests(unittest.TestCase):
                     ).read_bytes(),
                     (installed_assets / name).read_bytes(),
                 )
+            self.assertEqual(
+                (
+                    REPO_ROOT
+                    / "adapters/codex/skills/handoff/scripts/check_bundle.py"
+                ).read_bytes(),
+                (installed_adapter.parent / "scripts/check_bundle.py").read_bytes(),
+            )
             self.assertTrue(prepared.evidence.canonical_diff.startswith(b"diff --git "))
             self.assertRegex(
                 prepared.evidence.status_digest,
@@ -238,6 +245,7 @@ class SyntheticRepositoryTests(unittest.TestCase):
                         "Omit optional digest fields",
                         "perform the basic checks directly",
                         "Optional Enhanced Verification",
+                        "../scripts/check_bundle.py",
                         "waybill verify-pair REQUEST RESULT",
                     ):
                         self.assertIn(required, instructions)

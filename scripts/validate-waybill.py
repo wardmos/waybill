@@ -30,6 +30,7 @@ from waybill_core.adapter_sources import (  # noqa: E402
     ADAPTER_SOURCES,
     BUNDLE_ASSET_NAMES,
     CANONICAL_SKILL,
+    CHECKER_SCRIPT_NAMES,
     MIRROR_SOURCES,
     find_adapter_drift,
     sources_for_adapter,
@@ -671,6 +672,20 @@ def validate_canonical_handoff_skill() -> None:
             fail(f"bundle WAYBILL asset missing heading: {heading}")
     if "../assets/bundle-template/" not in references["export"]:
         fail("canonical export reference must route to copyable bundle assets")
+
+    scripts_root = ROOT / "skills/handoff/scripts"
+    script_names = {path.name for path in scripts_root.iterdir() if path.is_file()}
+    if script_names != set(CHECKER_SCRIPT_NAMES):
+        fail("canonical Skill must contain exactly one bundled checker")
+    checker_path = scripts_root / "check_bundle.py"
+    if not os.access(checker_path, os.X_OK):
+        fail("bundled checker must be executable")
+    checker_text = checker_path.read_text(encoding="utf-8")
+    if "Read-only" not in checker_text or "standard-library" not in checker_text:
+        fail("bundled checker must declare its read-only standard-library boundary")
+    for name in ("export", "import"):
+        if "../scripts/check_bundle.py" not in references[name]:
+            fail(f"canonical {name} reference must route to the bundled checker")
 
 
 def validate_handoff_wrapper(

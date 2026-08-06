@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import unittest
 from pathlib import Path
 
@@ -61,7 +62,7 @@ class CanonicalSkillLayoutTests(unittest.TestCase):
         self.assertIn("optional", bundle_format.lower())
         self.assertIn("omit", bundle_format.lower())
         self.assertIn("does not require the Waybill CLI", export)
-        self.assertIn("optional enhanced verification", normalized_export)
+        self.assertIn("optional enhanced verification", normalized_export.lower())
         self.assertNotIn("stop and report that the export is not ready", export)
         self.assertIn("does not require the Waybill CLI", normalized_import)
         self.assertIn("compare the fields directly", normalized_import.lower())
@@ -89,6 +90,20 @@ class CanonicalSkillLayoutTests(unittest.TestCase):
 
         export = (SKILL_ROOT / "references/export.md").read_text(encoding="utf-8")
         self.assertIn("../assets/bundle-template/", export)
+
+    def test_skill_has_one_optional_read_only_checker(self) -> None:
+        scripts = SKILL_ROOT / "scripts"
+        self.assertEqual(
+            {"check_bundle.py"},
+            {path.name for path in scripts.iterdir() if path.is_file()},
+        )
+        checker = scripts / "check_bundle.py"
+        self.assertTrue(os.access(checker, os.X_OK))
+        self.assertIn("Read-only", checker.read_text(encoding="utf-8"))
+        for reference in ("export.md", "import.md"):
+            text = (SKILL_ROOT / "references" / reference).read_text(encoding="utf-8")
+            self.assertIn("../scripts/check_bundle.py", text)
+            self.assertIn("optional read-only", " ".join(text.lower().split()))
 
 
 if __name__ == "__main__":

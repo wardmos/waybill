@@ -58,15 +58,22 @@ agent identity selected by the canonical skill.
 
 ## Optional Enhanced Verification
 
-When the Waybill CLI is already available, it may provide optional enhanced
-verification; installing it is not part of this workflow. It can initialize a
-digest-bearing draft with `waybill new`, and after the final write it can run
-`waybill validate`, `waybill ready`, and `waybill verify-repo`. For a
-`delegation_result`, it can also run `waybill verify-pair REQUEST RESULT`.
+When a Python 3 runtime is already available, run the optional read-only
+[bundled checker](../scripts/check_bundle.py) after the final write. Resolve the
+linked script relative to this Skill and run
+`python3 CHECKER BUNDLE --repo . --json`, replacing `CHECKER` and `BUNDLE` with
+their actual paths. For a delegation result, add `--request REQUEST`. The
+checker is bundled with the Skill and requires no Waybill CLI installation.
 
-The absence of the CLI never blocks a basic export. If an optional verification
-command is run and finds a real bundle error, correct the bundle and repeat all
-basic checks plus the optional command before claiming enhanced verification.
+When the Waybill CLI is already available, it may provide further enhanced
+verification; installing it is not part of this workflow. It can initialize a
+digest-bearing draft with `waybill new`, and it can run `waybill validate`,
+`waybill ready`, `waybill verify-repo`, and `waybill verify-pair`.
+
+The absence of Python or the CLI never blocks a basic export. If an optional
+checker or CLI command is run and finds a real bundle error, correct the bundle
+and repeat all basic checks plus the optional command before claiming enhanced
+verification.
 
 For a delegation request, set a stable `request_id`, parent and child roles,
 and make `source_agent` equal the parent. For a delegation result, set

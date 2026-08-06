@@ -32,6 +32,7 @@ EXPECTED_TARGETS = {
         ".claude/skills/handoff/assets/bundle-template/diff.patch",
         ".claude/skills/handoff/assets/bundle-template/commands.log",
         ".claude/skills/handoff/assets/bundle-template/test-summary.md",
+        ".claude/skills/handoff/scripts/check_bundle.py",
         ".claude/skills/waybill/SKILL.md",
     ),
     "opencode": (
@@ -46,6 +47,7 @@ EXPECTED_TARGETS = {
         ".opencode/skills/handoff/assets/bundle-template/diff.patch",
         ".opencode/skills/handoff/assets/bundle-template/commands.log",
         ".opencode/skills/handoff/assets/bundle-template/test-summary.md",
+        ".opencode/skills/handoff/scripts/check_bundle.py",
         ".opencode/skills/waybill/SKILL.md",
     ),
     "cursor": (
@@ -58,6 +60,7 @@ EXPECTED_TARGETS = {
         ".cursor/rules/waybill-handoff/assets/bundle-template/diff.patch",
         ".cursor/rules/waybill-handoff/assets/bundle-template/commands.log",
         ".cursor/rules/waybill-handoff/assets/bundle-template/test-summary.md",
+        ".cursor/rules/waybill-handoff/scripts/check_bundle.py",
         ".cursor/rules/waybill.mdc",
     ),
     "gemini-cli": (
@@ -70,6 +73,7 @@ EXPECTED_TARGETS = {
         ".gemini/skills/handoff/assets/bundle-template/diff.patch",
         ".gemini/skills/handoff/assets/bundle-template/commands.log",
         ".gemini/skills/handoff/assets/bundle-template/test-summary.md",
+        ".gemini/skills/handoff/scripts/check_bundle.py",
         ".gemini/skills/waybill/SKILL.md",
     ),
 }
@@ -124,7 +128,7 @@ class AdapterSourceManifestTests(unittest.TestCase):
             for source in MIRROR_SOURCES
             if any(path.startswith("adapters/codex/") for path in source.mirrors)
         ]
-        self.assertEqual(8, len(codex_mirrors))
+        self.assertEqual(9, len(codex_mirrors))
         self.assertTrue(
             all(
                 source.canonical.startswith("skills/handoff/")

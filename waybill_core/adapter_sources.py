@@ -16,9 +16,11 @@ BUNDLE_ASSET_NAMES = (
     "commands.log",
     "test-summary.md",
 )
+CHECKER_SCRIPT_NAMES = ("check_bundle.py",)
 SHARED_RESOURCE_PATHS = (
     *(f"references/{name}" for name in REFERENCE_NAMES),
     *(f"assets/bundle-template/{name}" for name in BUNDLE_ASSET_NAMES),
+    *(f"scripts/{name}" for name in CHECKER_SCRIPT_NAMES),
 )
 
 

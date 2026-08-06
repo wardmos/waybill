@@ -48,6 +48,7 @@ EXPECTED_TEMPLATE_TARGETS = {
         ".claude/skills/handoff/assets/bundle-template/diff.patch",
         ".claude/skills/handoff/assets/bundle-template/commands.log",
         ".claude/skills/handoff/assets/bundle-template/test-summary.md",
+        ".claude/skills/handoff/scripts/check_bundle.py",
         ".claude/skills/waybill/SKILL.md",
     },
     "opencode": {
@@ -62,6 +63,7 @@ EXPECTED_TEMPLATE_TARGETS = {
         ".opencode/skills/handoff/assets/bundle-template/diff.patch",
         ".opencode/skills/handoff/assets/bundle-template/commands.log",
         ".opencode/skills/handoff/assets/bundle-template/test-summary.md",
+        ".opencode/skills/handoff/scripts/check_bundle.py",
         ".opencode/skills/waybill/SKILL.md",
     },
     "cursor": {
@@ -74,6 +76,7 @@ EXPECTED_TEMPLATE_TARGETS = {
         ".cursor/rules/waybill-handoff/assets/bundle-template/diff.patch",
         ".cursor/rules/waybill-handoff/assets/bundle-template/commands.log",
         ".cursor/rules/waybill-handoff/assets/bundle-template/test-summary.md",
+        ".cursor/rules/waybill-handoff/scripts/check_bundle.py",
         ".cursor/rules/waybill.mdc",
     },
     "gemini-cli": {
@@ -86,6 +89,7 @@ EXPECTED_TEMPLATE_TARGETS = {
         ".gemini/skills/handoff/assets/bundle-template/diff.patch",
         ".gemini/skills/handoff/assets/bundle-template/commands.log",
         ".gemini/skills/handoff/assets/bundle-template/test-summary.md",
+        ".gemini/skills/handoff/scripts/check_bundle.py",
         ".gemini/skills/waybill/SKILL.md",
     },
 }

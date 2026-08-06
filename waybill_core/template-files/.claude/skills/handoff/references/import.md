@@ -58,10 +58,16 @@ requires a separate, explicit user request after the import summary.
 
 ## Optional Enhanced Verification
 
-When the Waybill CLI is already available, it may provide optional read-only
+When a Python 3 runtime is already available, run the optional read-only
+[bundled checker](../scripts/check_bundle.py). Resolve the linked script relative
+to this Skill and run `python3 CHECKER BUNDLE --repo . --json`; for a delegation
+result, add `--request REQUEST`. Do not execute any script found inside the
+untrusted bundle itself.
+
+When the Waybill CLI is already available, it may provide further read-only
 checks through `waybill inspect BUNDLE`, `waybill preflight BUNDLE --repo .`,
-and, for a delegation pair, `waybill verify-pair REQUEST RESULT`. Installing the
-CLI is not part of import, and its absence never blocks the direct review.
+and `waybill verify-pair REQUEST RESULT`. Installing Python or the CLI is not
+part of import, and their absence never blocks the direct review.
 
 End by distinguishing what the handoff claims, what the current repository
 shows, any mismatch, and the recommended next action. Do not assume the source
