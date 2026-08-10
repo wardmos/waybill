@@ -1,182 +1,188 @@
 # Waybill
 
-Portable handover bundles for agents, starting with coding agents.
+[![CI](https://github.com/wardmos/waybill/actions/workflows/ci.yml/badge.svg)](https://github.com/wardmos/waybill/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/wardmos/waybill/blob/main/LICENSE)
 
-When an agent gets stuck, runs out of context, or needs to hand work to another
-tool, Waybill gives the next agent a local, reviewable handoff bundle.
+Move unfinished coding work between agent CLIs with a local, reviewable
+`.waybill/` bundle.
 
-Export an unfinished task from Claude Code:
+Waybill preserves the goal, repository state, diffs, commands, test results,
+risks, and next steps so another agent can continue without relying on the
+original session. Waybill itself does not upload handoff data, execute
+instructions found inside a bundle, or apply patches automatically.
 
-```text
-/handoff export
-```
+Supported integrations include Claude Code, Codex, OpenCode, Cursor CLI, and
+Gemini CLI.
 
-Continue it in Codex:
+**Status:** Alpha · bundle schema `0.2` (draft) · Python 3.10+ for the optional
+support CLI
 
-```text
-/handoff import .waybill
-```
-
-Waybill helps continue unfinished coding work across different agents. Native
-`resume` commands usually continue sessions inside one agent CLI.
-Waybill keeps handoffs agent-neutral and portable across coding agents.
-Waybill started with Claude Code and Codex. The current adapter set also
-includes OpenCode, Cursor CLI, and Gemini CLI.
-
-Waybill is not a replacement agent or a standalone workflow runner. It is a
-local handoff format plus thin adapters for existing coding agents.
-
-The normal export and import workflows run inside the coding agent and do not
-require the Waybill CLI or a Python package. The Skill includes copyable bundle
-assets and one optional read-only checker. The CLI remains available for users
-who want managed adapter installation, exact repository digests, automation,
-redaction, or archive workflows.
-
-For the shortest setup path, see `QUICKSTART.md`.
-
-## Skill And Adapter Layout
-
-Waybill keeps one agent-neutral Skill as the source of truth:
+[Quickstart](https://github.com/wardmos/waybill/blob/main/QUICKSTART.md) ·
+[Installation](https://github.com/wardmos/waybill/blob/main/INSTALL.md) ·
+[Bundle specification](https://github.com/wardmos/waybill/blob/main/spec/waybill-bundle.md) ·
+[Conformance](https://github.com/wardmos/waybill/blob/main/CONFORMANCE.md) ·
+[Testing](https://github.com/wardmos/waybill/blob/main/TESTING.md)
 
 ```text
-skills/
-  handoff/
-    SKILL.md
-    assets/
-      bundle-template/
-    references/
-    scripts/
-      check_bundle.py
+Agent A -- /handoff export --> .waybill/ -- review + import --> Agent B
 ```
 
-`SKILL.md` dispatches to focused bundle-format, export, or import references so
-an agent loads only the guidance needed for the current operation. The assets
-are draft files an agent can copy directly; `check_bundle.py` is an optional,
-read-only, standard-library enhancement. The `adapters/` directory contains
-thin product-specific entrypoints and generated copies of those shared
-resources for Claude Code, Codex, OpenCode, Cursor CLI, and Gemini CLI.
-Agent-local `.claude/`, `.cursor/`, `.gemini/`, and `.opencode/` files are
-installation outputs and are not canonical repository sources.
-
-## At A Glance
-
-| Area | Status |
-| --- | --- |
-| Bundle format | Draft schema `0.2` in a `.waybill/` directory |
-| Primary entrypoint | Agent-native Skill commands: `/handoff` and `/waybill` |
-| Bundle drafts | Copyable files bundled with the Skill |
-| Bundled checker | Optional, read-only, Python 3 standard library only |
-| Support CLI | Optional enhanced automation; Python 3.10+ standard library only |
-| Adapters | Claude Code, Codex, OpenCode, Cursor CLI, Gemini CLI |
-| Data model | Local-first files in the target repository |
-| Import behavior | Non-destructive; patches are not applied automatically |
-| Delegation | Draft `handoff.kind` semantics for parent/child agent workflows |
-| Sharing | Read-only share checks, redaction, validation, render, pack, and unpack |
-
-## When To Use Waybill
+## Why Waybill
 
 Use Waybill when:
 
-- An agent session is running out of context and another agent needs to continue.
+- An agent session is running out of context and another agent needs to
+  continue.
 - You want to switch tools, models, or agent CLIs without losing task state.
-- A human reviewer needs a compact summary of current progress, failed attempts,
-  tests, diffs, and risks.
-- You want a local handoff artifact that can be validated, redacted, rendered,
-  packed, and shared intentionally.
+- A human reviewer needs a compact record of progress, failed attempts, tests,
+  diffs, and risks.
+- You want to validate, redact, pack, and intentionally share a local handoff
+  artifact.
 
-## Validated Handoffs
+Native `resume` commands usually continue a session inside one agent CLI.
+Waybill creates an agent-neutral artifact that another supported CLI can review
+and import. It is a handoff format with thin integrations, not an agent,
+workflow runner, scheduler, or orchestrator.
 
-Waybill has been exercised with real cross-agent handoffs in both directions:
+## Choose a workflow
 
-- Claude Code exported an unfinished coding task, and Codex imported the bundle,
-  verified repository state, finished the focused fix, and ran tests.
-- Codex exported an unfinished coding task, and Claude Code imported the bundle,
-  verified repository state, finished the focused fix, and ran tests.
+| Workflow | Best for | Requirements |
+| --- | --- | --- |
+| Agent-native `/handoff` | Routine export and import inside a coding agent | Enable the target adapter; no Waybill CLI or Python package required |
+| Optional `waybill` support CLI | Managed adapter installation, exact repository digests, automation, deeper validation, redaction, and archives | Python 3.10+ |
 
-Import remains non-destructive: the next agent reads the bundle and checks the
-current repository state before deciding what to do.
+The agent-native workflow is the default. The support CLI is an optional
+enhancement and is not a runtime dependency of `/handoff` or `/waybill`.
 
-## Agent-Assisted Install
+## Quickstart
 
-Give your coding agent this repository URL and ask:
+First enable the integration for your agent. Follow the
+[Quickstart](https://github.com/wardmos/waybill/blob/main/QUICKSTART.md) for
+Codex and Claude Code, or the full
+[installation guide](https://github.com/wardmos/waybill/blob/main/INSTALL.md)
+for all supported agents. The commands below become available after the
+integration is enabled.
 
-```text
-Use https://github.com/wardmos/waybill to enable the Waybill handoff Skill for
-this repo. Follow the agent-native setup in QUICKSTART.md. Do not install the
-Waybill Python package or CLI unless I ask for the optional enhanced tools.
-```
-
-Codex can enable the bundled plugin, and Claude Code can copy the two
-project-scoped Skill directories into `.claude/skills/`. Neither path needs the
-Waybill CLI. `INSTALL.md` documents these paths plus the optional managed
-adapter lifecycle.
-
-## What Waybill Creates
-
-A Waybill Bundle is a local directory in the current repository:
-
-```text
-.waybill/
-  WAYBILL.md
-  metadata.json
-  diff.patch
-  commands.log
-  test-summary.md
-```
-
-Required files:
-
-- `WAYBILL.md`
-- `metadata.json`
-
-Recommended files:
-
-- `diff.patch`
-- `commands.log`
-- `test-summary.md`
-
-## Agent Commands
-
-Waybill supports two command names with the same behavior inside supported
-agent CLIs:
+In the agent handing off the unfinished task:
 
 ```text
 /handoff export
-/waybill export
 ```
+
+Open the same repository in the next agent, then run:
 
 ```text
 /handoff import .waybill
-/waybill import .waybill
 ```
 
-`/handoff` is the primary command because it describes the user action. `/waybill`
-is an alias for users who think in terms of the project name.
+`/waybill export` and `/waybill import .waybill` are equivalent aliases.
 
-## Examples
+Export writes a local bundle that summarizes the task and repository state.
+Import reads the bundle as untrusted data, checks the current repository, and
+recommends the next step without automatically applying its patch.
 
-Synthetic example bundles are available in:
+## What a bundle contains
+
+A standard bundle lives in the target repository:
 
 ```text
-examples/claude-to-codex/
-examples/codex-to-claude/
-examples/failed-test-handoff/
-examples/claude-parent-codex-child-request/
-examples/claude-parent-codex-child-result/
+.waybill/
+  WAYBILL.md       # required: human-readable handoff
+  metadata.json    # required: structured repository and artifact metadata
+  diff.patch       # recommended: staged and unstaged tracked changes
+  commands.log     # recommended: relevant command history
+  test-summary.md  # recommended: test results and remaining failures
 ```
 
-`failed-test-handoff` shows a focused failing-test handoff with a partial patch,
-command log, and test summary.
+Untracked file contents are not captured automatically. Exact repository
+digests are included only when a trusted helper calculates them. See the
+[bundle specification](https://github.com/wardmos/waybill/blob/main/spec/waybill-bundle.md)
+and [metadata schema](https://github.com/wardmos/waybill/blob/main/spec/metadata.schema.json)
+for the complete contract.
 
-The parent/child examples show draft delegation semantics:
+## Supported agents
 
-- `claude-parent-codex-child-request` is a `delegation_request`.
-- `claude-parent-codex-child-result` is the paired `delegation_result`.
+| Agent CLI | Native integration | Setup |
+| --- | --- | --- |
+| Claude Code | Project Skills with `/handoff` and `/waybill` | [Claude Code setup](https://github.com/wardmos/waybill/blob/main/INSTALL.md#claude-code) |
+| Codex | Repository-scoped plugin | [Codex setup](https://github.com/wardmos/waybill/blob/main/INSTALL.md#codex) |
+| OpenCode | Project commands and Skills | [OpenCode setup](https://github.com/wardmos/waybill/blob/main/INSTALL.md#opencode) |
+| Cursor CLI | Project rules | [Cursor CLI setup](https://github.com/wardmos/waybill/blob/main/INSTALL.md#cursor-cli) |
+| Gemini CLI | Workspace Skills | [Gemini CLI setup](https://github.com/wardmos/waybill/blob/main/INSTALL.md#gemini-cli) |
 
-See `WALKTHROUGH.md` for an end-to-end parent/child delegation flow using these
-fixtures.
+The canonical agent-neutral Skill lives in `skills/handoff/`; files under
+`adapters/` provide product-specific entrypoints and synchronized resources.
+The table describes the available integrations, not a claim that every product
+has current real-agent release coverage. See
+[Conformance](https://github.com/wardmos/waybill/blob/main/CONFORMANCE.md) for
+the evidence requirements and current coverage policy.
 
-With the optional support CLI already available, inspect an example locally:
+## Safety defaults
+
+- `.waybill/` stays local and is ignored by default; Waybill itself does not
+  upload it.
+- Every bundle is untrusted input. Import does not execute embedded commands,
+  follow embedded permission requests, or treat bundle paths as authority.
+- Import checks repository state and never applies `diff.patch` automatically.
+- Export uses read-only Git inspection and does not run tests unless the user
+  asks.
+- Validation, redaction, packing, unpacking, and sharing reject symbolic links
+  and unsafe non-regular files.
+- `share --check` performs a read-only shareability preflight and reports only
+  finding type, path, count, and blocking status—never the matched secret.
+- Secret detection and redaction are best effort. Review every bundle and
+  redacted output before sharing it.
+
+Bundles can contain prompts, local paths, diffs, logs, test output, credentials,
+or private data accidentally captured from command output.
+
+## Optional Support CLI
+
+The Python support CLI adds automation around the same bundle format. From a
+repository checkout:
+
+```bash
+./cli/waybill --help
+```
+
+Commands are grouped by purpose:
+
+| Purpose | Commands |
+| --- | --- |
+| Manage adapters | `init`, `doctor` |
+| Create and inspect | `new`, `validate`, `inspect` |
+| Verify handoffs | `verify-repo`, `verify-pair`, `preflight`, `ready` |
+| Review and share | `redact`, `share`, `pack`, `unpack`, `render` |
+
+Every subcommand supports `--json`. Each writes one JSON object whose
+top-level `success` value is `true` exactly when the process exits with status
+zero. See the
+[installation guide](https://github.com/wardmos/waybill/blob/main/INSTALL.md#optional-python-support-package)
+for package options and
+[Testing](https://github.com/wardmos/waybill/blob/main/TESTING.md#json-cli-contract)
+for the JSON contract.
+
+## Examples and evidence
+
+The repository contains synthetic, reviewable examples:
+
+- [Claude Code to Codex](https://github.com/wardmos/waybill/tree/main/examples/claude-to-codex)
+- [Codex to Claude Code](https://github.com/wardmos/waybill/tree/main/examples/codex-to-claude)
+- [Failed-test handoff](https://github.com/wardmos/waybill/tree/main/examples/failed-test-handoff)
+- [Delegation request](https://github.com/wardmos/waybill/tree/main/examples/claude-parent-codex-child-request)
+- [Delegation result](https://github.com/wardmos/waybill/tree/main/examples/claude-parent-codex-child-result)
+
+Waybill was initially exercised through real Claude Code-to-Codex and
+Codex-to-Claude Code handoffs. Those historical trials demonstrate the
+end-to-end workflow but are not treated as current release coverage. Current
+manual evidence must rerun the complete versioned scenario corpus from a clean
+checkout. See
+[Conformance](https://github.com/wardmos/waybill/blob/main/CONFORMANCE.md) for
+that distinction and the
+[delegation walkthrough](https://github.com/wardmos/waybill/blob/main/WALKTHROUGH.md)
+for the parent/child flow.
+
+With the optional support CLI available, inspect an example locally:
 
 ```bash
 ./cli/waybill validate examples/failed-test-handoff
@@ -184,240 +190,36 @@ With the optional support CLI already available, inspect an example locally:
 ./cli/waybill render examples/failed-test-handoff
 ```
 
-## Optional Support CLI
+## Current limitations
 
-The primary user flow happens inside agent CLIs with `/handoff` and `/waybill`.
-It never calls the Waybill CLI for the basic export or import path. The Python
-CLI is an optional enhancement for installing file-based adapters, creating
-exact digest-bearing drafts, running deeper validation, checking repository
-state, redacting, packing, unpacking, and rendering review reports. It uses only
-the Python standard library.
+- Bundle schema `0.2` and delegation semantics are still drafts.
+- Waybill does not automatically apply patches or parse agent transcripts.
+- Redaction is best effort; users must review bundles before sharing them.
+- Integrations use each agent CLI's existing project instruction mechanism;
+  Waybill does not require plugin hooks where lightweight files are sufficient.
+- Waybill does not schedule, run, or supervise agents.
 
-When installed from the `agent-waybill` Python package, it provides the
-`waybill` support command. Agent adapters are still installed into project
-repositories.
+## Project direction
 
-| Command | Purpose |
-| --- | --- |
-| `init` | Plan or install managed project adapters and their manifest |
-| `doctor` | Classify managed adapter files as current, missing, stale, or modified |
-| `new` | Create a draft Waybill Bundle from a repo |
-| `validate` | Validate bundle structure, metadata, artifacts, and obvious secrets |
-| `inspect` | Summarize metadata, artifacts, and validation status |
-| `verify-repo` | Compare bundle metadata with the current repo state |
-| `verify-pair` | Verify delegation correlation, roles, sources, and result status |
-| `preflight` | Run validation plus repository-state checks before import |
-| `ready` | Check whether a bundle is ready for handoff |
-| `redact` | Create a redacted review copy |
-| `share` | Check shareability without writes, or redact, validate, and pack an archive |
-| `pack` | Validate and zip a bundle |
-| `unpack` | Unzip and validate a bundle archive |
-| `render` | Render a Markdown review report |
+Near-term work focuses on current real-agent import/export evidence for the five
+existing integrations and on hardening delegation through practical
+parent/child handoffs. Additional adapters should follow only when the handoff
+contract is stable and the target CLI has a lightweight project instruction
+mechanism.
 
-All 14 subcommands support `--json` for scriptable workflows. Each writes one
-JSON object with a top-level boolean `success`; it is `true` exactly when the
-process exit code is zero. Existing `valid` fields remain in their
-command-specific reports. JSON error paths do not mix prose or traceback output
-into stdout. See `QUICKSTART.md` and `TESTING.md` for full examples.
+Automatic patch application, transcript parsing, daemon behavior, cloud sync,
+and a Web UI are intentionally out of scope for now.
 
-### Adapter Matrix
+## Documentation
 
-| Agent CLI | Project entrypoint | Installed by `init` | Smoke coverage |
-| --- | --- | --- | --- |
-| Claude Code | `.claude/skills/` | Yes | Read-only import smoke |
-| Codex | `adapters/codex/` plugin | No | Read-only import smoke |
-| OpenCode | `.opencode/commands/`, `.opencode/skills/` | Yes | Read-only import smoke |
-| Cursor CLI | `.cursor/rules/` | Yes | Read-only import smoke |
-| Gemini CLI | `.gemini/skills/` | Yes | Read-only import smoke |
+- [Quickstart](https://github.com/wardmos/waybill/blob/main/QUICKSTART.md)
+- [Installation](https://github.com/wardmos/waybill/blob/main/INSTALL.md)
+- [Bundle specification](https://github.com/wardmos/waybill/blob/main/spec/waybill-bundle.md)
+- [Delegation walkthrough](https://github.com/wardmos/waybill/blob/main/WALKTHROUGH.md)
+- [Conformance](https://github.com/wardmos/waybill/blob/main/CONFORMANCE.md)
+- [Testing](https://github.com/wardmos/waybill/blob/main/TESTING.md)
 
-## Install
+## License
 
-See `INSTALL.md` for full local installation and smoke-test instructions.
-
-### Claude Code
-
-Copy the adapter's `skills/handoff/` and `skills/waybill/` directories into:
-
-```text
-.claude/skills/
-```
-
-The thin source wrapper and compatibility command instructions are in
-`adapters/claude-code/`. `waybill init --adapter claude-code` is an optional
-managed-install convenience.
-
-### Codex
-
-Use the Codex plugin in:
-
-```text
-adapters/codex/
-```
-
-### OpenCode
-
-Copy the OpenCode adapter commands and skills into:
-
-```text
-.opencode/
-```
-
-Thin adapter sources are available in:
-
-```text
-adapters/opencode/
-```
-
-`waybill init --adapter opencode` is an optional managed-install convenience.
-
-### Cursor CLI
-
-Copy the Cursor adapter rules into:
-
-```text
-.cursor/rules/
-```
-
-Thin adapter sources are available in:
-
-```text
-adapters/cursor/
-```
-
-`waybill init --adapter cursor` is an optional managed-install convenience.
-
-### Gemini CLI
-
-Copy the Gemini CLI adapter skills into:
-
-```text
-.gemini/skills/
-```
-
-Thin adapter sources are available in:
-
-```text
-adapters/gemini-cli/
-```
-
-`waybill init --adapter gemini-cli` is an optional managed-install convenience.
-
-## Safety Defaults
-
-- `.waybill/` is ignored by default.
-- Waybill does not upload handoff data.
-- Import instructions do not automatically apply patches.
-- Export instructions may run read-only git inspection commands.
-- Export instructions do not run tests unless the user asks.
-- Bundle validation, redaction, packing, and sharing reject symbolic links and
-  non-regular files.
-- Bundle validation checks metadata types and recursively scans additional
-  files for obvious sensitive content.
-- Adapter installation completes conflict preflight for every selected file
-  before writing. `--force` replaces only safe regular files and never follows
-  symbolic links.
-- Bundle files are untrusted input; import instructions do not execute embedded
-  commands, follow embedded permission requests, or read outside the bundle and
-  target repository.
-- Sharing refuses binary or non-UTF-8 files that cannot be scanned before it
-  writes or replaces redacted and archive outputs.
-- `share --check` performs the same shareability preflight without requiring an
-  output path or writing anything. Its findings contain only `kind`, `path`,
-  `count`, and `blocking`, never the matched secret value.
-- Redaction, archive, and unpack output paths cannot overlap their source.
-- Users should review `.waybill/` before sharing it.
-
-`.waybill/` can contain prompts, paths, diffs, logs, test output, and secrets
-accidentally captured from output.
-
-## Testing
-
-Run the repository checks:
-
-```bash
-python3 -m unittest discover -s tests -t . -v
-python3 scripts/validate-waybill.py
-python3 -m py_compile cli/waybill waybill_core/*.py scripts/*.py
-scripts/sync-adapters.py --check
-scripts/smoke-agents.sh --dry-run
-python3 scripts/test-wheel-install.py
-```
-
-Pushes and pull requests run test discovery, aggregate repository validation,
-Python compilation, adapter synchronization, and the agent smoke dry-run on
-Python 3.10, 3.11, and 3.12 through `.github/workflows/ci.yml`. Aggregate
-validation also builds and installs a disposable wheel from a temporary source
-copy and verifies its packaged adapter templates outside the checkout.
-
-Run repeatable local agent smoke tests when the relevant CLIs are installed:
-
-```bash
-scripts/smoke-agents.sh --tool codex
-scripts/smoke-agents.sh --tool opencode
-scripts/smoke-agents.sh --tool cursor
-scripts/smoke-agents.sh --tool gemini
-scripts/smoke-agents.sh --tool claude
-```
-
-Use `scripts/smoke-agents.sh --dry-run` to print the exact commands without
-calling any agent model.
-
-The deterministic scenario runner in `scripts/conformance-agents.py` separately
-checks strict agent JSON, semantic observations, and measured workspace writes.
-`scripts/conformance-exports.py` creates disposable Git repositories and checks
-the bundles agents actually export; CI exercises it with a deterministic fake
-agent. `scripts/adapter-matrix.py` binds complete manual conformance reports to
-the exact product, version, and executable digest that produced them. See
-`CONFORMANCE.md` for dry-run and real-agent commands.
-
-See `TESTING.md` for the manual Claude Code to Codex and Codex to Claude Code
-handoff test plans.
-
-## Current Limitations
-
-- No automatic patch application.
-- No automatic transcript parsing.
-- Secret redaction is best-effort pattern replacement; local `redact` output
-  can include reported binary copies, while `share` refuses unscannable files.
-  Users still need to review redacted bundles before sharing.
-- OpenCode support is file-based commands and skills; no OpenCode plugin hooks
-  are required yet.
-- Cursor support uses project rules loaded by Cursor Agent and Cursor CLI; no
-  Cursor plugin hook is required yet.
-- Gemini CLI support uses workspace skills loaded by Gemini CLI; no extension
-  install is required yet.
-
-## Roadmap
-
-Near-term:
-
-- Gather complete manual import/export coverage for the five existing adapters.
-- Expand the versioned conformance contracts only when real-agent evidence
-  identifies another semantic or export boundary.
-
-Delegation:
-
-- Harden the draft delegation request and result format through real
-  parent/child handoff practice.
-- Add more synthetic parent/child examples only where they clarify import
-  behavior.
-- Keep delegation result import non-destructive; parent agents review child
-  output before accepting it.
-
-Orchestration Compatibility:
-
-- Keep Waybill usable as an agent-neutral task envelope that future
-  orchestrators can write and read.
-- Keep Waybill out of the business of scheduling, running, or supervising
-  agents.
-
-Adapters:
-
-- Add more adapters where the target CLI has a lightweight project instruction
-  mechanism, after the handoff and delegation formats stay stable.
-
-Non-goals for now:
-
-- Automatic patch application.
-- Automatic transcript parsing.
-- Daemon behavior, cloud sync, and Web UI.
+Waybill is available under the
+[Apache License 2.0](https://github.com/wardmos/waybill/blob/main/LICENSE).
