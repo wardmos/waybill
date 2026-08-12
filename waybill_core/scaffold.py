@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .limits import MAX_DIFF_BYTES, format_bytes
@@ -59,7 +59,7 @@ def create_draft_bundle(
 
     git = _read_git_state(repo)
     now = (
-        datetime.now(UTC)
+        datetime.now(timezone.utc)
         .replace(microsecond=0)
         .isoformat()
         .replace("+00:00", "Z")
