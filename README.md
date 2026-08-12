@@ -14,9 +14,6 @@ instructions found inside a bundle, or apply patches automatically.
 Supported integrations include Claude Code, Codex, OpenCode, Cursor CLI, and
 Gemini CLI.
 
-**Status:** Alpha · bundle schema `0.2` (draft) · Python 3.10+ for the optional
-support CLI
-
 [Quickstart](https://github.com/wardmos/waybill/blob/main/QUICKSTART.md) ·
 [Installation](https://github.com/wardmos/waybill/blob/main/INSTALL.md) ·
 [Bundle specification](https://github.com/wardmos/waybill/blob/main/spec/waybill-bundle.md) ·
@@ -24,7 +21,7 @@ support CLI
 [Testing](https://github.com/wardmos/waybill/blob/main/TESTING.md)
 
 ```text
-Agent A -- /handoff export --> .waybill/ -- review + import --> Agent B
+Agent A -- /handoff export --> .waybill/ -- /handoff import --> Agent B
 ```
 
 ## Why Waybill
