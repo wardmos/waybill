@@ -3,7 +3,7 @@
 [![CI](https://github.com/wardmos/waybill/actions/workflows/ci.yml/badge.svg)](https://github.com/wardmos/waybill/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/wardmos/waybill/blob/main/LICENSE)
 
-Move unfinished coding work between agent CLIs with a local, reviewable
+Hand off unfinished work between coding agents with a local, reviewable
 `.waybill/` bundle.
 
 Waybill preserves the goal, repository state, diffs, commands, test results,
@@ -41,17 +41,10 @@ Waybill creates an agent-neutral artifact that another supported CLI can review
 and import. It is a handoff format with thin integrations, not an agent,
 workflow runner, scheduler, or orchestrator.
 
-## Choose a workflow
-
-| Workflow | Best for | Requirements |
-| --- | --- | --- |
-| Agent-native `/handoff` | Routine export and import inside a coding agent | Enable the target adapter; no Waybill CLI or Python package required |
-| Optional `waybill` support CLI | Managed adapter installation, exact repository digests, automation, deeper validation, redaction, and archives | Python 3.10+ |
-
-The agent-native workflow is the default. The support CLI is an optional
-enhancement and is not a runtime dependency of `/handoff` or `/waybill`.
-
 ## Quickstart
+
+Basic export and import run inside supported agents and do not require the
+Waybill CLI or a Python package.
 
 First enable the integration for your agent. Follow the
 [Quickstart](https://github.com/wardmos/waybill/blob/main/QUICKSTART.md) for
@@ -135,8 +128,9 @@ or private data accidentally captured from command output.
 
 ## Optional Support CLI
 
-The Python support CLI adds automation around the same bundle format. From a
-repository checkout:
+The Python 3.10+ support CLI is an optional enhancement for managed adapter
+installation, exact repository digests, automation, deeper validation,
+redaction, and archives. From a repository checkout:
 
 ```bash
 ./cli/waybill --help
