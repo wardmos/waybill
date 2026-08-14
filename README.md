@@ -6,6 +6,10 @@
 Hand off unfinished work between coding agents with a local, reviewable
 `.waybill/` bundle.
 
+```text
+Agent A -- /handoff export --> .waybill/ -- /handoff import --> Agent B
+```
+
 Waybill preserves the goal, repository state, diffs, commands, test results,
 risks, and next steps so another agent can continue without relying on the
 original session. Waybill itself does not upload handoff data, execute
@@ -19,10 +23,6 @@ Gemini CLI.
 [Bundle specification](https://github.com/wardmos/waybill/blob/main/spec/waybill-bundle.md) ·
 [Conformance](https://github.com/wardmos/waybill/blob/main/CONFORMANCE.md) ·
 [Testing](https://github.com/wardmos/waybill/blob/main/TESTING.md)
-
-```text
-Agent A -- /handoff export --> .waybill/ -- /handoff import --> Agent B
-```
 
 ## Why Waybill
 
