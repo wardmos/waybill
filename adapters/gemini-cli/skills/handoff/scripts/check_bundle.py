@@ -29,6 +29,22 @@ RFC3339_PATTERN = re.compile(
     r"(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})$"
 )
 SHA256_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
+SENSITIVE_PATTERNS = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"sk-[A-Za-z0-9_-]{10,}",
+        r"Bearer\s+(?!\[REDACTED\])[A-Za-z0-9._~+/=-]+",
+        r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b",
+        r"(?<!\S)/(?:home|Users)/[^\s\"'`<>]+",
+        r"\b[A-Za-z]:\\Users\\[^\s\"'`<>]+",
+        (
+            r"(?<![A-Za-z0-9_-])"
+            r"['\"]?(api[_-]?key|password|secret|token|cookie)['\"]?"
+            r"(?![A-Za-z0-9_-])"
+            r"\s*[:=]\s*['\"]?(?!\[REDACTED\])[^\"'\s,}]+"
+        ),
+    )
+)
 WAYBILL_SECTIONS = (
     "Original Goal",
     "Current Status",
@@ -465,6 +481,34 @@ def _validate_bundle_content(
         _validate_artifacts(metadata, files, checker)
 
 
+def _scan_sensitive_content(
+    files: dict[str, Path],
+    checker: BundleChecker,
+) -> None:
+    """Scan every bounded regular file without returning matched values."""
+
+    for relative, path in files.items():
+        raw = _read_regular_bytes(path, relative, checker)
+        if raw is None:
+            continue
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            checker.warn(
+                "content-encoding",
+                "could not scan binary or non-UTF-8 file",
+                relative,
+            )
+            continue
+        for pattern in SENSITIVE_PATTERNS:
+            if pattern.search(text):
+                checker.error(
+                    "sensitive-content",
+                    "bundle contains possible sensitive content",
+                    relative,
+                )
+
+
 def _git_environment() -> dict[str, str]:
     environment = os.environ.copy()
     unsafe_names = {
@@ -640,6 +684,7 @@ def check_bundle(
     metadata = _strict_object(metadata_path, checker) if metadata_path else None
     kind = _validate_metadata(metadata, checker) if metadata is not None else "handoff"
     _validate_bundle_content(files, metadata, kind, checker)
+    _scan_sensitive_content(files, checker)
     if metadata is not None:
         _compare_repo(metadata, repo, checker)
         if request is not None:

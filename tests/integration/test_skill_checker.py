@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 
 from waybill_core.repo import read_repo_fidelity
-from waybill_core.validation import WAYBILL_SECTIONS
+from waybill_core.validation import WAYBILL_SECTIONS, validate_bundle
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -178,6 +178,61 @@ class BundledSkillCheckerTests(unittest.TestCase):
             {"artifact-path", "unresolved-placeholder"}.issubset(
                 {error["code"] for error in report["errors"]}
             )
+        )
+
+    def test_rejects_sensitive_content_with_bundle_relative_findings(self) -> None:
+        nested = self.bundle / "attachments" / "debug.txt"
+        nested.parent.mkdir()
+        nested.write_text(
+            "Authorization: Bearer synthetic-test-token-value\n",
+            encoding="utf-8",
+        )
+        with (self.bundle / "commands.log").open("a", encoding="utf-8") as output:
+            output.write(
+                "python3 /home/synthetic/.codex/plugins/waybill/check_bundle.py "
+                ".waybill --repo . --json\n"
+            )
+
+        result = self.run_checker()
+
+        self.assertEqual(1, result.returncode)
+        report = json.loads(result.stdout)
+        findings = [
+            finding
+            for finding in report["errors"]
+            if finding["code"] == "sensitive-content"
+        ]
+        self.assertEqual(
+            {"attachments/debug.txt", "commands.log"},
+            {finding["path"] for finding in findings},
+        )
+        core_paths = {
+            issue.path
+            for issue in validate_bundle(self.bundle)
+            if issue.severity == "error"
+            and issue.message.startswith("possible secret matching")
+        }
+        self.assertEqual(core_paths, {finding["path"] for finding in findings})
+        self.assertNotIn("synthetic-test-token-value", result.stdout)
+        self.assertNotIn("/home/synthetic", result.stdout)
+
+    def test_warns_for_unscannable_content_with_a_relative_path(self) -> None:
+        binary = self.bundle / "attachments" / "payload.bin"
+        binary.parent.mkdir()
+        binary.write_bytes(b"\xff\xfeunscannable")
+
+        result = self.run_checker()
+
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+        report = json.loads(result.stdout)
+        matching = [
+            warning
+            for warning in report["warnings"]
+            if warning["code"] == "content-encoding"
+        ]
+        self.assertEqual(
+            ["attachments/payload.bin"],
+            [warning["path"] for warning in matching],
         )
 
     def test_rejects_symlinks_without_disclosing_the_target(self) -> None:
