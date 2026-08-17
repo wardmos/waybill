@@ -147,6 +147,14 @@ class BundledSkillCheckerTests(unittest.TestCase):
             {"status-digest-missing", "repo-state-digest-missing"},
             {warning["code"] for warning in report["warnings"]},
         )
+        fidelity = read_repo_fidelity(self.repo)
+        self.assertEqual(
+            {
+                "status_digest": fidelity.status_digest,
+                "repo_state_digest": fidelity.repo_state_digest,
+            },
+            report["repository_digests"],
+        )
         self.assertEqual(before, self.bundle_snapshot())
         self.assertEqual("", run_git(self.repo, "status", "--short"))
 

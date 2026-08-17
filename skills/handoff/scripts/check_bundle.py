@@ -89,6 +89,7 @@ class BundleChecker:
     def __init__(self) -> None:
         self.errors: list[Finding] = []
         self.warnings: list[Finding] = []
+        self.repository_digests: dict[str, str] | None = None
 
     def error(self, code: str, message: str, path: str | None = None) -> None:
         self.errors.append(Finding(code, message, path))
@@ -614,6 +615,10 @@ def _compare_repo(
     except (OSError, UnicodeDecodeError, ValueError):
         checker.error("repo-state", "target Git repository could not be inspected")
         return
+    checker.repository_digests = {
+        "status_digest": str(current["status_digest"]),
+        "repo_state_digest": str(current["repo_state_digest"]),
+    }
     expected = metadata.get("git")
     if not isinstance(expected, dict):
         return
@@ -725,6 +730,7 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(
                 {
                     "success": success,
+                    "repository_digests": checker.repository_digests,
                     "errors": [asdict(finding) for finding in checker.errors],
                     "warnings": [asdict(finding) for finding in checker.warnings],
                 },

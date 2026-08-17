@@ -234,6 +234,10 @@ class RepoFidelityTests(unittest.TestCase):
         self.assertTrue(readiness.has_errors)
         self.assertEqual("error", checks["status_digest"].status)
         self.assertEqual("error", checks["repo_state_digest"].status)
+        for name in ("status_digest", "repo_state_digest"):
+            check = checks[name]
+            self.assertIn("strict readiness", check.message)
+            self.assertIn("repository_digests", check.message)
 
 
 if __name__ == "__main__":

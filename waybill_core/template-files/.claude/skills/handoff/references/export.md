@@ -67,11 +67,18 @@ linked script relative to this Skill and run
 `python3 CHECKER BUNDLE --repo . --json`, replacing `CHECKER` and `BUNDLE` with
 their actual paths. For a delegation result, add `--request REQUEST`. The
 checker is bundled with the Skill and requires no Waybill CLI installation.
+Its JSON output includes exact `repository_digests` when repository inspection
+succeeds. If either digest is absent from `metadata.json`, copy both reported
+values exactly into `git.status_digest` and `git.repo_state_digest`, then rerun
+the checker after that final write. Never guess, reuse stale values, or keep
+rewriting metadata if the recorded and current digests do not stabilize.
 
 When the Waybill CLI is already available, it may provide further enhanced
 verification; installing it is not part of this workflow. It can initialize a
 digest-bearing draft with `waybill new`, and it can run `waybill validate`,
 `waybill ready`, `waybill verify-repo`, and `waybill verify-pair`.
+`validate` accepts a basic-fidelity bundle without repository digests, while
+`ready` is the stricter export gate and requires both exact digests.
 
 The absence of Python or the CLI never blocks a basic export. If an optional
 checker or CLI command is run and finds a real bundle error, correct the bundle

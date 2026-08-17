@@ -94,7 +94,10 @@ def _check_current_export_fidelity(
                 ReadinessCheck(
                     name,
                     "error",
-                    f"current exports must record metadata git.{name}",
+                    f"strict readiness requires metadata git.{name}; copy the "
+                    "exact value from the bundled checker's "
+                    "repository_digests JSON output or initialize the bundle "
+                    "with waybill new",
                     str(metadata_path),
                 )
             )

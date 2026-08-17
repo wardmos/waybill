@@ -89,3 +89,8 @@ never calculate them by guessing from displayed Git output. Omit unavailable
 digest fields instead of writing `unknown`, placeholders, or stale values. A
 bundle without digests remains a valid basic-fidelity handoff, and the importer
 must report that repository digest matching was not performed.
+
+The bundled checker's JSON output reports exact `repository_digests` when it
+can inspect the target Git repository. An exporter may copy both values into
+the corresponding `git` fields and rerun the checker after the final metadata
+write. Basic `validate` accepts omitted digests; strict `ready` requires them.

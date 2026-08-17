@@ -90,6 +90,11 @@ digests are included only when a trusted helper calculates them. See the
 and [metadata schema](https://github.com/wardmos/waybill/blob/main/spec/metadata.schema.json)
 for the complete contract.
 
+The bundled checker reports exact `repository_digests` in its JSON output, so
+an agent-native export can record them without installing the support CLI.
+`validate` accepts a basic-fidelity bundle without these digests; `ready` is the
+strict export gate and requires both digests to match the current repository.
+
 ## Supported agents
 
 | Agent CLI | Native integration | Setup |
