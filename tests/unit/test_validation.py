@@ -264,6 +264,37 @@ class BundleValidationTestCase(unittest.TestCase):
         self.assertEqual("warning", matching[0].severity)
         self.assertEqual("attachments/payload.bin", matching[0].path)
 
+    def test_commands_log_accepts_equivalent_section_labels(self) -> None:
+        (self.bundle / "commands.log").write_text(
+            "# Read only inspection\n\n- git status: clean\n"
+            "\n# Bundle writes\n\n- created the bundle files\n",
+            encoding="utf-8",
+        )
+
+        issues = validate_bundle(self.bundle)
+
+        self.assertFalse(
+            any(issue.message.startswith("commands.log should") for issue in issues)
+        )
+
+    def test_validation_issue_paths_are_bundle_relative(self) -> None:
+        (self.bundle / "commands.log").write_text(
+            "Inspected the repository and created files.\n",
+            encoding="utf-8",
+        )
+        (self.bundle / "WAYBILL.md").unlink()
+
+        issues = validate_bundle(self.bundle)
+
+        self.assertIn("WAYBILL.md", {issue.path for issue in issues})
+        self.assertIn("commands.log", {issue.path for issue in issues})
+        self.assertTrue(
+            all(
+                issue.path is None or not Path(issue.path).is_absolute()
+                for issue in issues
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

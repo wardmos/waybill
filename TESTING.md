@@ -317,6 +317,10 @@ Commands that already expose `valid` retain it. The integration matrix tests
 successful and failing paths for all JSON-capable commands, including argparse
 usage errors and unexpected exceptions.
 
+Validation issue paths are bundle-relative whenever the bundle exists, so JSON
+consumers receive stable paths such as `metadata.json` and `commands.log`
+instead of invocation-dependent local filesystem paths.
+
 ## Isolated Wheel Installation
 
 Run:

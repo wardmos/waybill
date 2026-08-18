@@ -72,6 +72,13 @@ DELEGATION_RESULT_SECTIONS = (
     "Parent Next Step",
 )
 RESULT_STATUSES = {"completed", "partial", "blocked"}
+COMMAND_LOG_MARKERS = (
+    ("read-only", re.compile(r"\bread(?:-|\s+)only\b")),
+    (
+        "bundle-writing",
+        re.compile(r"\bbundle(?:-|\s+)writing\b|\bbundle\s+writes?\b"),
+    ),
+)
 
 
 @dataclass(frozen=True)
@@ -510,6 +517,26 @@ def _scan_sensitive_content(
                 )
 
 
+def _validate_commands_log(
+    files: dict[str, Path],
+    checker: BundleChecker,
+) -> None:
+    path = files.get("commands.log")
+    if path is None:
+        return
+    text = _read_utf8(path, "commands.log", checker)
+    if text is None:
+        return
+    normalized = " ".join(text.split()).lower()
+    for label, pattern in COMMAND_LOG_MARKERS:
+        if pattern.search(normalized) is None:
+            checker.warn(
+                "commands-log-section",
+                f"commands.log should identify {label} commands/actions",
+                "commands.log",
+            )
+
+
 def _git_environment() -> dict[str, str]:
     environment = os.environ.copy()
     unsafe_names = {
@@ -689,6 +716,7 @@ def check_bundle(
     metadata = _strict_object(metadata_path, checker) if metadata_path else None
     kind = _validate_metadata(metadata, checker) if metadata is not None else "handoff"
     _validate_bundle_content(files, metadata, kind, checker)
+    _validate_commands_log(files, checker)
     _scan_sensitive_content(files, checker)
     if metadata is not None:
         _compare_repo(metadata, repo, checker)

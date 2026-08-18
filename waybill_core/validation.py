@@ -83,9 +83,12 @@ BAD_AGENT_PHRASES = [
     "Codex must",
 ]
 
-COMMAND_LOG_TERMS = [
-    "read-only",
-    "bundle-writing",
+COMMAND_LOG_MARKERS = [
+    ("read-only", re.compile(r"\bread(?:-|\s+)only\b")),
+    (
+        "bundle-writing",
+        re.compile(r"\bbundle(?:-|\s+)writing\b|\bbundle\s+writes?\b"),
+    ),
 ]
 
 
@@ -116,14 +119,14 @@ def validate_bundle(bundle_path: str | Path) -> list[ValidationIssue]:
         return [ValidationIssue("error", "bundle path is not a directory", str(bundle))]
 
     if not _validate_bundle_limits(bundle, issues):
-        return issues
+        return _with_bundle_relative_paths(bundle, issues)
 
     _validate_required_files(bundle, issues)
     metadata, version_status = _validate_metadata(bundle, issues)
     if version_status in {"invalid", "unsupported"}:
         _validate_recommended_files(bundle, issues)
         _scan_for_sensitive_content(bundle, issues)
-        return issues
+        return _with_bundle_relative_paths(bundle, issues)
 
     _validate_artifacts(bundle, metadata, issues)
     _validate_waybill(bundle, issues, metadata)
@@ -131,7 +134,25 @@ def validate_bundle(bundle_path: str | Path) -> list[ValidationIssue]:
     _validate_recommended_files(bundle, issues)
     _scan_for_sensitive_content(bundle, issues)
 
-    return issues
+    return _with_bundle_relative_paths(bundle, issues)
+
+
+def _with_bundle_relative_paths(
+    bundle: Path,
+    issues: list[ValidationIssue],
+) -> list[ValidationIssue]:
+    normalized: list[ValidationIssue] = []
+    for issue in issues:
+        path = issue.path
+        if path is not None:
+            try:
+                relative = Path(path).relative_to(bundle)
+            except ValueError:
+                pass
+            else:
+                path = relative.as_posix()
+        normalized.append(ValidationIssue(issue.severity, issue.message, path))
+    return normalized
 
 
 def has_errors(issues: list[ValidationIssue]) -> bool:
@@ -558,12 +579,12 @@ def _validate_commands_log(bundle: Path, issues: list[ValidationIssue]) -> None:
         return
 
     text = " ".join(path.read_text().split()).lower()
-    for term in COMMAND_LOG_TERMS:
-        if term not in text:
+    for label, pattern in COMMAND_LOG_MARKERS:
+        if pattern.search(text) is None:
             issues.append(
                 ValidationIssue(
                     "warning",
-                    f"commands.log should mention {term} commands/actions",
+                    f"commands.log should identify {label} commands/actions",
                     str(path),
                 )
             )

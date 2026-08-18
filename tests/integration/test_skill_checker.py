@@ -243,6 +243,33 @@ class BundledSkillCheckerTests(unittest.TestCase):
             [warning["path"] for warning in matching],
         )
 
+    def test_commands_log_section_warnings_are_structured_and_relative(self) -> None:
+        (self.bundle / "commands.log").write_text(
+            "Inspected the repository and created files.\n",
+            encoding="utf-8",
+        )
+
+        result = self.run_checker()
+
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+        report = json.loads(result.stdout)
+        matching = [
+            warning
+            for warning in report["warnings"]
+            if warning["code"] == "commands-log-section"
+        ]
+        self.assertEqual(
+            {
+                "commands.log should identify bundle-writing commands/actions",
+                "commands.log should identify read-only commands/actions",
+            },
+            {warning["message"] for warning in matching},
+        )
+        self.assertEqual(
+            {"commands.log"},
+            {warning["path"] for warning in matching},
+        )
+
     def test_rejects_symlinks_without_disclosing_the_target(self) -> None:
         outside = self.root / "outside-secret.txt"
         outside.write_text("synthetic secret value\n", encoding="utf-8")

@@ -98,7 +98,7 @@ def _check_current_export_fidelity(
                     "exact value from the bundled checker's "
                     "repository_digests JSON output or initialize the bundle "
                     "with waybill new",
-                    str(metadata_path),
+                    "metadata.json",
                 )
             )
 
@@ -119,7 +119,7 @@ def _check_no_placeholders(
                 label,
                 "warning",
                 "could not scan non-UTF-8 text",
-                str(path),
+                label,
             )
         )
         return
@@ -132,6 +132,6 @@ def _check_no_placeholders(
                 label,
                 "error",
                 f"draft placeholder found: {joined}",
-                str(path),
+                label,
             )
         )

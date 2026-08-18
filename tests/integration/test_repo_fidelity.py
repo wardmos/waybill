@@ -238,6 +238,7 @@ class RepoFidelityTests(unittest.TestCase):
             check = checks[name]
             self.assertIn("strict readiness", check.message)
             self.assertIn("repository_digests", check.message)
+            self.assertEqual("metadata.json", check.path)
 
 
 if __name__ == "__main__":

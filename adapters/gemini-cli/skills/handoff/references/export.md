@@ -38,7 +38,9 @@ agent identity selected by the canonical skill.
 6. Write `diff.patch` from `git diff --binary HEAD --` when Git is available.
 7. Write `commands.log` with important commands and outcomes. Separate
    read-only inspection from bundle-writing actions; do not claim every command
-   was read-only after creating files. Do not record absolute checker, plugin,
+   was read-only after creating files. Prefer the headings `Read-only
+   inspection` and `Bundle-writing actions`; equivalent `read only` and `bundle
+   writes` labels are accepted. Do not record absolute checker, plugin,
    agent-installation, home-directory, or other local machine paths. Use a
    descriptive placeholder such as `<bundled-checker>` when recording an
    optional helper invocation.
