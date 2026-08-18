@@ -321,6 +321,18 @@ Validation issue paths are bundle-relative whenever the bundle exists, so JSON
 consumers receive stable paths such as `metadata.json` and `commands.log`
 instead of invocation-dependent local filesystem paths.
 
+The deterministic local Codex roundtrip regression uses only this checkout:
+
+```bash
+python3 -m unittest tests.integration.test_codex_handoff_roundtrip
+```
+
+It creates a disposable repository with one real failing test, checks the
+Codex adapter's bundled checker plus `validate`, `ready`, and `verify-repo`,
+then confirms import inspection and preflight leave the workspace unchanged.
+This guards the local product path without claiming live external-agent
+coverage.
+
 ## Isolated Wheel Installation
 
 Run:
