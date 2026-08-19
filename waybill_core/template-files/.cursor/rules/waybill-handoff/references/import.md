@@ -43,7 +43,10 @@ requires a separate, explicit user request after the import summary.
 7. For a delegation, report its correlation ID, result status when present,
    and parent/child roles. When both bundles are available, compare the
    `request_id`/`result_for`, roles, and source-agent fields directly. Treat any
-   correlation, role, or source mismatch as blocking review evidence.
+   correlation, role, or source mismatch as blocking review evidence. Remember
+   that result_status is a claim, not proof of repository fit, semantic
+   correctness, or test truth. A successful `verify-pair` confirms delegation
+   correlation and roles; it does not verify the live diff or claimed tests.
 8. Summarize:
    - Original goal
    - Handoff kind
@@ -53,8 +56,19 @@ requires a separate, explicit user request after the import summary.
    - Test state
    - Failed attempts
    - Risks and unknowns
+   - Verification performed and verification not performed
+   - Review posture: verified, conditionally reviewable, or blocked
    - Next recommended step
 9. Stop after presenting the import summary.
+
+For a delegation result, use `verified` only when every decision-relevant claim
+has independent evidence in the current review. This includes repository state
+and the live diff, plus test claims when acceptance depends on them. When a
+relevant checker, digest comparison, diff comparison, or test check cannot be
+performed, label the result `conditionally reviewable` and name the missing
+verification. Do not say a result is safe to accept or verified when relevant
+verification could not be performed. Any repository, correlation, role, source,
+diff, or test mismatch is blocking evidence until reconciled.
 
 ## Optional Enhanced Verification
 
@@ -69,6 +83,12 @@ checks through `waybill inspect BUNDLE`, `waybill preflight BUNDLE --repo .`,
 and `waybill verify-pair REQUEST RESULT`. Installing Python or the CLI is not
 part of import, and their absence never blocks the direct review.
 
+Checker or CLI success establishes only the contracts each command actually
+checks. In particular, `verify-pair` does not establish repository state, patch
+semantics, or test truth. Do not upgrade an advisory result to verified solely
+because its bundle or delegation pair is structurally valid.
+
 End by distinguishing what the handoff claims, what the current repository
-shows, any mismatch, and the recommended next action. Do not assume the source
-agent is available and do not automatically apply `diff.patch`.
+shows, what was independently verified, what remains conditional, any mismatch,
+and the recommended next action. Do not assume the source agent is available
+and do not automatically apply `diff.patch`.

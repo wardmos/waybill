@@ -67,6 +67,21 @@ class CanonicalSkillLayoutTests(unittest.TestCase):
         self.assertIn("does not require the Waybill CLI", normalized_import)
         self.assertIn("compare the fields directly", normalized_import.lower())
 
+    def test_import_qualifies_unverified_delegation_results(self) -> None:
+        import_workflow = " ".join(
+            (SKILL_ROOT / "references/import.md")
+            .read_text(encoding="utf-8")
+            .split()
+        ).lower()
+        delegation_spec = " ".join(
+            (ROOT / "spec/delegation.md").read_text(encoding="utf-8").split()
+        ).lower()
+
+        self.assertIn("result_status is a claim, not proof", import_workflow)
+        self.assertIn("conditionally reviewable", import_workflow)
+        self.assertIn("do not say a result is safe to accept", import_workflow)
+        self.assertIn("does not establish semantic correctness or test truth", delegation_spec)
+
     def test_copyable_bundle_assets_cover_the_standard_bundle(self) -> None:
         asset_root = SKILL_ROOT / "assets/bundle-template"
         self.assertEqual(

@@ -650,6 +650,9 @@ def validate_canonical_handoff_skill() -> None:
         "does not require the waybill cli",
         "compare the fields directly",
         "waybill verify-pair REQUEST RESULT",
+        "result_status is a claim, not proof",
+        "conditionally reviewable",
+        "do not say a result is safe to accept",
     ):
         if required.lower() not in import_text:
             fail(f"canonical import reference missing requirement: {required}")

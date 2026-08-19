@@ -81,6 +81,13 @@ The result is advisory until the parent agent reviews it. Importers must not
 automatically apply `diff.patch`, merge changes, or accept a child result just
 because the bundle validates.
 
+The child's `result_status` is a claim about task progress. A valid bundle or a
+successful `verify-pair` confirms structural and correlation invariants; it
+does not establish semantic correctness or test truth. When decision-relevant
+repository, diff, or test evidence cannot be independently checked, the parent
+must describe the result as conditionally reviewable rather than verified or
+safe to accept.
+
 Delegation importers must not automatically apply `diff.patch`.
 
 ## Safety
