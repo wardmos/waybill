@@ -205,6 +205,42 @@ class BundledSkillCheckerTests(unittest.TestCase):
         )
         self.assertEqual({}, checker._file_snapshots)
 
+    def test_stops_content_reads_when_inventory_limits_fail(self) -> None:
+        cases = (
+            (
+                "file count",
+                {"MAX_FILES": len(self.bundle_snapshot()) - 1},
+                "file-count-limit",
+            ),
+            (
+                "total size",
+                {"MAX_TOTAL_BYTES": 1},
+                "total-size-limit",
+            ),
+        )
+
+        for label, limits, expected_code in cases:
+            with self.subTest(limit=label):
+                with mock.patch.multiple(CHECKER_MODULE, **limits):
+                    with mock.patch.object(
+                        CHECKER_MODULE,
+                        "_read_regular_bytes",
+                        wraps=CHECKER_MODULE._read_regular_bytes,
+                    ) as read_regular_bytes:
+                        checker = CHECKER_MODULE.check_bundle(
+                            self.bundle,
+                            self.repo,
+                            None,
+                        )
+
+                self.assertIn(
+                    expected_code,
+                    {error.code for error in checker.errors},
+                )
+                read_regular_bytes.assert_not_called()
+                self.assertIsNone(checker.repository_digests)
+                self.assertEqual({}, checker._file_snapshots)
+
     def test_rejects_bundle_file_changed_during_check(self) -> None:
         original_read = CHECKER_MODULE._read_regular_bytes
         changed = False

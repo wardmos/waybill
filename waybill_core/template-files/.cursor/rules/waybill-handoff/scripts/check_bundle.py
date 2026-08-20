@@ -99,6 +99,14 @@ class _FileSnapshot:
     relative: str
 
 
+@dataclass(frozen=True)
+class _BundleInventory:
+    """Bounded paths and whether their contents are safe to inspect."""
+
+    files: dict[str, Path]
+    safe_to_read: bool
+
+
 class BundleChecker:
     """Collect bounded, value-free findings without changing the filesystem."""
 
@@ -269,15 +277,15 @@ def _strict_object(path: Path, checker: BundleChecker) -> dict[str, Any] | None:
     return document
 
 
-def _inventory_bundle(bundle: Path, checker: BundleChecker) -> dict[str, Path]:
+def _inventory_bundle(bundle: Path, checker: BundleChecker) -> _BundleInventory:
     try:
         root_metadata = bundle.lstat()
     except OSError:
         checker.error("bundle-missing", "bundle directory does not exist")
-        return {}
+        return _BundleInventory({}, False)
     if stat.S_ISLNK(root_metadata.st_mode) or not stat.S_ISDIR(root_metadata.st_mode):
         checker.error("bundle-type", "bundle path must be a regular directory")
-        return {}
+        return _BundleInventory({}, False)
 
     files: dict[str, Path] = {}
     file_count = 0
@@ -303,6 +311,9 @@ def _inventory_bundle(bundle: Path, checker: BundleChecker) -> dict[str, Path]:
 
             for name in file_names:
                 file_count += 1
+                if file_count > MAX_FILES:
+                    checker.error("file-count-limit", "bundle contains too many files")
+                    return _BundleInventory(files, False)
                 candidate = current_path / name
                 relative = candidate.relative_to(bundle).as_posix()
                 metadata = candidate.lstat()
@@ -320,16 +331,18 @@ def _inventory_bundle(bundle: Path, checker: BundleChecker) -> dict[str, Path]:
                         relative,
                     )
                 total_bytes += metadata.st_size
+                if total_bytes > MAX_TOTAL_BYTES:
+                    checker.error(
+                        "total-size-limit",
+                        "bundle exceeds the total size limit",
+                    )
+                    return _BundleInventory(files, False)
                 files[relative] = candidate
     except OSError:
         checker.error("bundle-read", "bundle entries could not be inspected")
-        return files
+        return _BundleInventory(files, False)
 
-    if file_count > MAX_FILES:
-        checker.error("file-count-limit", "bundle contains too many files")
-    if total_bytes > MAX_TOTAL_BYTES:
-        checker.error("total-size-limit", "bundle exceeds the total size limit")
-    return files
+    return _BundleInventory(files, True)
 
 
 def _require_string(
@@ -729,7 +742,10 @@ def _check_pair(
     result_kind: str,
     checker: BundleChecker,
 ) -> None:
-    request_files = _inventory_bundle(request_path, checker)
+    request_inventory = _inventory_bundle(request_path, checker)
+    if not request_inventory.safe_to_read:
+        return
+    request_files = request_inventory.files
     request_metadata_path = request_files.get("metadata.json")
     if request_metadata_path is None:
         checker.error("delegation-request", "request bundle metadata is missing")
@@ -771,7 +787,10 @@ def check_bundle(
     request: Path | None,
 ) -> BundleChecker:
     checker = BundleChecker()
-    files = _inventory_bundle(bundle, checker)
+    inventory = _inventory_bundle(bundle, checker)
+    if not inventory.safe_to_read:
+        return checker
+    files = inventory.files
     metadata_path = files.get("metadata.json")
     metadata = _strict_object(metadata_path, checker) if metadata_path else None
     kind = _validate_metadata(metadata, checker) if metadata is not None else "handoff"
