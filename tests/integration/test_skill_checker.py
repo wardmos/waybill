@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import shutil
@@ -10,7 +11,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from collections import Counter
 from pathlib import Path
+from types import ModuleType
+from unittest import mock
 
 from waybill_core.repo import read_repo_fidelity
 from waybill_core.validation import WAYBILL_SECTIONS, validate_bundle
@@ -18,6 +22,20 @@ from waybill_core.validation import WAYBILL_SECTIONS, validate_bundle
 
 ROOT = Path(__file__).resolve().parents[2]
 CHECKER = ROOT / "skills/handoff/scripts/check_bundle.py"
+
+
+def load_checker_module() -> ModuleType:
+    module_name = "waybill_test_bundled_checker"
+    spec = importlib.util.spec_from_file_location(module_name, CHECKER)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("could not load bundled checker module")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+CHECKER_MODULE = load_checker_module()
 
 
 def run_git(repo: Path, *arguments: str) -> str:
@@ -157,6 +175,65 @@ class BundledSkillCheckerTests(unittest.TestCase):
         )
         self.assertEqual(before, self.bundle_snapshot())
         self.assertEqual("", run_git(self.repo, "status", "--short"))
+
+    def test_reads_each_bundle_file_once(self) -> None:
+        opened: list[str] = []
+        original_open = CHECKER_MODULE.os.open
+
+        def tracked_open(
+            path: str | Path,
+            flags: int,
+            *arguments: object,
+            **keywords: object,
+        ) -> int:
+            candidate = Path(path)
+            try:
+                relative = candidate.relative_to(self.bundle)
+            except ValueError:
+                pass
+            else:
+                opened.append(relative.as_posix())
+            return original_open(path, flags, *arguments, **keywords)
+
+        with mock.patch.object(CHECKER_MODULE.os, "open", side_effect=tracked_open):
+            checker = CHECKER_MODULE.check_bundle(self.bundle, self.repo, None)
+
+        self.assertEqual([], checker.errors)
+        self.assertEqual(
+            Counter({relative: 1 for relative in self.bundle_snapshot()}),
+            Counter(opened),
+        )
+        self.assertEqual({}, checker._file_snapshots)
+
+    def test_rejects_bundle_file_changed_during_check(self) -> None:
+        original_read = CHECKER_MODULE._read_regular_bytes
+        changed = False
+
+        def change_after_first_read(
+            path: Path,
+            relative: str,
+            checker: object,
+        ) -> bytes | None:
+            nonlocal changed
+            content = original_read(path, relative, checker)
+            if relative == "WAYBILL.md" and not changed:
+                with path.open("a", encoding="utf-8") as output:
+                    output.write("\nConcurrent synthetic change.\n")
+                changed = True
+            return content
+
+        with mock.patch.object(
+            CHECKER_MODULE,
+            "_read_regular_bytes",
+            side_effect=change_after_first_read,
+        ):
+            checker = CHECKER_MODULE.check_bundle(self.bundle, self.repo, None)
+
+        self.assertTrue(changed)
+        changed_errors = [
+            error for error in checker.errors if error.code == "file-changed"
+        ]
+        self.assertEqual(["WAYBILL.md"], [error.path for error in changed_errors])
 
     def test_exact_repository_digests_match_the_full_checker_contract(self) -> None:
         fidelity = read_repo_fidelity(self.repo)

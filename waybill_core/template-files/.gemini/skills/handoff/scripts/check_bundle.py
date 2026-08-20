@@ -90,6 +90,15 @@ class Finding:
     path: str | None = None
 
 
+@dataclass(frozen=True)
+class _FileSnapshot:
+    """One bounded file read and the identity it was read from."""
+
+    identity: tuple[int, int, int, int, int, int]
+    content: bytes
+    relative: str
+
+
 class BundleChecker:
     """Collect bounded, value-free findings without changing the filesystem."""
 
@@ -97,6 +106,7 @@ class BundleChecker:
         self.errors: list[Finding] = []
         self.warnings: list[Finding] = []
         self.repository_digests: dict[str, str] | None = None
+        self._file_snapshots: dict[Path, _FileSnapshot] = {}
 
     def error(self, code: str, message: str, path: str | None = None) -> None:
         self.errors.append(Finding(code, message, path))
@@ -105,12 +115,35 @@ class BundleChecker:
         self.warnings.append(Finding(code, message, path))
 
 
+def _file_identity(metadata: os.stat_result) -> tuple[int, int, int, int, int, int]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+    )
+
+
+def _file_changed(relative: str, checker: BundleChecker) -> None:
+    checker.error(
+        "file-changed",
+        "bundle file changed while it was being checked",
+        relative,
+    )
+
+
 def _read_regular_bytes(
     path: Path,
     relative: str,
     checker: BundleChecker,
 ) -> bytes | None:
     """Read one bounded regular file without following a replacement symlink."""
+
+    cached = checker._file_snapshots.get(path)
+    if cached is not None:
+        return cached.content
 
     descriptor: int | None = None
     try:
@@ -140,6 +173,9 @@ def _read_regular_bytes(
                 relative,
             )
             return None
+        if _file_identity(opened) != _file_identity(before):
+            _file_changed(relative, checker)
+            return None
         if opened.st_size > MAX_FILE_BYTES:
             checker.error(
                 "file-limit",
@@ -157,6 +193,10 @@ def _read_regular_bytes(
             chunks.append(chunk)
             remaining -= len(chunk)
         raw = b"".join(chunks)
+        after = os.fstat(descriptor)
+        if _file_identity(after) != _file_identity(opened):
+            _file_changed(relative, checker)
+            return None
         if len(raw) > MAX_FILE_BYTES:
             checker.error(
                 "file-limit",
@@ -164,6 +204,11 @@ def _read_regular_bytes(
                 relative,
             )
             return None
+        checker._file_snapshots[path] = _FileSnapshot(
+            identity=_file_identity(after),
+            content=raw,
+            relative=relative,
+        )
     except OSError:
         checker.error("file-read", "bundle file could not be read safely", relative)
         return None
@@ -171,6 +216,21 @@ def _read_regular_bytes(
         if descriptor is not None:
             os.close(descriptor)
     return raw
+
+
+def _verify_file_snapshots(checker: BundleChecker) -> None:
+    """Fail when a file changed after its cached read completed."""
+
+    snapshots = tuple(checker._file_snapshots.items())
+    checker._file_snapshots.clear()
+    for path, snapshot in snapshots:
+        try:
+            current = path.lstat()
+        except OSError:
+            _file_changed(snapshot.relative, checker)
+            continue
+        if _file_identity(current) != snapshot.identity:
+            _file_changed(snapshot.relative, checker)
 
 
 def _strict_object(path: Path, checker: BundleChecker) -> dict[str, Any] | None:
@@ -724,6 +784,7 @@ def check_bundle(
             _check_pair(request, metadata, kind, checker)
     elif request is not None:
         checker.error("delegation-result", "result metadata is unavailable")
+    _verify_file_snapshots(checker)
     return checker
 
 
