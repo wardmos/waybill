@@ -3,9 +3,9 @@
 This adapter provides Gemini CLI workspace skills for exporting and importing
 Waybill Bundles.
 
-The handoff entrypoint is a thin Gemini CLI wrapper around `skills/handoff/`;
-its references, bundle assets, and checker are generated from that canonical
-Skill.
+The handoff entrypoint is a thin Gemini CLI wrapper around `skills/handoff/`.
+Shared references, bundle assets, and checker code are maintained only in that
+canonical Skill.
 
 Gemini CLI discovers workspace skills from:
 
@@ -31,11 +31,16 @@ waybill import .waybill
 
 ## Install In A Project
 
-Copy the adapter files into the target repository:
+Build the standalone adapters, then copy the generated files into the target
+repository:
+
+```bash
+python3 scripts/build-adapters.py
+```
 
 ```text
-adapters/gemini-cli/skills/handoff/  -> .gemini/skills/handoff/
-adapters/gemini-cli/skills/waybill/  -> .gemini/skills/waybill/
+dist/adapters/gemini-cli/skills/handoff/ -> .gemini/skills/handoff/
+dist/adapters/gemini-cli/skills/waybill/ -> .gemini/skills/waybill/
 ```
 
 The Waybill CLI is not required. If it is already available, use it as an

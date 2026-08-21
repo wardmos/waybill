@@ -15,9 +15,9 @@ local handoff bundle in the repository:
 This guide uses the agent-native Skill workflow. It does not require the
 Waybill CLI, a Python package, or a separate Waybill process.
 
-The shared workflow lives in `skills/handoff/`. Agent-specific files under
-`adapters/` are thin entrypoints plus synchronized references, copyable bundle
-assets, and one optional read-only checker.
+The complete shared workflow lives only in `skills/handoff/`. Agent-specific
+files under `adapters/` are thin source wrappers. The support CLI installs them
+directly, or `scripts/build-adapters.py` creates self-contained distributions.
 
 ## 1. Enable The Agent-Native Skill
 
@@ -36,12 +36,17 @@ not the Waybill CLI.
 
 ### Claude Code
 
-Ask Claude Code to copy these directories from the Waybill checkout into the
-target repository, without replacing existing paths unless you approve it:
+Build the standalone adapters, then ask Claude Code to copy these directories
+into the target repository without replacing existing paths unless you approve
+it:
+
+```bash
+python3 scripts/build-adapters.py
+```
 
 ```text
-adapters/claude-code/skills/handoff/ -> .claude/skills/handoff/
-adapters/claude-code/skills/waybill/ -> .claude/skills/waybill/
+dist/adapters/claude-code/skills/handoff/ -> .claude/skills/handoff/
+dist/adapters/claude-code/skills/waybill/ -> .claude/skills/waybill/
 ```
 
 Then start a new Claude Code session in the target repository. The copied Skill

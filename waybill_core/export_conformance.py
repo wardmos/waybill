@@ -18,7 +18,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
 from typing import Any, Sequence
 
-from .adapter_sources import SHARED_RESOURCE_PATHS
+from .adapter_sources import (
+    AGENT_ADAPTER_ENTRYPOINTS,
+    CANONICAL_SKILL_ROOT,
+    SHARED_RESOURCE_PATHS,
+    SUPPORTED_AGENT_ADAPTERS,
+)
 from .delegation import verify_delegation_pair
 from .limits import BundleLimitError, list_bundle_files
 from .readiness import check_export_readiness
@@ -26,13 +31,7 @@ from .repo import read_repo_fidelity, verify_repo_state
 from .validation import has_errors, validate_bundle
 
 
-SUPPORTED_EXPORT_ADAPTERS = (
-    "claude-code",
-    "codex",
-    "cursor",
-    "gemini-cli",
-    "opencode",
-)
+SUPPORTED_EXPORT_ADAPTERS = SUPPORTED_AGENT_ADAPTERS
 REQUIRED_EXPORT_SCENARIO_IDS = frozenset(
     {
         "delegation-request",
@@ -95,49 +94,22 @@ _RUNTIME_ENV_ALLOWLIST = (
 )
 
 _ADAPTER_ENTRYPOINTS = {
-    "claude-code": (
-        "adapters/claude-code/skills/handoff/SKILL.md",
-        ".claude/skills/handoff/SKILL.md",
-    ),
-    "codex": (
-        "adapters/codex/skills/handoff/SKILL.md",
-        ".waybill-conformance/codex/skills/handoff/SKILL.md",
-    ),
-    "cursor": (
-        "adapters/cursor/rules/handoff.mdc",
-        ".cursor/rules/handoff.mdc",
-    ),
-    "gemini-cli": (
-        "adapters/gemini-cli/skills/handoff/SKILL.md",
-        ".gemini/skills/handoff/SKILL.md",
-    ),
-    "opencode": (
-        "adapters/opencode/skills/handoff/SKILL.md",
-        ".opencode/skills/handoff/SKILL.md",
-    ),
+    adapter: (AGENT_ADAPTER_ENTRYPOINTS[adapter], target)
+    for adapter, target in {
+        "claude-code": ".claude/skills/handoff/SKILL.md",
+        "codex": ".waybill-conformance/codex/skills/handoff/SKILL.md",
+        "cursor": ".cursor/rules/handoff.mdc",
+        "gemini-cli": ".gemini/skills/handoff/SKILL.md",
+        "opencode": ".opencode/skills/handoff/SKILL.md",
+    }.items()
 }
 
-_ADAPTER_RESOURCE_ROOTS = {
-    "claude-code": (
-        "adapters/claude-code/skills/handoff",
-        ".claude/skills/handoff",
-    ),
-    "codex": (
-        "adapters/codex/skills/handoff",
-        ".waybill-conformance/codex/skills/handoff",
-    ),
-    "cursor": (
-        "adapters/cursor/rules/waybill-handoff",
-        ".cursor/rules/waybill-handoff",
-    ),
-    "gemini-cli": (
-        "adapters/gemini-cli/skills/handoff",
-        ".gemini/skills/handoff",
-    ),
-    "opencode": (
-        "adapters/opencode/skills/handoff",
-        ".opencode/skills/handoff",
-    ),
+_ADAPTER_RESOURCE_TARGETS = {
+    "claude-code": ".claude/skills/handoff",
+    "codex": ".waybill-conformance/codex/skills/handoff",
+    "cursor": ".cursor/rules/waybill-handoff",
+    "gemini-cli": ".gemini/skills/handoff",
+    "opencode": ".opencode/skills/handoff",
 }
 
 _BASE_SOURCE = """def should_retry(attempt: int) -> bool:
@@ -617,13 +589,13 @@ def _install_canonical_adapter(repo: Path, adapter: str, source_root: Path) -> s
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(canonical, target)
 
-    source_resource_root, target_resource_root = _ADAPTER_RESOURCE_ROOTS[adapter]
+    target_resource_root = _ADAPTER_RESOURCE_TARGETS[adapter]
     for relative_path in SHARED_RESOURCE_PATHS:
-        source_resource = source_root / source_resource_root / relative_path
+        source_resource = source_root / CANONICAL_SKILL_ROOT / relative_path
         if not source_resource.is_file():
             raise FileNotFoundError(
                 "canonical adapter resource is missing: "
-                f"{source_resource_root}/{relative_path}"
+                f"{CANONICAL_SKILL_ROOT}/{relative_path}"
             )
         target_resource = repo / target_resource_root / relative_path
         target_resource.parent.mkdir(parents=True, exist_ok=True)

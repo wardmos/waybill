@@ -10,11 +10,13 @@ tasks. `handoff` is the primary workflow name; `waybill` is an alias.
 
 ## Dispatch
 
-- For `handoff export`, `waybill export`, or a request to create a handoff,
+- For `/handoff export`, `handoff export`, `/waybill export`, `waybill export`,
+  or a request to create a handoff,
   read [bundle format](references/bundle-format.md) and
   [export workflow](references/export.md), then follow both.
-- For `handoff import`, `waybill import`, or a request to continue from a
-  bundle, read [bundle format](references/bundle-format.md) and
+- For `/handoff import`, `handoff import`, `/waybill import`, `waybill import`,
+  or a request to continue from a bundle, read
+  [bundle format](references/bundle-format.md) and
   [import workflow](references/import.md), then follow both.
 - If the requested direction is unclear, ask whether the user wants to export
   or import.

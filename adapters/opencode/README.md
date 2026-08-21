@@ -3,8 +3,8 @@
 This adapter provides native OpenCode commands and skills for exporting and
 importing Waybill Bundles.
 
-The commands and skills are thin OpenCode wrappers around `skills/handoff/`;
-the handoff references, bundle assets, and checker are generated from that
+The commands and skills are thin OpenCode wrappers around `skills/handoff/`.
+Shared references, bundle assets, and checker code are maintained only in the
 canonical Skill.
 
 OpenCode supports project-local custom commands in:
@@ -32,13 +32,18 @@ OpenCode supports project-local agent skills in:
 
 ## Install In A Project
 
-Copy the adapter files into the target repository:
+Build the standalone adapters, then copy the generated files into the target
+repository:
+
+```bash
+python3 scripts/build-adapters.py
+```
 
 ```text
-adapters/opencode/commands/handoff.md  -> .opencode/commands/handoff.md
-adapters/opencode/commands/waybill.md  -> .opencode/commands/waybill.md
-adapters/opencode/skills/handoff/      -> .opencode/skills/handoff/
-adapters/opencode/skills/waybill/      -> .opencode/skills/waybill/
+dist/adapters/opencode/commands/handoff.md  -> .opencode/commands/handoff.md
+dist/adapters/opencode/commands/waybill.md  -> .opencode/commands/waybill.md
+dist/adapters/opencode/skills/handoff/      -> .opencode/skills/handoff/
+dist/adapters/opencode/skills/waybill/      -> .opencode/skills/waybill/
 ```
 
 Then start OpenCode from that repository:

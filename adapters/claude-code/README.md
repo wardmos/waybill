@@ -4,14 +4,19 @@ This adapter provides Markdown command instructions for exporting and importing
 Waybill Bundles in Claude Code.
 
 The handoff entrypoint is a thin wrapper around the canonical workflow in
-`skills/handoff/`. Its references, bundle assets, and checker are generated from
-that shared Skill.
+`skills/handoff/`. Shared references, bundle assets, and checker code are not
+duplicated in this source directory.
 
-Install the project-scoped skills without the Waybill CLI by copying:
+Build a self-contained distribution, then install the project-scoped skills
+without the Waybill CLI by copying:
+
+```bash
+python3 scripts/build-adapters.py
+```
 
 ```text
-adapters/claude-code/skills/handoff/ -> .claude/skills/handoff/
-adapters/claude-code/skills/waybill/ -> .claude/skills/waybill/
+dist/adapters/claude-code/skills/handoff/ -> .claude/skills/handoff/
+dist/adapters/claude-code/skills/waybill/ -> .claude/skills/waybill/
 ```
 
 The optional `waybill init --adapter claude-code` command provides a managed
@@ -36,7 +41,7 @@ Supported commands:
 
 `/handoff` is the primary command. `/waybill` is an alias with the same behavior.
 
-## Files
+## Generated Distribution
 
 ```text
 commands/

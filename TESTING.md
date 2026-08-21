@@ -11,7 +11,6 @@ Run the same deterministic checks used for release readiness:
 python3 -m unittest discover -s tests -t . -v
 python3 scripts/validate-waybill.py
 python3 -m py_compile cli/waybill waybill_core/*.py scripts/*.py
-scripts/sync-adapters.py --check
 scripts/smoke-agents.sh --dry-run
 python3 scripts/test-wheel-install.py
 git diff --check
@@ -31,8 +30,9 @@ recurses consistently on Python 3.10, 3.11, and 3.12.
 The canonical handoff Skill is `skills/handoff/SKILL.md`; its bundle-format,
 export, and import references, copyable assets, and single read-only checker are
 tested separately from the thin adapter entrypoints. Checker tests run with no
-`waybill` executable on `PATH`. `sync-adapters.py --check` verifies every
-generated adapter and packaged resource copy.
+`waybill` executable on `PATH`. Repository validation builds every standalone
+adapter from canonical sources in a disposable directory. The wheel packages
+the shared Skill and agent-specific wrappers directly from those same sources.
 
 ## Continuous Integration
 
@@ -43,7 +43,6 @@ Python 3.10, 3.11, and 3.12 matrix. Each job runs:
 python3 scripts/validate-waybill.py
 python3 -m unittest discover -s tests -t . -v
 python3 -m py_compile cli/waybill waybill_core/*.py scripts/*.py
-scripts/sync-adapters.py --check
 scripts/smoke-agents.sh --dry-run
 ```
 
@@ -367,7 +366,7 @@ This checks:
 - Gemini CLI skill frontmatter and handoff safety rules.
 - Push and pull request CI coverage for Python 3.10, 3.11, and 3.12 with
   read-only permissions.
-- Canonical adapter mirror synchronization in read-only check mode.
+- Standalone adapter generation from canonical sources without tracked mirrors.
 - CLI adapter plan/apply separation, full conflict preflight, symlink safety,
   atomic deterministic manifests, and text/JSON reporting.
 - CLI adapter diagnostics for current, missing, stale, modified, legacy, and

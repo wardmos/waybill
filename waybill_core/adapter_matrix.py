@@ -12,7 +12,11 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path, PurePosixPath
 
-from .adapter_sources import SHARED_RESOURCE_PATHS
+from .adapter_sources import (
+    AGENT_ADAPTER_ENTRYPOINTS,
+    CANONICAL_SKILL_ROOT,
+    SHARED_RESOURCE_PATHS,
+)
 from .agent_identity import (
     DEFAULT_EXECUTABLES,
     AgentIdentity,
@@ -54,35 +58,21 @@ SCENARIO_DIRECTORIES = {
 }
 IMPORT_FIXTURE_DIRECTORY = "conformance/import-fixtures"
 
-ADAPTER_ENTRYPOINT_PATHS = {
-    "claude-code": "adapters/claude-code/skills/handoff/SKILL.md",
-    "codex": "adapters/codex/skills/handoff/SKILL.md",
-    "cursor": "adapters/cursor/rules/handoff.mdc",
-    "gemini-cli": "adapters/gemini-cli/skills/handoff/SKILL.md",
-    "opencode": "adapters/opencode/skills/handoff/SKILL.md",
-}
-
-ADAPTER_RESOURCE_ROOTS = {
-    "claude-code": "adapters/claude-code/skills/handoff",
-    "codex": "adapters/codex/skills/handoff",
-    "cursor": "adapters/cursor/rules/waybill-handoff",
-    "gemini-cli": "adapters/gemini-cli/skills/handoff",
-    "opencode": "adapters/opencode/skills/handoff",
-}
+ADAPTER_ENTRYPOINT_PATHS = AGENT_ADAPTER_ENTRYPOINTS
 
 ADAPTER_INSTRUCTION_PATHS = {
     adapter: (
         entrypoint,
         *(
-            f"{ADAPTER_RESOURCE_ROOTS[adapter]}/{relative_path}"
+            f"{CANONICAL_SKILL_ROOT}/{relative_path}"
             for relative_path in SHARED_RESOURCE_PATHS
         ),
     )
     for adapter, entrypoint in ADAPTER_ENTRYPOINT_PATHS.items()
 }
 
-# Adapter instruction digests cover each thin entrypoint plus its synchronized
-# shared references. These files define report production, identity binding,
+# Adapter instruction digests cover each thin entrypoint plus the canonical
+# shared resources. These files define report production, identity binding,
 # and the gates whose booleans are summarized by each result. The Git revision
 # binds the rest of the tree; the narrower digests expose focused drift.
 RUNNER_CONTRACT_PATHS = {

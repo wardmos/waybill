@@ -142,11 +142,11 @@ command_for_tool() {
   local tool="$1"
   local adapter_path
   case "$tool" in
-    claude) adapter_path="adapters/claude-code/skills/handoff/SKILL.md" ;;
-    codex) adapter_path="adapters/codex/skills/handoff/SKILL.md" ;;
-    cursor) adapter_path="adapters/cursor/rules/handoff.mdc" ;;
-    opencode) adapter_path="adapters/opencode/skills/handoff/SKILL.md" ;;
-    gemini) adapter_path="adapters/gemini-cli/skills/handoff/SKILL.md" ;;
+    claude) adapter_path="$ADAPTER_BUILD_ROOT/claude-code/skills/handoff/SKILL.md" ;;
+    codex) adapter_path="$ADAPTER_BUILD_ROOT/codex/skills/handoff/SKILL.md" ;;
+    cursor) adapter_path="$ADAPTER_BUILD_ROOT/cursor/rules/handoff.mdc" ;;
+    opencode) adapter_path="$ADAPTER_BUILD_ROOT/opencode/skills/handoff/SKILL.md" ;;
+    gemini) adapter_path="$ADAPTER_BUILD_ROOT/gemini-cli/skills/handoff/SKILL.md" ;;
     *) echo "Unknown tool: $tool" >&2; return 2 ;;
   esac
   local prompt="Read $adapter_path and follow its handoff import workflow for $BUNDLE. Do not modify files; only read the bundle, verify repository state, and summarize the handoff."
@@ -231,6 +231,11 @@ verify_tool_identity() {
 }
 
 LOG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/waybill-agent-smoke.XXXXXX")"
+mkdir -p "$ROOT/dist"
+SMOKE_BUILD_ROOT="$(mktemp -d "$ROOT/dist/waybill-agent-smoke.XXXXXX")"
+ADAPTER_BUILD_ROOT="$SMOKE_BUILD_ROOT/adapters"
+trap 'rm -rf "$SMOKE_BUILD_ROOT"' EXIT
+python3 "$ROOT/scripts/build-adapters.py" --output "$ADAPTER_BUILD_ROOT" || exit 1
 echo "Repo: $ROOT"
 echo "Bundle: $BUNDLE"
 echo "Logs: $LOG_DIR"

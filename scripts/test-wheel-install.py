@@ -392,11 +392,11 @@ import json
 from pathlib import Path
 
 import waybill_core
-from waybill_core.adapter_sources import ADAPTER_SOURCES, PACKAGE_TEMPLATE_ROOT
+from waybill_core.adapter_sources import ADAPTER_SOURCES, resolve_adapter_source
 
 templates = []
 for source in ADAPTER_SOURCES:
-    path = PACKAGE_TEMPLATE_ROOT / source.install_target
+    path = resolve_adapter_source(Path("__missing_waybill_source__"), source)
     templates.append(
         {
             "adapter": source.adapter,
@@ -415,7 +415,7 @@ print(
         {
             "version": waybill_core.__version__,
             "module": str(Path(waybill_core.__file__).resolve()),
-            "template_root": str(PACKAGE_TEMPLATE_ROOT.resolve()),
+            "package_root": str(Path(waybill_core.__file__).resolve().parent),
             "templates": templates,
         },
         sort_keys=True,
@@ -458,17 +458,17 @@ def validate_installed_package(
         raise WheelVerificationError("installed package version does not match source")
 
     module_value = report.get("module")
-    template_root_value = report.get("template_root")
-    if not isinstance(module_value, str) or not isinstance(template_root_value, str):
+    package_root_value = report.get("package_root")
+    if not isinstance(module_value, str) or not isinstance(package_root_value, str):
         raise WheelVerificationError("installed package probe omitted package paths")
     module_path = Path(module_value)
-    template_root = Path(template_root_value)
+    package_root = Path(package_root_value)
     if not _is_within(module_path, venv_root):
         raise WheelVerificationError("installed package was not imported from the venv")
     if _is_within(module_path, repository) or _is_within(module_path, source_copy):
         raise WheelVerificationError("installed package imported from a source directory")
-    if not _is_within(template_root, module_path.parent):
-        raise WheelVerificationError("adapter templates are outside the installed package")
+    if package_root != module_path.parent:
+        raise WheelVerificationError("adapter resources are outside the installed package")
 
     raw_templates = report.get("templates")
     if not isinstance(raw_templates, list):
@@ -495,8 +495,8 @@ def validate_installed_package(
         if not isinstance(digest, str) or SHA256_PATTERN.fullmatch(digest) is None:
             raise WheelVerificationError(f"packaged adapter digest is invalid: {target}")
         template_path = Path(path_value)
-        if not _is_within(template_path, template_root):
-            raise WheelVerificationError(f"packaged adapter escaped template root: {target}")
+        if not _is_within(template_path, package_root):
+            raise WheelVerificationError(f"packaged adapter escaped package root: {target}")
         key = (adapter, target)
         if key in found or target in records:
             raise WheelVerificationError(f"duplicate packaged adapter template: {target}")

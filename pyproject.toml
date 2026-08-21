@@ -42,8 +42,28 @@ Issues = "https://github.com/wardmos/waybill/issues"
 waybill = "waybill_core.cli:main"
 
 [tool.setuptools]
-packages = ["waybill_core"]
+packages = [
+  "waybill_core",
+  "waybill_core._adapter_wrappers",
+  "waybill_core._handoff_skill",
+]
 include-package-data = true
 
+[tool.setuptools.package-dir]
+"waybill_core._adapter_wrappers" = "adapters"
+"waybill_core._handoff_skill" = "skills/handoff"
+
 [tool.setuptools.package-data]
-waybill_core = ["template-files/**"]
+"waybill_core._adapter_wrappers" = [
+  "claude-code/skills/*/SKILL.md",
+  "cursor/rules/*.mdc",
+  "gemini-cli/skills/*/SKILL.md",
+  "opencode/commands/*.md",
+  "opencode/skills/*/SKILL.md",
+]
+"waybill_core._handoff_skill" = [
+  "SKILL.md",
+  "references/*.md",
+  "assets/bundle-template/*",
+  "scripts/*.py",
+]

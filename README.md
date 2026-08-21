@@ -105,8 +105,9 @@ strict export gate and requires both digests to match the current repository.
 | Cursor CLI | Project rules | [Cursor CLI setup](https://github.com/wardmos/waybill/blob/main/INSTALL.md#cursor-cli) |
 | Gemini CLI | Workspace Skills | [Gemini CLI setup](https://github.com/wardmos/waybill/blob/main/INSTALL.md#gemini-cli) |
 
-The canonical agent-neutral Skill lives in `skills/handoff/`; files under
-`adapters/` provide product-specific entrypoints and synchronized resources.
+The canonical agent-neutral Skill, references, assets, and checker live only in
+`skills/handoff/`. Files under `adapters/` are product-specific wrappers;
+self-contained adapter distributions are generated when needed.
 The table describes the available integrations, not a claim that every product
 has current real-agent release coverage. See
 [Conformance](https://github.com/wardmos/waybill/blob/main/CONFORMANCE.md) for

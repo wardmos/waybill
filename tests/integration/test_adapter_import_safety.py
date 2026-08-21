@@ -5,8 +5,6 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from waybill_core.adapter_sources import MIRROR_SOURCES
-
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -96,17 +94,6 @@ class AdapterImportSafetyTests(unittest.TestCase):
         for relative_path in REMOVED_WORKSPACE_MIRRORS:
             with self.subTest(path=relative_path):
                 self.assertFalse((ROOT / relative_path).exists())
-
-    def test_generated_references_stay_in_sync_with_the_shared_skill(self) -> None:
-        for source in MIRROR_SOURCES:
-            canonical_content = (ROOT / source.canonical).read_bytes()
-            for copy_path in source.mirrors:
-                with self.subTest(canonical=source.canonical, copy=copy_path):
-                    self.assertEqual(
-                        canonical_content,
-                        (ROOT / copy_path).read_bytes(),
-                    )
-
 
 if __name__ == "__main__":
     unittest.main()

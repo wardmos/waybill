@@ -4,9 +4,10 @@ Waybill creates portable, local-first handoff bundles for moving unfinished
 agent work between coding agents.
 
 - Keep specs, examples, adapters, and generated text portable across agent CLIs.
-- Keep the canonical `skills/` content, thin or generated `adapters/`, packaged
-  adapter templates, and `.agents/plugins/marketplace.json` in git. Agent-local
-  installation directories are generated outputs, not canonical sources.
+- Keep canonical shared resources only under `skills/`. Keep agent-specific
+  wrappers only under `adapters/`, plus the repository-root Codex manifest and
+  `.agents/plugins/marketplace.json`, in git. Standalone adapter bundles and
+  agent-local installations are generated outputs.
 - Do not commit local artifacts such as handoff bundles, package installs,
   caches, bytecode, archives, or generated reports.
 - Keep changes small, focused, and consistent with existing module boundaries.
@@ -34,8 +35,9 @@ agent work between coding agents.
   privacy-sensitive paths. If a check cannot run locally, document why.
 - Use `scripts/smoke-agents.sh --dry-run` for smoke command generation. Only run
   real agent smoke tests when explicitly asked.
-- After changing the canonical handoff Skill or an adapter wrapper, run
-  `python3 scripts/sync-adapters.py --write` and then `--check`.
+- `python3 scripts/validate-waybill.py` builds standalone adapters in a
+  disposable directory. Use `scripts/build-adapters.py` only when a local
+  self-contained distribution is needed; do not commit its output.
 
 ## Commit Messages
 

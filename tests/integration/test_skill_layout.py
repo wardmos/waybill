@@ -18,6 +18,22 @@ BUNDLE_ASSET_NAMES = (
     "commands.log",
     "test-summary.md",
 )
+SHARED_RESOURCE_PATHS = (
+    *(f"references/{name}" for name in REFERENCE_NAMES),
+    *(f"assets/bundle-template/{name}" for name in BUNDLE_ASSET_NAMES),
+    "scripts/check_bundle.py",
+)
+LEGACY_MIRROR_ROOTS = (
+    ROOT / "adapters/claude-code/skills/handoff",
+    ROOT / "adapters/codex/skills/handoff",
+    ROOT / "adapters/cursor/rules/waybill-handoff",
+    ROOT / "adapters/gemini-cli/skills/handoff",
+    ROOT / "adapters/opencode/skills/handoff",
+    ROOT / "waybill_core/template-files/.claude/skills/handoff",
+    ROOT / "waybill_core/template-files/.cursor/rules/waybill-handoff",
+    ROOT / "waybill_core/template-files/.gemini/skills/handoff",
+    ROOT / "waybill_core/template-files/.opencode/skills/handoff",
+)
 
 
 class CanonicalSkillLayoutTests(unittest.TestCase):
@@ -119,6 +135,36 @@ class CanonicalSkillLayoutTests(unittest.TestCase):
             text = (SKILL_ROOT / "references" / reference).read_text(encoding="utf-8")
             self.assertIn("../scripts/check_bundle.py", text)
             self.assertIn("optional read-only", " ".join(text.lower().split()))
+
+    def test_shared_skill_resources_have_no_tracked_adapter_mirrors(self) -> None:
+        mirrored = [
+            root / relative
+            for root in LEGACY_MIRROR_ROOTS
+            for relative in SHARED_RESOURCE_PATHS
+            if (root / relative).exists()
+        ]
+
+        self.assertEqual([], mirrored)
+
+    def test_agent_wrappers_have_no_tracked_package_mirrors(self) -> None:
+        package_mirrors = ROOT / "waybill_core/template-files"
+
+        self.assertFalse(package_mirrors.exists())
+
+    def test_repository_root_is_the_local_codex_plugin(self) -> None:
+        manifest = json.loads(
+            (ROOT / ".codex-plugin/plugin.json").read_text(encoding="utf-8")
+        )
+        marketplace = json.loads(
+            (ROOT / ".agents/plugins/marketplace.json").read_text(encoding="utf-8")
+        )
+
+        self.assertEqual("waybill", manifest["name"])
+        self.assertEqual("./skills/", manifest["skills"])
+        self.assertEqual("./", marketplace["plugins"][0]["source"]["path"])
+        self.assertFalse(
+            (ROOT / "adapters/codex/.codex-plugin/plugin.json").exists()
+        )
 
     def test_user_docs_make_the_waybill_cli_an_optional_enhancement(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")

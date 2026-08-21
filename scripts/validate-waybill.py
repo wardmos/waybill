@@ -9,6 +9,7 @@ import os
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -26,13 +27,18 @@ from waybill_core.limits import (  # noqa: E402
     list_bundle_files,
 )
 from waybill_core.adapter_installation import MANIFEST_FILENAME  # noqa: E402
+from waybill_core.adapter_bundles import (  # noqa: E402
+    ADAPTER_BUNDLE_SOURCES,
+    BUNDLE_ADAPTERS,
+    build_adapter_bundles,
+)
 from waybill_core.adapter_sources import (  # noqa: E402
     ADAPTER_SOURCES,
     BUNDLE_ASSET_NAMES,
     CANONICAL_SKILL,
+    CANONICAL_SKILL_ROOT,
     CHECKER_SCRIPT_NAMES,
-    MIRROR_SOURCES,
-    find_adapter_drift,
+    SHARED_RESOURCE_PATHS,
     sources_for_adapter,
 )
 from waybill_core.conformance import (  # noqa: E402
@@ -71,10 +77,11 @@ REQUIRED_FILES = [
     "scripts/adapter-matrix.py",
     "scripts/conformance-agents.py",
     "scripts/conformance-exports.py",
+    "scripts/build-adapters.py",
     "scripts/smoke-agents.sh",
-    "scripts/sync-adapters.py",
     "scripts/test-wheel-install.py",
     "waybill_core/__init__.py",
+    "waybill_core/adapter_bundles.py",
     "waybill_core/adapter_matrix.py",
     "waybill_core/adapter_installation.py",
     "waybill_core/adapter_sources.py",
@@ -99,64 +106,29 @@ REQUIRED_FILES = [
     "waybill_core/sharing.py",
     "waybill_core/validation.py",
     "skills/handoff/SKILL.md",
+    "skills/handoff/__init__.py",
     "skills/handoff/references/bundle-format.md",
     "skills/handoff/references/export.md",
     "skills/handoff/references/import.md",
-    "waybill_core/template-files/.claude/skills/handoff/SKILL.md",
-    "waybill_core/template-files/.claude/skills/handoff/references/bundle-format.md",
-    "waybill_core/template-files/.claude/skills/handoff/references/export.md",
-    "waybill_core/template-files/.claude/skills/handoff/references/import.md",
-    "waybill_core/template-files/.claude/skills/waybill/SKILL.md",
-    "waybill_core/template-files/.opencode/commands/handoff.md",
-    "waybill_core/template-files/.opencode/commands/waybill.md",
-    "waybill_core/template-files/.opencode/skills/handoff/SKILL.md",
-    "waybill_core/template-files/.opencode/skills/handoff/references/bundle-format.md",
-    "waybill_core/template-files/.opencode/skills/handoff/references/export.md",
-    "waybill_core/template-files/.opencode/skills/handoff/references/import.md",
-    "waybill_core/template-files/.opencode/skills/waybill/SKILL.md",
-    "waybill_core/template-files/.cursor/rules/handoff.mdc",
-    "waybill_core/template-files/.cursor/rules/waybill-handoff/references/bundle-format.md",
-    "waybill_core/template-files/.cursor/rules/waybill-handoff/references/export.md",
-    "waybill_core/template-files/.cursor/rules/waybill-handoff/references/import.md",
-    "waybill_core/template-files/.cursor/rules/waybill.mdc",
-    "waybill_core/template-files/.gemini/skills/handoff/SKILL.md",
-    "waybill_core/template-files/.gemini/skills/handoff/references/bundle-format.md",
-    "waybill_core/template-files/.gemini/skills/handoff/references/export.md",
-    "waybill_core/template-files/.gemini/skills/handoff/references/import.md",
-    "waybill_core/template-files/.gemini/skills/waybill/SKILL.md",
+    "adapters/__init__.py",
     ".agents/plugins/marketplace.json",
+    ".codex-plugin/plugin.json",
     "adapters/claude-code/README.md",
     "adapters/claude-code/commands/handoff-export.md",
     "adapters/claude-code/commands/handoff-import.md",
     "adapters/codex/README.md",
-    "adapters/codex/.codex-plugin/plugin.json",
     "adapters/codex/skills/handoff/SKILL.md",
-    "adapters/codex/skills/handoff/references/bundle-format.md",
-    "adapters/codex/skills/handoff/references/export.md",
-    "adapters/codex/skills/handoff/references/import.md",
     "adapters/cursor/README.md",
     "adapters/cursor/rules/handoff.mdc",
-    "adapters/cursor/rules/waybill-handoff/references/bundle-format.md",
-    "adapters/cursor/rules/waybill-handoff/references/export.md",
-    "adapters/cursor/rules/waybill-handoff/references/import.md",
     "adapters/cursor/rules/waybill.mdc",
     "adapters/gemini-cli/README.md",
     "adapters/gemini-cli/skills/handoff/SKILL.md",
-    "adapters/gemini-cli/skills/handoff/references/bundle-format.md",
-    "adapters/gemini-cli/skills/handoff/references/export.md",
-    "adapters/gemini-cli/skills/handoff/references/import.md",
     "adapters/gemini-cli/skills/waybill/SKILL.md",
     "adapters/opencode/README.md",
     "adapters/opencode/commands/handoff.md",
     "adapters/opencode/commands/waybill.md",
     "adapters/opencode/skills/handoff/SKILL.md",
-    "adapters/opencode/skills/handoff/references/bundle-format.md",
-    "adapters/opencode/skills/handoff/references/export.md",
-    "adapters/opencode/skills/handoff/references/import.md",
     "adapters/opencode/skills/waybill/SKILL.md",
-    "adapters/claude-code/skills/handoff/references/bundle-format.md",
-    "adapters/claude-code/skills/handoff/references/export.md",
-    "adapters/claude-code/skills/handoff/references/import.md",
     "conformance/scenarios/cross-agent-divergence-recovery.json",
     "conformance/scenarios/delegation-blocked.json",
     "conformance/scenarios/delegation-partial.json",
@@ -181,11 +153,15 @@ REQUIRED_FILES = [
 
 REQUIRED_FILES.extend(
     sorted(
-        {
-            path
-            for source in MIRROR_SOURCES
-            for path in (source.canonical, *source.mirrors)
-        }
+        (
+            {
+                source.canonical for source in ADAPTER_SOURCES
+            }
+            | {
+                f"{CANONICAL_SKILL_ROOT}/{relative}"
+                for relative in SHARED_RESOURCE_PATHS
+            }
+        )
         - set(REQUIRED_FILES)
     )
 )
@@ -709,7 +685,7 @@ def validate_handoff_wrapper(
 
 
 def validate_codex_plugin() -> None:
-    manifest_path = ROOT / "adapters/codex/.codex-plugin/plugin.json"
+    manifest_path = ROOT / ".codex-plugin/plugin.json"
     manifest = read_json(manifest_path)
 
     for key in ["name", "version", "description", "author", "skills", "interface"]:
@@ -728,8 +704,8 @@ def validate_codex_plugin() -> None:
         if key not in interface:
             fail(f"Codex plugin interface missing {key}")
 
-    skill_path = ROOT / "adapters/codex/skills/handoff/SKILL.md"
-    skill = validate_handoff_wrapper(skill_path, adapter="codex")
+    skill_path = ROOT / CANONICAL_SKILL
+    skill = skill_path.read_text()
     if "name: handoff" not in skill:
         fail("Codex handoff skill frontmatter must name the skill")
     for command in ["/handoff export", "/waybill export", "/handoff import", "/waybill import"]:
@@ -754,9 +730,9 @@ def validate_codex_marketplace() -> None:
         fail("repo marketplace plugin name must be waybill")
     if plugin.get("source", {}).get("source") != "local":
         fail("repo marketplace plugin source must be local")
-    if plugin.get("source", {}).get("path") != "./adapters/codex":
-        fail("repo marketplace plugin path must be ./adapters/codex")
-    if not (ROOT / "adapters/codex/.codex-plugin/plugin.json").is_file():
+    if plugin.get("source", {}).get("path") != "./":
+        fail("repo marketplace plugin path must be ./")
+    if not (ROOT / ".codex-plugin/plugin.json").is_file():
         fail("repo marketplace plugin path does not contain a Codex manifest")
 
     policy = plugin.get("policy", {})
@@ -888,38 +864,27 @@ def validate_gemini_cli_adapter() -> None:
             fail(f"Gemini CLI README must mention {expected}")
 
 
-def validate_adapter_synchronization() -> None:
-    tracked_paths = sorted(
-        {
-            path
-            for source in MIRROR_SOURCES
-            for path in (source.canonical, *source.mirrors)
-        }
-    )
-    before = {path: require_file(path).read_bytes() for path in tracked_paths}
-    issues = find_adapter_drift(ROOT)
-    if issues:
-        formatted = ", ".join(
-            f"{issue.mirror} ({issue.reason})" for issue in issues
-        )
-        fail(f"adapter mirrors are out of sync: {formatted}")
-
-    result = subprocess.run(
-        [sys.executable, str(ROOT / "scripts/sync-adapters.py"), "--check"],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-    )
-    if result.returncode != 0:
-        fail(
-            "adapter synchronization check failed: "
-            + (result.stderr.strip() or result.stdout.strip())
-        )
-    if result.stderr or "PASS adapter mirrors are in sync" not in result.stdout:
-        fail("adapter synchronization check must report a clean read-only result")
-    after = {path: require_file(path).read_bytes() for path in tracked_paths}
-    if after != before:
-        fail("adapter synchronization --check must not modify adapter files")
+def validate_adapter_distribution_build() -> None:
+    expected = {
+        f"{source.adapter}/{source.target}" for source in ADAPTER_BUNDLE_SOURCES
+    }
+    with tempfile.TemporaryDirectory(prefix="waybill-adapter-build-") as tmp:
+        output = Path(tmp) / "adapters"
+        report = build_adapter_bundles(ROOT, output)
+        if set(report.files) != expected:
+            fail("standalone adapter build produced an unexpected file set")
+        if {path.name for path in output.iterdir()} != set(BUNDLE_ADAPTERS):
+            fail("standalone adapter build omitted an adapter directory")
+        for source in ADAPTER_BUNDLE_SOURCES:
+            generated = output / source.adapter / source.target
+            try:
+                metadata = generated.lstat()
+            except FileNotFoundError:
+                fail(f"standalone adapter file is missing: {generated}")
+            if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+                fail(f"standalone adapter file is unsafe: {generated}")
+            if generated.read_bytes() != (ROOT / source.canonical).read_bytes():
+                fail(f"standalone adapter file differs from source: {generated}")
 
 
 def validate_python_package() -> None:
@@ -955,12 +920,40 @@ def validate_python_package() -> None:
         fail("pyproject must expose waybill console script")
 
     setuptools = toml_section(pyproject, "tool.setuptools")
-    if toml_string_list(setuptools, "packages") != ["waybill_core"]:
-        fail("pyproject setuptools packages must include waybill_core")
+    if toml_string_list(setuptools, "packages") != [
+        "waybill_core",
+        "waybill_core._adapter_wrappers",
+        "waybill_core._handoff_skill",
+    ]:
+        fail("pyproject setuptools packages must include canonical adapter sources")
+
+    package_dirs = toml_section(pyproject, "tool.setuptools.package-dir")
+    if '"waybill_core._adapter_wrappers" = "adapters"' not in package_dirs:
+        fail("pyproject must map canonical adapter wrappers into the wheel package")
+    if '"waybill_core._handoff_skill" = "skills/handoff"' not in package_dirs:
+        fail("pyproject must map the canonical Skill into the wheel package")
 
     package_data = toml_section(pyproject, "tool.setuptools.package-data")
-    if "template-files/**" not in toml_string_list(package_data, "waybill_core"):
-        fail("pyproject must include packaged adapter templates")
+    required_wrapper_data = {
+        "claude-code/skills/*/SKILL.md",
+        "cursor/rules/*.mdc",
+        "gemini-cli/skills/*/SKILL.md",
+        "opencode/commands/*.md",
+        "opencode/skills/*/SKILL.md",
+    }
+    if set(
+        toml_string_list(package_data, '"waybill_core._adapter_wrappers"')
+    ) != required_wrapper_data:
+        fail("pyproject must package canonical adapter wrappers once")
+    required_skill_data = {
+        '"waybill_core._handoff_skill"',
+        '"SKILL.md"',
+        '"references/*.md"',
+        '"assets/bundle-template/*"',
+        '"scripts/*.py"',
+    }
+    if not all(value in package_data for value in required_skill_data):
+        fail("pyproject must package the canonical Skill resources once")
 
 
 def validate_packaging_declarations() -> None:
@@ -968,11 +961,12 @@ def validate_packaging_declarations() -> None:
     for required in ("graft skills", "graft adapters"):
         if required not in manifest:
             fail(f"MANIFEST.in must include source distribution content: {required}")
-    if "graft waybill_core/template-files" not in manifest:
-        fail("MANIFEST.in must include packaged adapter templates")
+    if "graft .codex-plugin" not in manifest:
+        fail("MANIFEST.in must include the root Codex plugin manifest")
 
     expected_modules = {
         "waybill_core/adapter_matrix.py",
+        "waybill_core/adapter_bundles.py",
         "waybill_core/adapter_installation.py",
         "waybill_core/adapter_sources.py",
         "waybill_core/agent_identity.py",
@@ -984,13 +978,10 @@ def validate_packaging_declarations() -> None:
     if not expected_modules.issubset(REQUIRED_FILES):
         fail("required files must include every new package module")
 
-    packaged_mirrors = {source.packaged_mirror for source in ADAPTER_SOURCES}
-    if not packaged_mirrors:
-        fail("adapter source manifest must declare packaged templates")
-    for path in sorted(packaged_mirrors):
-        if not path.startswith("waybill_core/template-files/"):
-            fail(f"packaged adapter path is outside package data: {path}")
-        require_file(path)
+    if (ROOT / "waybill_core/template-files").exists():
+        fail("packaged adapter mirrors must not exist")
+    for source in ADAPTER_SOURCES:
+        require_file(source.canonical)
     if any(source.adapter == "codex" for source in ADAPTER_SOURCES):
         fail("Codex plugin must not be an init-managed packaged template")
 
@@ -1025,7 +1016,6 @@ def validate_pypi_publish_workflow() -> None:
         "python3 scripts/validate-waybill.py",
         "python3 -m unittest discover -s tests -t . -v",
         "python3 -m py_compile cli/waybill waybill_core/*.py scripts/*.py",
-        "scripts/sync-adapters.py --check",
         "Check tag matches package version",
         "tag = os.environ['GITHUB_REF_NAME']",
         "tag {tag} does not match package version v{version}",
@@ -1068,7 +1058,6 @@ def validate_ci_workflow() -> None:
         "--deterministic-fake",
         "--require-complete-matrix",
         "python3 -m py_compile cli/waybill waybill_core/*.py scripts/*.py",
-        "scripts/sync-adapters.py --check",
         "scripts/smoke-agents.sh --dry-run",
     ]
     for expected in required:
@@ -3169,7 +3158,7 @@ CHECKS: tuple[tuple[str, Callable[[], None]], ...] = (
     ("OpenCode adapter", validate_opencode_adapter),
     ("Cursor adapter", validate_cursor_adapter),
     ("Gemini CLI adapter", validate_gemini_cli_adapter),
-    ("adapter synchronization", validate_adapter_synchronization),
+    ("adapter distribution build", validate_adapter_distribution_build),
     ("Python package", validate_python_package),
     ("packaging declarations", validate_packaging_declarations),
     ("wheel installation", validate_wheel_installation),

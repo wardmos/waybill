@@ -1,11 +1,11 @@
 # Waybill for Codex
 
-This adapter provides a Codex plugin for exporting and importing Waybill
-Bundles.
+The repository root is the local Codex plugin for exporting and importing
+Waybill Bundles. It uses the canonical `skills/handoff/` tree directly.
 
-Its handoff entrypoint is a thin Codex wrapper around `skills/handoff/`; the
-plugin-local references, bundle assets, and checker are generated from that
-canonical Skill.
+This directory retains the Codex-specific wrapper used when generating a
+standalone adapter distribution. Shared references, assets, and checker code
+are not tracked here.
 
 Supported commands:
 
@@ -18,7 +18,7 @@ Supported commands:
 
 `/handoff` is the primary command. `/waybill` is an alias with the same behavior.
 
-## Files
+## Repository Plugin Files
 
 ```text
 .codex-plugin/
@@ -29,6 +29,12 @@ skills/
     assets/
     references/
     scripts/
+```
+
+To build the optional standalone layout under `dist/adapters/codex/`, run:
+
+```bash
+python3 scripts/build-adapters.py
 ```
 
 ## Behavior

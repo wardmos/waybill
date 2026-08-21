@@ -154,11 +154,7 @@ class SyntheticRepositoryTests(unittest.TestCase):
             installed_references = installed_adapter.parent / "references"
             for name in ("bundle-format.md", "export.md", "import.md"):
                 self.assertEqual(
-                    (
-                        REPO_ROOT
-                        / "adapters/codex/skills/handoff/references"
-                        / name
-                    ).read_bytes(),
+                    (REPO_ROOT / "skills/handoff/references" / name).read_bytes(),
                     (installed_references / name).read_bytes(),
                 )
             installed_assets = installed_adapter.parent / "assets/bundle-template"
@@ -172,16 +168,13 @@ class SyntheticRepositoryTests(unittest.TestCase):
                 self.assertEqual(
                     (
                         REPO_ROOT
-                        / "adapters/codex/skills/handoff/assets/bundle-template"
+                        / "skills/handoff/assets/bundle-template"
                         / name
                     ).read_bytes(),
                     (installed_assets / name).read_bytes(),
                 )
             self.assertEqual(
-                (
-                    REPO_ROOT
-                    / "adapters/codex/skills/handoff/scripts/check_bundle.py"
-                ).read_bytes(),
+                (REPO_ROOT / "skills/handoff/scripts/check_bundle.py").read_bytes(),
                 (installed_adapter.parent / "scripts/check_bundle.py").read_bytes(),
             )
             self.assertTrue(prepared.evidence.canonical_diff.startswith(b"diff --git "))

@@ -4,8 +4,8 @@ This adapter provides Cursor project rules for exporting and importing Waybill
 Bundles from Cursor Agent and Cursor CLI.
 
 The rules are thin Cursor wrappers around `skills/handoff/`. Shared workflow
-references, bundle assets, and the checker are generated under
-`rules/waybill-handoff/`.
+references, bundle assets, and checker code are maintained only in the
+canonical Skill.
 
 Cursor supports project rules in:
 
@@ -31,12 +31,17 @@ waybill import .waybill
 
 ## Install In A Project
 
-Copy the adapter files into the target repository:
+Build the standalone adapters, then copy the generated files into the target
+repository:
+
+```bash
+python3 scripts/build-adapters.py
+```
 
 ```text
-adapters/cursor/rules/handoff.mdc  -> .cursor/rules/handoff.mdc
-adapters/cursor/rules/waybill.mdc  -> .cursor/rules/waybill.mdc
-adapters/cursor/rules/waybill-handoff/ -> .cursor/rules/waybill-handoff/
+dist/adapters/cursor/rules/handoff.mdc -> .cursor/rules/handoff.mdc
+dist/adapters/cursor/rules/waybill.mdc -> .cursor/rules/waybill.mdc
+dist/adapters/cursor/rules/waybill-handoff/ -> .cursor/rules/waybill-handoff/
 ```
 
 The Waybill CLI is not required. If it is already available, use it as an

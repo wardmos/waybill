@@ -10,12 +10,18 @@ automation layer.
 For the shortest setup path, start with `QUICKSTART.md`. This document keeps
 the fuller per-adapter details.
 
-The agent-neutral source of truth is `skills/handoff/`. Each directory under
-`adapters/` contains only a product-specific entrypoint or command wrapper plus
-generated reference, asset, and checker copies needed to make that adapter
-self-contained. Run `python3 scripts/sync-adapters.py --write` after changing
-the canonical Skill; `--check` verifies that adapter and packaged copies have
-not drifted.
+The only shared source of truth is `skills/handoff/`. Directories under
+`adapters/` contain product-specific wrappers, commands, rules, and manifests,
+but no copies of shared references, assets, or checker code. The support CLI
+fans the canonical files out during installation. For a standalone copyable
+distribution, build all adapters into the ignored `dist/` directory:
+
+```bash
+python3 scripts/build-adapters.py
+```
+
+The wheel also packages these two canonical source trees directly; it does not
+need tracked fallback copies.
 
 ## Agent-Native Installation
 
@@ -23,15 +29,16 @@ The default installation unit is the adapter's Skill or plugin directory:
 
 | Agent | Copy or enable |
 | --- | --- |
-| Claude Code | `adapters/claude-code/skills/*` in `.claude/skills/` |
-| Codex | the plugin at `adapters/codex/` |
-| OpenCode | `adapters/opencode/commands/*` and `skills/*` |
-| Cursor | `adapters/cursor/rules/*` in `.cursor/rules/` |
-| Gemini CLI | `adapters/gemini-cli/skills/*` in `.gemini/skills/` |
+| Claude Code | `dist/adapters/claude-code/skills/*` in `.claude/skills/` |
+| Codex | the repository-root plugin |
+| OpenCode | `dist/adapters/opencode/commands/*` and `skills/*` |
+| Cursor | `dist/adapters/cursor/rules/*` in `.cursor/rules/` |
+| Gemini CLI | `dist/adapters/gemini-cli/skills/*` in `.gemini/skills/` |
 
-These directories are self-contained. Copying or enabling the relevant one is
-enough for `/handoff export` and `/handoff import`; no Waybill CLI process runs
-behind the Skill. The per-agent sections below give exact mappings.
+The generated directories are self-contained. Copying or enabling the relevant
+one is enough for `/handoff export` and `/handoff import`; no Waybill CLI
+process runs behind the Skill. The source `adapters/` directories are not
+standalone distributions. The per-agent sections below give exact mappings.
 
 ## Optional Managed Adapter Lifecycle
 
@@ -77,10 +84,11 @@ This repository includes a repo-scoped plugin marketplace:
 .agents/plugins/marketplace.json
 ```
 
-The marketplace exposes the Codex plugin at:
+The marketplace exposes this repository root as the Codex plugin, so it uses
+the canonical `skills/handoff/` tree directly:
 
 ```text
-adapters/codex/
+./
 ```
 
 To try it:
@@ -128,7 +136,7 @@ Expected result: Codex reads the example bundle, checks the repository state,
 summarizes the original task, and identifies the next recommended step without
 applying `diff.patch`.
 
-## Codex Plugin Directory Alternative
+## Codex Plugin UI Alternative
 
 Instead of using Codex's command-line plugin management, you can install from
 the plugin directory:
@@ -152,12 +160,14 @@ After installation, the target repository contains Claude Code skills at:
 .claude/skills/waybill/SKILL.md
 ```
 
-Install without the Waybill CLI by copying the adapter Skill directories after
-checking that the destinations will not overwrite local changes:
+Install without the Waybill CLI by first running
+`python3 scripts/build-adapters.py`, then copying the generated Skill
+directories after checking that the destinations will not overwrite local
+changes:
 
 ```text
-adapters/claude-code/skills/handoff/ -> .claude/skills/handoff/
-adapters/claude-code/skills/waybill/ -> .claude/skills/waybill/
+dist/adapters/claude-code/skills/handoff/ -> .claude/skills/handoff/
+dist/adapters/claude-code/skills/waybill/ -> .claude/skills/waybill/
 ```
 
 To try them:
@@ -212,13 +222,14 @@ skills at:
 .opencode/skills/waybill/SKILL.md
 ```
 
-Install without the Waybill CLI by copying:
+Install without the Waybill CLI by running
+`python3 scripts/build-adapters.py` and copying:
 
 ```text
-adapters/opencode/commands/handoff.md -> .opencode/commands/handoff.md
-adapters/opencode/commands/waybill.md -> .opencode/commands/waybill.md
-adapters/opencode/skills/handoff/ -> .opencode/skills/handoff/
-adapters/opencode/skills/waybill/ -> .opencode/skills/waybill/
+dist/adapters/opencode/commands/handoff.md -> .opencode/commands/handoff.md
+dist/adapters/opencode/commands/waybill.md -> .opencode/commands/waybill.md
+dist/adapters/opencode/skills/handoff/ -> .opencode/skills/handoff/
+dist/adapters/opencode/skills/waybill/ -> .opencode/skills/waybill/
 ```
 
 To try them:
@@ -245,10 +256,10 @@ Expected result: OpenCode reads the example bundle, checks the repository
 state, summarizes the original task, and identifies the next recommended step
 without applying `diff.patch`.
 
-The reusable adapter files are available in:
+The generated reusable adapter files are available in:
 
 ```text
-adapters/opencode/
+dist/adapters/opencode/
 ```
 
 Optional managed installation is available with
@@ -262,12 +273,13 @@ After installation, the target repository contains Cursor rules under:
 .cursor/rules/
 ```
 
-Install without the Waybill CLI by copying:
+Install without the Waybill CLI by running
+`python3 scripts/build-adapters.py` and copying:
 
 ```text
-adapters/cursor/rules/handoff.mdc -> .cursor/rules/handoff.mdc
-adapters/cursor/rules/waybill.mdc -> .cursor/rules/waybill.mdc
-adapters/cursor/rules/waybill-handoff/ -> .cursor/rules/waybill-handoff/
+dist/adapters/cursor/rules/handoff.mdc -> .cursor/rules/handoff.mdc
+dist/adapters/cursor/rules/waybill.mdc -> .cursor/rules/waybill.mdc
+dist/adapters/cursor/rules/waybill-handoff/ -> .cursor/rules/waybill-handoff/
 ```
 
 Then smoke test it in read-only ask mode:
@@ -285,10 +297,10 @@ agent -p --trust --mode=ask --output-format json "handoff import examples/claude
 Expected result: Cursor reads the example bundle, checks the repository state,
 summarizes the original task, and does not automatically apply `diff.patch`.
 
-Reusable adapter files are available in:
+Generated reusable adapter files are available in:
 
 ```text
-adapters/cursor/
+dist/adapters/cursor/
 ```
 
 Optional managed installation is available with
@@ -302,11 +314,12 @@ After installation, the target repository contains Gemini CLI skills under:
 .gemini/skills/
 ```
 
-Install without the Waybill CLI by copying:
+Install without the Waybill CLI by running
+`python3 scripts/build-adapters.py` and copying:
 
 ```text
-adapters/gemini-cli/skills/handoff/ -> .gemini/skills/handoff/
-adapters/gemini-cli/skills/waybill/ -> .gemini/skills/waybill/
+dist/adapters/gemini-cli/skills/handoff/ -> .gemini/skills/handoff/
+dist/adapters/gemini-cli/skills/waybill/ -> .gemini/skills/waybill/
 ```
 
 Then smoke test it in read-only plan mode:
@@ -325,10 +338,10 @@ Expected result: Gemini CLI reads the example bundle, checks the repository
 state, summarizes the original task, and does not automatically apply
 `diff.patch`.
 
-Reusable adapter files are available in:
+Generated reusable adapter files are available in:
 
 ```text
-adapters/gemini-cli/
+dist/adapters/gemini-cli/
 ```
 
 Optional managed installation is available with
@@ -366,7 +379,6 @@ After installing the adapters you need, run the static repository validation:
 python3 -m unittest discover -s tests -t . -v
 python3 scripts/validate-waybill.py
 python3 -m py_compile cli/waybill waybill_core/*.py scripts/*.py
-scripts/sync-adapters.py --check
 scripts/smoke-agents.sh --dry-run
 python3 scripts/test-wheel-install.py
 ```

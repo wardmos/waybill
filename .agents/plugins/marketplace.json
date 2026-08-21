@@ -8,7 +8,7 @@
       "name": "waybill",
       "source": {
         "source": "local",
-        "path": "./adapters/codex"
+        "path": "./"
       },
       "policy": {
         "installation": "AVAILABLE",

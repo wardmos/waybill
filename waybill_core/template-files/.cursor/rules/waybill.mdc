@@ -1,9 +1,0 @@
----
-description: Alias for the Waybill handoff workflow.
-alwaysApply: false
----
-
-# Waybill Alias
-
-Read `handoff.mdc` completely and run that handoff workflow with the user's
-request. Preserve its `source_agent`, reference loading, and safety boundaries.

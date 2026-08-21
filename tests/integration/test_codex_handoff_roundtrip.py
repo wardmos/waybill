@@ -22,7 +22,7 @@ from waybill_core.validation import WAYBILL_SECTIONS
 
 
 ROOT = Path(__file__).resolve().parents[2]
-CODEX_CHECKER = ROOT / "adapters/codex/skills/handoff/scripts/check_bundle.py"
+CODEX_CHECKER = ROOT / "skills/handoff/scripts/check_bundle.py"
 WAYBILL_CLI = ROOT / "cli/waybill"
 LOCAL_MACHINE_PATH = re.compile(r"(?<!\S)/(?:home|Users)/")
 
