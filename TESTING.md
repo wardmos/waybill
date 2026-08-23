@@ -12,6 +12,13 @@ python3 -m unittest discover -s tests -t . -v
 python3 scripts/validate-waybill.py
 python3 -m py_compile cli/waybill waybill_core/*.py scripts/*.py
 scripts/smoke-agents.sh --dry-run
+python3 scripts/conformance-roundtrip.py \
+  --deterministic-fake \
+  --left-adapter codex \
+  --right-adapter claude-code \
+  --left-agent-command 'python3 tests/conformance/fixtures/fake_roundtrip_agent.py' \
+  --right-agent-command 'python3 tests/conformance/fixtures/fake_roundtrip_agent.py' \
+  --timeout 20
 python3 scripts/test-wheel-install.py
 git diff --check
 ```
@@ -33,6 +40,8 @@ tested separately from the thin adapter entrypoints. Checker tests run with no
 `waybill` executable on `PATH`. Repository validation builds every standalone
 adapter from canonical sources in a disposable directory. The wheel packages
 the shared Skill and agent-specific wrappers directly from those same sources.
+There is no separate synchronization command or tracked generated adapter
+mirror to update.
 
 ## Continuous Integration
 
@@ -42,6 +51,7 @@ Python 3.10, 3.11, and 3.12 matrix. Each job runs:
 ```bash
 python3 scripts/validate-waybill.py
 python3 -m unittest discover -s tests -t . -v
+python3 scripts/conformance-roundtrip.py --deterministic-fake --left-adapter codex --right-adapter claude-code --left-agent-command 'python3 tests/conformance/fixtures/fake_roundtrip_agent.py' --right-agent-command 'python3 tests/conformance/fixtures/fake_roundtrip_agent.py' --timeout 20
 python3 -m py_compile cli/waybill waybill_core/*.py scripts/*.py
 scripts/smoke-agents.sh --dry-run
 ```
@@ -331,6 +341,17 @@ Codex adapter's bundled checker plus `validate`, `ready`, and `verify-repo`,
 then confirms import inspection and preflight leave the workspace unchanged.
 This guards the local product path without claiming live external-agent
 coverage.
+
+The bidirectional conformance runner goes one step further: it makes each side
+export a fresh bundle, runs `validate`, `ready`, and `verify-repo`, then gives
+that exact bundle to the opposite adapter's import workflow. Import runs in a
+disposable repository whose entire workspace, including `.git`, must remain
+byte-for-byte unchanged. The deterministic fake covers this contract in CI;
+real-agent execution requires `--unsafe-manual`.
+
+Known local namespace or sandbox startup failures are reported as
+`environment_blocked` with a stable reason. The runner performs one attempt per
+role and never retries with weaker sandbox or permission controls.
 
 ## Isolated Wheel Installation
 

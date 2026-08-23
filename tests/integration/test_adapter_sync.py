@@ -87,6 +87,15 @@ EXPECTED_TARGETS = {
 
 
 class AdapterSourceManifestTests(unittest.TestCase):
+    def test_retired_sync_entrypoint_and_stale_public_guidance_are_absent(self) -> None:
+        self.assertFalse((ROOT / "scripts" / "sync-adapters.py").exists())
+        for relative in ("AGENTS.md", "README.md", "TESTING.md", "CONFORMANCE.md"):
+            with self.subTest(relative=relative):
+                self.assertNotIn(
+                    "scripts/sync-adapters.py",
+                    (ROOT / relative).read_text(encoding="utf-8"),
+                )
+
     def test_manifest_maps_canonical_resources_and_thin_wrappers(self) -> None:
         actual_targets = {
             adapter: tuple(source.install_target for source in sources_for_adapter(adapter))

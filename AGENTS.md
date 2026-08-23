@@ -38,6 +38,9 @@ agent work between coding agents.
 - `python3 scripts/validate-waybill.py` builds standalone adapters in a
   disposable directory. Use `scripts/build-adapters.py` only when a local
   self-contained distribution is needed; do not commit its output.
+- There is no separate adapter synchronization step. Edit shared resources in
+  `skills/`, edit only agent-specific wrappers in `adapters/`, and let the
+  repository validator compare every generated distribution target.
 
 ## Commit Messages
 

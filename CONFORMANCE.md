@@ -1,11 +1,12 @@
 # Agent Conformance
 
-Waybill conformance has separate import and export contracts. Import scenarios
+Waybill conformance has import, export, and bidirectional roundtrip contracts. Import scenarios
 test whether an agent reads the same handoff evidence into the same small
 observation contract. Export scenarios test whether an agent following a
 canonical adapter creates a valid bundle whose claims match independently
-measured repository and test evidence. Both runners are local and use only the
-Python standard library.
+measured repository and test evidence. Roundtrip conformance passes each live
+generated bundle directly to the opposite adapter under the import zero-write
+contract. All runners are local and use only the Python standard library.
 
 Neither runner schedules agents, applies patches, accepts delegation results,
 or continues the handed-off task.
@@ -271,7 +272,7 @@ After the agent exits, the harness automatically evaluates:
 - `ready` semantics against the synthetic repository;
 - `verify-repo` against the still-live repository state;
 - `verify-pair` for every delegation result;
-- the exact canonical `git diff --binary HEAD --` bytes;
+- the exact canonical tracked-diff bytes defined by the handoff Skill;
 - changed-file paths from real porcelain Git status;
 - goal, test command/outcome/marker, risks, status, and next step against their
   authoritative session or harness evidence.
@@ -360,6 +361,39 @@ deliberately omits the temporary repository path and raw agent stdout/stderr.
 Keep any retained manual bundles, transcripts, or detailed logs in a private
 directory outside this repository.
 
+## Bidirectional roundtrip conformance
+
+`scripts/conformance-roundtrip.py` verifies both directions in separate fresh
+repositories: left export to right import, then right export to left import.
+Both adapter entrypoints and their shared resources are installed before the
+synthetic base commit. The exporter may write only `.waybill/**`; its bundle
+must pass `validate`, `ready`, `verify-repo`, and the independent semantic
+evidence checks. The importer then receives that exact generated bundle in a
+disposable copy and must leave every workspace entry, including `.git`,
+unchanged.
+
+Run the deterministic CI contract with:
+
+```sh
+python3 scripts/conformance-roundtrip.py \
+  --deterministic-fake \
+  --left-adapter codex \
+  --right-adapter claude-code \
+  --left-agent-command 'python3 tests/conformance/fixtures/fake_roundtrip_agent.py' \
+  --right-agent-command 'python3 tests/conformance/fixtures/fake_roundtrip_agent.py' \
+  --timeout 20
+```
+
+For live coverage, replace both fixture commands with the corresponding agent
+commands that consume the prompt from stdin and add `--unsafe-manual`. The
+runner probes both executable identities and binds clean source provenance
+before it starts. It does not retain bundles or raw stdout/stderr.
+
+Known namespace startup failures are classified as `environment_blocked` with
+a stable reason such as `network-namespace` or `user-namespace`. Every role is
+attempted once per direction; an environment failure is reported and never
+retried outside the selected sandbox or with weaker permissions.
+
 ### Source provenance
 
 Immediately before a manual import or export run, the runner requires its own
@@ -367,7 +401,7 @@ Waybill worktree to be clean and records:
 
 - the exact Git commit;
 - a digest of the complete scenario corpus, including import fixture artifacts;
-- the selected adapter entrypoint and synchronized-reference digest;
+- the selected adapter entrypoint and canonical shared-resource digest;
 - the runner and validator contract digest.
 
 `scripts/adapter-matrix.py` recomputes these values from a clean checkout and
