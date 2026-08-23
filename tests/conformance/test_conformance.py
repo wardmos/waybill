@@ -403,6 +403,27 @@ class ScenarioExecutionTests(unittest.TestCase):
 
         self.assertTrue(result.passed, result.errors)
 
+    def test_environment_startup_failure_is_classified_without_raw_output(self) -> None:
+        source = (
+            "import sys;"
+            "sys.stdin.read();"
+            "sys.stderr.write('bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted\\n');"
+            "raise SystemExit(1)"
+        )
+
+        result = run_scenario(
+            self.scenario,
+            [sys.executable, "-c", source],
+            self.workspace,
+        )
+        report = result.to_dict()
+
+        self.assertFalse(result.passed)
+        self.assertTrue(result.environment_blocked)
+        self.assertEqual("network-namespace", result.environment_block_reason)
+        self.assertIn("environment:blocked", result.errors)
+        self.assertNotIn("Failed RTM_NEWADDR", json.dumps(report))
+
     def test_stdout_and_stderr_are_bounded(self) -> None:
         source = (
             "import sys;"

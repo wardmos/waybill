@@ -46,6 +46,16 @@ jobs:
           --require-complete-matrix
           --timeout 20
 
+      - name: Run deterministic bidirectional roundtrip
+        run: >-
+          python3 scripts/conformance-roundtrip.py
+          --deterministic-fake
+          --left-adapter codex
+          --right-adapter claude-code
+          --left-agent-command "python3 tests/conformance/fixtures/fake_roundtrip_agent.py"
+          --right-agent-command "python3 tests/conformance/fixtures/fake_roundtrip_agent.py"
+          --timeout 20
+
       - name: Compile Python files
         run: python3 -m py_compile cli/waybill waybill_core/*.py scripts/*.py
 

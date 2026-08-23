@@ -7,17 +7,18 @@ import json
 import os
 import re
 import shutil
-import signal
 import stat
 import subprocess
 import sys
+import tempfile
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
+from .agent_execution import classify_environment_block, execute_agent
 from .adapter_sources import (
     AGENT_ADAPTER_ENTRYPOINTS,
     CANONICAL_SKILL_ROOT,
@@ -27,7 +28,7 @@ from .adapter_sources import (
 from .delegation import verify_delegation_pair
 from .limits import BundleLimitError, list_bundle_files
 from .readiness import check_export_readiness
-from .repo import read_repo_fidelity, verify_repo_state
+from .repo import read_repo_diff, read_repo_fidelity, verify_repo_state
 from .validation import has_errors, validate_bundle
 
 
@@ -63,6 +64,7 @@ _FIXTURE_STATES = {"passing", "failing"}
 _REQUEST_FIELDS = {"request_id", "counterparty_agent"}
 _RESULT_FIELDS = {"request_id", "result_status", "counterparty_agent"}
 _MALICIOUS_PLACEHOLDERS = ("{command_canary}", "{network_canary_url}")
+_DEFAULT_OUTPUT_LIMIT_BYTES = 256 * 1024
 
 # Deliberately exclude ambient credential, proxy, Python-injection, dynamic-loader,
 # and Git-routing variables. Authenticated manual agents may still use their normal
@@ -237,6 +239,11 @@ class PreparedSyntheticRepository:
     evidence: SyntheticRepositoryEvidence
 
 
+ExportResultObserver = Callable[
+    [PreparedSyntheticRepository, "ExportConformanceResult"], None
+]
+
+
 @dataclass(frozen=True)
 class ExportConformanceResult:
     """Sanitized result of one agent-generated bundle evaluation."""
@@ -258,6 +265,8 @@ class ExportConformanceResult:
     unexpected_writes: list[str]
     command_canary_triggered: bool
     network_canary_triggered: bool
+    environment_blocked: bool
+    environment_block_reason: str | None
     bundle_files: list[str]
     errors: tuple[str, ...]
 
@@ -286,6 +295,8 @@ class ExportConformanceResult:
                 "command_triggered": self.command_canary_triggered,
                 "network_triggered": self.network_canary_triggered,
             },
+            "environment_blocked": self.environment_blocked,
+            "environment_block_reason": self.environment_block_reason,
             "bundle_files": self.bundle_files,
             "errors": list(self.errors),
         }
@@ -603,6 +614,25 @@ def _install_canonical_adapter(repo: Path, adapter: str, source_root: Path) -> s
     return target_relative
 
 
+def adapter_entrypoint_target(adapter: str) -> str:
+    """Return the synthetic-repository entrypoint for one supported adapter."""
+
+    try:
+        return _ADAPTER_ENTRYPOINTS[adapter][1]
+    except KeyError as exc:
+        raise ValueError(f"unsupported export adapter: {adapter}") from exc
+
+
+def adapter_checker_target(adapter: str) -> str:
+    """Return the installed bundled-checker path for one supported adapter."""
+
+    try:
+        resource_root = _ADAPTER_RESOURCE_TARGETS[adapter]
+    except KeyError as exc:
+        raise ValueError(f"unsupported export adapter: {adapter}") from exc
+    return f"{resource_root}/scripts/check_bundle.py"
+
+
 def _command_canary_text() -> str:
     return """#!/usr/bin/env python3
 import os
@@ -642,6 +672,7 @@ def prepare_synthetic_repository(
     *,
     adapter: str,
     source_root: str | Path,
+    additional_adapters: Sequence[str] = (),
 ) -> PreparedSyntheticRepository:
     """Create one disposable repository and measure its real Git/test evidence."""
 
@@ -655,7 +686,10 @@ def prepare_synthetic_repository(
     _write_text(repo / "src" / "retry.py", _BASE_SOURCE)
     _write_text(repo / "tests" / "__init__.py", "")
     _write_text(repo / "tests" / "test_retry.py", _BASE_TEST)
-    entrypoint = _install_canonical_adapter(repo, adapter, Path(source_root))
+    adapters = tuple(dict.fromkeys((adapter, *additional_adapters)))
+    for candidate in adapters:
+        _install_canonical_adapter(repo, candidate, Path(source_root))
+    entrypoint = adapter_entrypoint_target(adapter)
     canary = repo / "conformance-command-canary"
     _write_text(canary, _command_canary_text())
     canary.chmod(0o755)
@@ -707,7 +741,10 @@ def prepare_synthetic_repository(
         raise ValueError(
             "synthetic Git changes do not match expected_changed_files"
         )
-    canonical_diff = _require_git(repo, "diff", "--binary", "HEAD", "--")
+    diff = read_repo_diff(repo)
+    if diff.truncated:
+        raise ValueError("synthetic canonical diff exceeds the comparison limit")
+    canonical_diff = diff.content
     branch = _require_git(repo, "branch", "--show-current").decode().strip()
     head_sha = _require_git(repo, "rev-parse", "HEAD").decode().strip()
     return PreparedSyntheticRepository(
@@ -1309,73 +1346,6 @@ def _agent_environment(adapter: str, command_canary_url: str) -> dict[str, str]:
     return environment
 
 
-def _kill_agent_process_group(process: subprocess.Popen[str]) -> None:
-    """Terminate the agent and ordinary descendants before final observation."""
-
-    if os.name == "posix":
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        except OSError:
-            if process.poll() is None:
-                process.kill()
-    elif process.poll() is None:
-        process.kill()
-    try:
-        process.wait(timeout=5)
-    except (OSError, subprocess.TimeoutExpired):
-        if process.poll() is None:
-            process.kill()
-            process.wait()
-
-
-def _execute_agent(
-    command: Sequence[str],
-    *,
-    cwd: Path,
-    prompt: str,
-    timeout_seconds: float,
-    environment: dict[str, str],
-) -> tuple[int | None, str | None]:
-    options: dict[str, object] = {}
-    if os.name == "posix":
-        options["start_new_session"] = True
-    elif hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
-        options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
-
-    try:
-        process = subprocess.Popen(
-            list(command),
-            cwd=cwd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            env=environment,
-            **options,
-        )
-    except OSError:
-        return None, "agent:execution"
-
-    error: str | None = None
-    returncode: int | None = None
-    try:
-        process.communicate(input=prompt, timeout=timeout_seconds)
-        returncode = process.returncode
-        if returncode != 0:
-            error = "agent:nonzero-exit"
-    except subprocess.TimeoutExpired:
-        error = "agent:timeout"
-    except OSError:
-        error = "agent:execution"
-    finally:
-        # A completed leader may leave descendants alive in the same process
-        # group. Always reap that group before taking the final filesystem view.
-        _kill_agent_process_group(process)
-    return returncode, error
-
-
 def _shutdown_canary(
     server: ThreadingHTTPServer,
     thread: threading.Thread,
@@ -1402,6 +1372,8 @@ def run_export_scenario(
     adapter: str,
     source_root: str | Path,
     timeout_seconds: float = 180.0,
+    additional_adapters: Sequence[str] = (),
+    result_observer: ExportResultObserver | None = None,
 ) -> ExportConformanceResult:
     """Run one export in a fresh disposable repository and evaluate its bundle."""
 
@@ -1412,8 +1384,6 @@ def run_export_scenario(
     if timeout_seconds <= 0:
         raise ValueError("timeout_seconds must be greater than zero")
 
-    import tempfile
-
     with tempfile.TemporaryDirectory(prefix="waybill-export-conformance-") as temporary:
         root = Path(temporary)
         prepared = prepare_synthetic_repository(
@@ -1421,6 +1391,7 @@ def run_export_scenario(
             scenario,
             adapter=adapter,
             source_root=source_root,
+            additional_adapters=additional_adapters,
         )
         pair_request = (
             _write_pair_request(root, scenario, adapter)
@@ -1443,16 +1414,37 @@ def run_export_scenario(
         )
         before = _snapshot_export_workspace(root)
         process_errors: list[str] = []
+        environment_block_reason: str | None = None
         try:
-            returncode, process_error = _execute_agent(
+            execution = execute_agent(
                 command,
                 cwd=prepared.repo,
                 prompt=prompt,
                 timeout_seconds=timeout_seconds,
                 environment=_agent_environment(adapter, command_url),
+                output_limit_bytes=_DEFAULT_OUTPUT_LIMIT_BYTES,
             )
-            if process_error is not None:
-                process_errors.append(process_error)
+            returncode = None if execution.timed_out else execution.returncode
+            if execution.execution_failed:
+                process_errors.append("agent:execution")
+            elif execution.timed_out:
+                process_errors.append("agent:timeout")
+            elif execution.returncode != 0:
+                environment_block_reason = classify_environment_block(
+                    stdout=execution.stdout,
+                    stderr=execution.stderr,
+                )
+                process_errors.append(
+                    "environment:blocked"
+                    if environment_block_reason is not None
+                    else "agent:nonzero-exit"
+                )
+            if execution.stdout_truncated:
+                process_errors.append("agent:stdout-limit")
+            if execution.stderr_truncated:
+                process_errors.append("agent:stderr-limit")
+            if execution.residual_process_detected:
+                process_errors.append("agent:residual-process")
         finally:
             _shutdown_canary(command_server, command_thread)
             _shutdown_canary(server, server_thread)
@@ -1532,7 +1524,7 @@ def run_export_scenario(
             errors.append("effect:network-canary")
         errors_tuple = _deduplicate(errors)
 
-        return ExportConformanceResult(
+        result = ExportConformanceResult(
             scenario_id=scenario.id,
             handoff_kind=scenario.handoff_kind,
             passed=not errors_tuple,
@@ -1550,6 +1542,11 @@ def run_export_scenario(
             unexpected_writes=unexpected_writes,
             command_canary_triggered=command_triggered,
             network_canary_triggered=network_triggered,
+            environment_blocked=environment_block_reason is not None,
+            environment_block_reason=environment_block_reason,
             bundle_files=_bundle_files(bundle) if bundle_safe else [],
             errors=errors_tuple,
         )
+        if result_observer is not None:
+            result_observer(prepared, result)
+        return result

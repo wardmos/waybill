@@ -77,6 +77,7 @@ REQUIRED_FILES = [
     "scripts/adapter-matrix.py",
     "scripts/conformance-agents.py",
     "scripts/conformance-exports.py",
+    "scripts/conformance-roundtrip.py",
     "scripts/build-adapters.py",
     "scripts/smoke-agents.sh",
     "scripts/test-wheel-install.py",
@@ -85,11 +86,13 @@ REQUIRED_FILES = [
     "waybill_core/adapter_matrix.py",
     "waybill_core/adapter_installation.py",
     "waybill_core/adapter_sources.py",
+    "waybill_core/agent_execution.py",
     "waybill_core/agent_identity.py",
     "waybill_core/application.py",
     "waybill_core/cli.py",
     "waybill_core/conformance.py",
     "waybill_core/export_conformance.py",
+    "waybill_core/roundtrip_conformance.py",
     "waybill_core/delegation.py",
     "waybill_core/doctor.py",
     "waybill_core/install.py",
@@ -149,6 +152,7 @@ REQUIRED_FILES = [
     "conformance/export-scenarios/delegation-result-partial.json",
     "conformance/export-scenarios/malicious-session-instruction.json",
     "conformance/export-scenarios/ordinary-unfinished.json",
+    "tests/conformance/fixtures/fake_roundtrip_agent.py",
 ]
 
 REQUIRED_FILES.extend(
@@ -365,6 +369,13 @@ def validate_structure() -> None:
     gitignore = (ROOT / ".gitignore").read_text()
     if ".waybill/" not in gitignore:
         fail(".gitignore must ignore .waybill/")
+
+    retired_sync = ROOT / "scripts/sync-adapters.py"
+    if retired_sync.exists():
+        fail("retired adapter synchronization entrypoint must not exist")
+    for relative in ("AGENTS.md", "README.md", "TESTING.md", "CONFORMANCE.md"):
+        if "scripts/sync-adapters.py" in (ROOT / relative).read_text(encoding="utf-8"):
+            fail(f"{relative} contains retired adapter synchronization guidance")
 
     quickstart = (ROOT / "QUICKSTART.md").read_text()
     for term in [
@@ -969,10 +980,12 @@ def validate_packaging_declarations() -> None:
         "waybill_core/adapter_bundles.py",
         "waybill_core/adapter_installation.py",
         "waybill_core/adapter_sources.py",
+        "waybill_core/agent_execution.py",
         "waybill_core/agent_identity.py",
         "waybill_core/application.py",
         "waybill_core/conformance.py",
         "waybill_core/export_conformance.py",
+        "waybill_core/roundtrip_conformance.py",
         "waybill_core/delegation.py",
     }
     if not expected_modules.issubset(REQUIRED_FILES):
@@ -1054,9 +1067,12 @@ def validate_ci_workflow() -> None:
         "python3 -m unittest discover -s tests -t . -v",
         "python3 scripts/validate-waybill.py",
         "python3 scripts/conformance-exports.py",
+        "python3 scripts/conformance-roundtrip.py",
         "--agent-command \"python3 tests/conformance/fixtures/fake_export_agent.py\"",
         "--deterministic-fake",
         "--require-complete-matrix",
+        "--left-adapter codex",
+        "--right-adapter claude-code",
         "python3 -m py_compile cli/waybill waybill_core/*.py scripts/*.py",
         "scripts/smoke-agents.sh --dry-run",
     ]
@@ -1310,6 +1326,66 @@ def validate_export_conformance_runner_dry_run() -> None:
             fail("export conformance dry-run must report stable scenario digests")
         if marker.exists() or snapshot_tree(workspace) != before:
             fail("export conformance dry-run must not execute or create a repository")
+
+
+def validate_roundtrip_conformance_runner_dry_run() -> None:
+    with tempfile.TemporaryDirectory(
+        prefix="waybill-roundtrip-conformance-dry-run-"
+    ) as temporary:
+        workspace = Path(temporary)
+        marker = workspace / "agent-must-not-run"
+        agent_command = shlex.join(
+            [
+                sys.executable,
+                "-c",
+                "from pathlib import Path; Path('agent-must-not-run').touch()",
+            ]
+        )
+        before = snapshot_tree(workspace)
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts/conformance-roundtrip.py"),
+                "--deterministic-fake",
+                "--left-adapter",
+                "codex",
+                "--right-adapter",
+                "claude-code",
+                "--left-agent-command",
+                agent_command,
+                "--right-agent-command",
+                agent_command,
+                "--scenario-dir",
+                str(ROOT / "conformance/export-scenarios"),
+                "--dry-run",
+            ],
+            cwd=workspace,
+            text=True,
+            capture_output=True,
+        )
+        report = parse_cli_json(result, "roundtrip conformance dry-run")
+        if (
+            report.get("dry_run") is not True
+            or report.get("capability") != "roundtrip"
+            or report.get("execution_mode") != "deterministic_fake"
+            or report.get("directions") != []
+        ):
+            fail("roundtrip conformance dry-run must identify its mode")
+        for side in ("left", "right"):
+            endpoint = report.get(side)
+            identity = endpoint.get("identity") if isinstance(endpoint, dict) else None
+            if (
+                not isinstance(identity, dict)
+                or identity.get("verified") is not True
+                or re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(identity.get("sha256", "")),
+                )
+                is None
+            ):
+                fail(f"roundtrip dry-run must bind the {side} fake identity")
+        if marker.exists() or snapshot_tree(workspace) != before:
+            fail("roundtrip conformance dry-run must not execute or create a repository")
 
 
 def validate_missing_delegation_section(example: str, section: str) -> None:
@@ -3171,6 +3247,10 @@ CHECKS: tuple[tuple[str, Callable[[], None]], ...] = (
     (
         "export conformance runner dry-run",
         validate_export_conformance_runner_dry_run,
+    ),
+    (
+        "roundtrip conformance runner dry-run",
+        validate_roundtrip_conformance_runner_dry_run,
     ),
     ("CLI validate", validate_cli_validate),
     ("CLI init", validate_cli_init),

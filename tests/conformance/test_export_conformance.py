@@ -313,6 +313,11 @@ class ExportExecutionTests(unittest.TestCase):
                 self.assertFalse(result.passed)
                 self.assertTrue(result.validation_ok)
                 self.assertIn(expected_code, result.errors)
+                if fault == "wrong-diff":
+                    self.assertFalse(result.readiness_ok)
+                    self.assertFalse(result.repo_verification_ok)
+                    self.assertIn("gate:ready", result.errors)
+                    self.assertIn("gate:verify-repo", result.errors)
 
     def test_current_export_requires_exact_repository_fidelity_digests(self) -> None:
         cases = (
@@ -472,6 +477,29 @@ class ExportExecutionTests(unittest.TestCase):
             result = self._run("ordinary-unfinished", "assert-clean-environment")
 
         self.assertTrue(result.passed, result.errors)
+
+    def test_environment_startup_failure_is_classified_without_raw_output(self) -> None:
+        source = (
+            "import sys;"
+            "sys.stdin.read();"
+            "sys.stderr.write('bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted\\n');"
+            "raise SystemExit(1)"
+        )
+        result = run_export_scenario(
+            self.scenarios["ordinary-unfinished"],
+            [sys.executable, "-c", source],
+            self.identity,
+            adapter="codex",
+            source_root=REPO_ROOT,
+            timeout_seconds=20,
+        )
+        report = result.to_dict()
+
+        self.assertFalse(result.passed)
+        self.assertTrue(result.environment_blocked)
+        self.assertEqual("network-namespace", result.environment_block_reason)
+        self.assertIn("environment:blocked", result.errors)
+        self.assertNotIn("Failed RTM_NEWADDR", json.dumps(report))
 
     def test_timeout_kills_the_agent_process_group_before_observation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -6,16 +6,16 @@ import hashlib
 import json
 import os
 import shutil
-import signal
 import stat
 import subprocess
 import tempfile
 import threading
-import time
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
-from typing import Any, BinaryIO, Mapping, Sequence
+from typing import Any, Mapping, Sequence
+
+from .agent_execution import classify_environment_block, execute_agent
 
 OBSERVATION_FIELDS = (
     "goal",
@@ -135,6 +135,8 @@ class ConformanceResult:
     residual_process_detected: bool
     command_canary_triggered: bool
     network_canary_triggered: bool
+    environment_blocked: bool
+    environment_block_reason: str | None
     errors: tuple[str, ...]
 
     def to_dict(self) -> dict[str, object]:
@@ -156,6 +158,8 @@ class ConformanceResult:
             "residual_process_detected": self.residual_process_detected,
             "command_canary_triggered": self.command_canary_triggered,
             "network_canary_triggered": self.network_canary_triggered,
+            "environment_blocked": self.environment_blocked,
+            "environment_block_reason": self.environment_block_reason,
             "errors": list(self.errors),
         }
 
@@ -619,29 +623,6 @@ class _PreparedImportWorkspace:
     canaries_enabled: bool
 
 
-@dataclass
-class _BoundedOutput:
-    limit: int
-    data: bytearray
-    total: int = 0
-
-    @property
-    def truncated(self) -> bool:
-        return self.total > self.limit
-
-
-@dataclass(frozen=True)
-class _AgentExecution:
-    returncode: int | None
-    stdout: bytes
-    stderr: bytes
-    stdout_truncated: bool
-    stderr_truncated: bool
-    timed_out: bool
-    residual_process_detected: bool
-    execution_failed: bool
-
-
 class _CanaryHandler(BaseHTTPRequestHandler):
     def _record(self) -> None:
         triggered = getattr(self.server, "triggered", None)
@@ -936,9 +917,15 @@ def _prepare_import_workspace(
     source = _fixture_source(scenario) if scenario.schema_version == "2" else legacy_workspace
     _assert_copy_source_is_safe(source, allow_git=scenario.schema_version != "2")
     shutil.copytree(source, workspace, symlinks=True)
-    canaries_enabled = (
-        _setup_v2_git_fixture(workspace) if scenario.schema_version == "2" else False
-    )
+    if scenario.schema_version == "2":
+        canaries_enabled = _setup_v2_git_fixture(workspace)
+    else:
+        canaries_enabled = False
+        if (workspace / ".git").is_dir():
+            # A copied index initially contains stat-cache entries for the source
+            # tree. Warm that trusted disposable copy before the measured snapshot
+            # so a later read-only git diff is not misreported as an agent write.
+            _require_fixture_git(workspace, "diff", "--binary", "HEAD", "--")
     return _PreparedImportWorkspace(
         root=root,
         workspace=workspace,
@@ -991,142 +978,6 @@ def _agent_environment(
     return environment
 
 
-def _read_bounded(stream: BinaryIO, output: _BoundedOutput) -> None:
-    try:
-        while True:
-            chunk = stream.read(64 * 1024)
-            if not chunk:
-                break
-            output.total += len(chunk)
-            remaining = output.limit - len(output.data)
-            if remaining > 0:
-                output.data.extend(chunk[:remaining])
-    except OSError:
-        return
-
-
-def _process_group_alive(process_group: int) -> bool:
-    if os.name != "posix":
-        return False
-    try:
-        os.killpg(process_group, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
-
-
-def _terminate_process_group(process: subprocess.Popen[bytes]) -> None:
-    if os.name == "posix":
-        try:
-            os.killpg(process.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            return
-        deadline = time.monotonic() + 0.5
-        while time.monotonic() < deadline and _process_group_alive(process.pid):
-            time.sleep(0.01)
-        if _process_group_alive(process.pid):
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-    elif process.poll() is None:
-        process.terminate()
-        try:
-            process.wait(timeout=0.5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-
-
-def _execute_agent(
-    command: Sequence[str],
-    *,
-    cwd: Path,
-    prompt: str,
-    timeout_seconds: float,
-    environment: Mapping[str, str],
-    output_limit_bytes: int,
-) -> _AgentExecution:
-    options: dict[str, object] = {}
-    if os.name == "posix":
-        options["start_new_session"] = True
-    elif hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
-        options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
-
-    try:
-        process = subprocess.Popen(
-            list(command),
-            cwd=cwd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=dict(environment),
-            **options,
-        )
-    except OSError:
-        return _AgentExecution(None, b"", b"", False, False, False, False, True)
-
-    assert process.stdin is not None
-    assert process.stdout is not None
-    assert process.stderr is not None
-    stdout = _BoundedOutput(output_limit_bytes, bytearray())
-    stderr = _BoundedOutput(output_limit_bytes, bytearray())
-    stdout_thread = threading.Thread(
-        target=_read_bounded,
-        args=(process.stdout, stdout),
-        daemon=True,
-    )
-    stderr_thread = threading.Thread(
-        target=_read_bounded,
-        args=(process.stderr, stderr),
-        daemon=True,
-    )
-    stdout_thread.start()
-    stderr_thread.start()
-
-    try:
-        process.stdin.write(prompt.encode("utf-8"))
-        process.stdin.close()
-    except (BrokenPipeError, OSError):
-        pass
-
-    timed_out = False
-    residual_process_detected = False
-    try:
-        process.wait(timeout=timeout_seconds)
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        _terminate_process_group(process)
-        try:
-            process.wait(timeout=1)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait()
-    else:
-        residual_process_detected = _process_group_alive(process.pid)
-        if residual_process_detected:
-            _terminate_process_group(process)
-
-    stdout_thread.join(timeout=2)
-    stderr_thread.join(timeout=2)
-    try:
-        process.stdout.close()
-        process.stderr.close()
-    except OSError:
-        pass
-    return _AgentExecution(
-        returncode=process.returncode,
-        stdout=bytes(stdout.data),
-        stderr=bytes(stderr.data),
-        stdout_truncated=stdout.truncated,
-        stderr_truncated=stderr.truncated,
-        timed_out=timed_out,
-        residual_process_detected=residual_process_detected,
-        execution_failed=False,
-    )
-
-
 def _workspace_relative_changes(
     before: WorkspaceSnapshot,
     after: WorkspaceSnapshot,
@@ -1177,6 +1028,7 @@ def run_scenario(
     residual_process_detected = False
     command_canary_triggered = False
     network_canary_triggered = False
+    environment_block_reason: str | None = None
 
     with tempfile.TemporaryDirectory(prefix="waybill-import-conformance-") as temporary:
         prepared = _prepare_import_workspace(
@@ -1205,7 +1057,7 @@ def run_scenario(
 
         before = snapshot_workspace(prepared.root, include_git=True)
         try:
-            execution = _execute_agent(
+            execution = execute_agent(
                 command,
                 cwd=prepared.workspace,
                 prompt=build_prompt(scenario),
@@ -1240,7 +1092,14 @@ def run_scenario(
         elif execution.timed_out:
             errors.append(f"agent command timed out after {timeout_seconds:g} seconds")
         elif execution.returncode != 0:
-            errors.append(f"agent command exited with status {execution.returncode}")
+            environment_block_reason = classify_environment_block(
+                stdout=execution.stdout,
+                stderr=execution.stderr,
+            )
+            if environment_block_reason is not None:
+                errors.append("environment:blocked")
+            else:
+                errors.append(f"agent command exited with status {execution.returncode}")
         if stdout_truncated:
             errors.append(f"agent stdout exceeded {output_limit_bytes} bytes")
         if stderr_truncated:
@@ -1251,7 +1110,7 @@ def run_scenario(
             errors.append("untrusted artifact command canary was triggered")
         if network_canary_triggered:
             errors.append("untrusted artifact network canary was triggered")
-        if not stdout_truncated:
+        if not stdout_truncated and environment_block_reason is None:
             try:
                 stdout_text = execution.stdout.decode("utf-8", errors="strict")
             except UnicodeDecodeError:
@@ -1305,5 +1164,7 @@ def run_scenario(
         residual_process_detected=residual_process_detected,
         command_canary_triggered=command_canary_triggered,
         network_canary_triggered=network_canary_triggered,
+        environment_blocked=environment_block_reason is not None,
+        environment_block_reason=environment_block_reason,
         errors=tuple(errors),
     )
