@@ -19,6 +19,7 @@ from typing import Any
 MAX_FILES = 100
 MAX_FILE_BYTES = 5_000_000
 MAX_TOTAL_BYTES = 10_000_000
+MAX_DIFF_BYTES = 1_000_000
 CURRENT_SCHEMA_VERSION = "0.2"
 LEGACY_SCHEMA_VERSION = "draft"
 REQUIRED_FILES = ("WAYBILL.md", "metadata.json")
@@ -78,6 +79,24 @@ COMMAND_LOG_MARKERS = (
         "bundle-writing",
         re.compile(r"\bbundle(?:-|\s+)writing\b|\bbundle\s+writes?\b"),
     ),
+)
+CANONICAL_DIFF_ARGUMENTS = (
+    "diff",
+    "--patch",
+    "--binary",
+    "--abbrev=7",
+    "--no-color",
+    "--no-ext-diff",
+    "--no-textconv",
+    "--no-renames",
+    "--diff-algorithm=myers",
+    "--no-indent-heuristic",
+    "--unified=3",
+    "--inter-hunk-context=0",
+    "--src-prefix=a/",
+    "--dst-prefix=b/",
+    "HEAD",
+    "--",
 )
 
 
@@ -686,6 +705,11 @@ def _repo_state(repo: Path) -> dict[str, object]:
         "--dst-prefix=b/",
         "--",
     )
+    tracked_diff, tracked_diff_truncated = _git_limited(
+        repo,
+        MAX_DIFF_BYTES,
+        *CANONICAL_DIFF_ARGUMENTS,
+    )
     return {
         "branch": branch,
         "head_sha": head_sha,
@@ -702,11 +726,38 @@ def _repo_state(repo: Path) -> dict[str, object]:
                 (b"unstaged-diff-v1", diff),
             ],
         ),
+        "tracked_diff": tracked_diff,
+        "tracked_diff_truncated": tracked_diff_truncated,
     }
+
+
+def _git_limited(
+    repo: Path,
+    max_bytes: int,
+    *arguments: str,
+) -> tuple[bytes, bool]:
+    process = subprocess.Popen(
+        ["git", "-C", str(repo), *arguments],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        env=_git_environment(),
+    )
+    assert process.stdout is not None
+    with process.stdout:
+        output = process.stdout.read(max_bytes + 1)
+    if len(output) > max_bytes:
+        process.kill()
+        process.wait()
+        return b"", True
+    process.wait()
+    if process.returncode != 0:
+        raise ValueError("Git repository diff could not be read")
+    return output, False
 
 
 def _compare_repo(
     metadata: dict[str, Any],
+    files: dict[str, Path],
     repo: Path,
     checker: BundleChecker,
 ) -> None:
@@ -734,6 +785,65 @@ def _compare_repo(
             continue
         if value != current[name]:
             checker.error(code, f"recorded git.{name} does not match the target repository")
+    _compare_diff_patch(metadata, files, current, checker)
+
+
+def _compare_diff_patch(
+    metadata: dict[str, Any],
+    files: dict[str, Path],
+    current: dict[str, object],
+    checker: BundleChecker,
+) -> None:
+    git = metadata.get("git")
+    if not isinstance(git, dict) or git.get("dirty") is not True:
+        return
+    artifacts = metadata.get("artifacts")
+    value = artifacts.get("diff") if isinstance(artifacts, dict) else None
+    if not isinstance(value, str) or not value.strip():
+        checker.warn(
+            "repo-diff-missing",
+            "bundle does not declare a diff artifact",
+            "metadata.json",
+        )
+        return
+    path = files.get(value)
+    if path is None:
+        checker.error("repo-diff", "declared diff artifact is unavailable", value)
+        return
+    recorded = _read_regular_bytes(path, value, checker)
+    if recorded is None:
+        return
+    if len(recorded) > MAX_DIFF_BYTES:
+        checker.error("repo-diff", "diff artifact exceeds the comparison limit", value)
+        return
+
+    tracked_diff = current["tracked_diff"]
+    assert isinstance(tracked_diff, bytes)
+    if current["tracked_diff_truncated"] is True:
+        if not recorded.startswith(b"# Diff omitted."):
+            checker.error(
+                "repo-diff",
+                "live tracked diff exceeds the limit but the bundle does not record an omission",
+                value,
+            )
+        else:
+            checker.warn(
+                "repo-diff-omitted",
+                "live tracked diff exceeds the comparison limit",
+                value,
+            )
+        return
+
+    if not tracked_diff:
+        matches = not recorded or b"no tracked diff" in recorded.lower()
+    else:
+        matches = recorded == tracked_diff
+    if not matches:
+        checker.error(
+            "repo-diff",
+            "recorded diff artifact does not match the target repository",
+            value,
+        )
 
 
 def _check_pair(
@@ -798,7 +908,7 @@ def check_bundle(
     _validate_commands_log(files, checker)
     _scan_sensitive_content(files, checker)
     if metadata is not None:
-        _compare_repo(metadata, repo, checker)
+        _compare_repo(metadata, files, repo, checker)
         if request is not None:
             _check_pair(request, metadata, kind, checker)
     elif request is not None:

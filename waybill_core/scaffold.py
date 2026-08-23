@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .limits import MAX_DIFF_BYTES, format_bytes
-from .repo import read_repo_fidelity
+from .repo import read_repo_diff, read_repo_fidelity
 from .schema_versions import CURRENT_SCHEMA_VERSION
 
 
@@ -107,15 +107,8 @@ def _read_git_state(repo: Path) -> dict[str, str]:
 
 
 def _diff_text(repo: Path, max_diff_bytes: int) -> str:
-    diff, truncated = _git_value_limited(
-        repo,
-        max_diff_bytes,
-        "diff",
-        "--binary",
-        "HEAD",
-        "--",
-    )
-    if truncated:
+    diff = read_repo_diff(repo, max_bytes=max_diff_bytes)
+    if diff.truncated:
         return (
             "# Diff omitted.\n"
             "#\n"
@@ -125,8 +118,8 @@ def _diff_text(repo: Path, max_diff_bytes: int) -> str:
             "# before sharing this bundle.\n"
         )
 
-    if diff:
-        return diff if diff.endswith("\n") else f"{diff}\n"
+    if diff.content:
+        return diff.content.decode(errors="replace")
 
     return (
         "# No tracked diff captured.\n"
@@ -294,27 +287,3 @@ def _git_value(repo: Path, *args: str) -> str:
     if result.returncode != 0:
         return "unknown"
     return result.stdout.strip()
-
-
-def _git_value_limited(
-    repo: Path,
-    max_bytes: int,
-    *args: str,
-) -> tuple[str, bool]:
-    process = subprocess.Popen(
-        ["git", "-C", str(repo), *args],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-    )
-    assert process.stdout is not None
-    with process.stdout:
-        output = process.stdout.read(max_bytes + 1)
-    if len(output) > max_bytes:
-        process.kill()
-        process.wait()
-        return "", True
-
-    process.wait()
-    if process.returncode != 0:
-        return "unknown", False
-    return output.decode(errors="replace").strip(), False

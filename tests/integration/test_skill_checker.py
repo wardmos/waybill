@@ -16,7 +16,7 @@ from pathlib import Path
 from types import ModuleType
 from unittest import mock
 
-from waybill_core.repo import read_repo_fidelity
+from waybill_core.repo import CANONICAL_DIFF_ARGUMENTS, read_repo_fidelity
 from waybill_core.validation import WAYBILL_SECTIONS, validate_bundle
 
 
@@ -58,6 +58,12 @@ def write_waybill(path: Path) -> None:
 
 
 class BundledSkillCheckerTests(unittest.TestCase):
+    def test_standalone_checker_uses_the_core_canonical_diff_contract(self) -> None:
+        self.assertEqual(
+            CANONICAL_DIFF_ARGUMENTS,
+            CHECKER_MODULE.CANONICAL_DIFF_ARGUMENTS,
+        )
+
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory(
             prefix="waybill-skill-checker-"
@@ -283,6 +289,34 @@ class BundledSkillCheckerTests(unittest.TestCase):
         report = json.loads(result.stdout)
         self.assertTrue(report["success"])
         self.assertEqual([], report["warnings"])
+
+    def test_rejects_diff_patch_that_does_not_match_live_repo(self) -> None:
+        tracked = self.repo / "tracked.txt"
+        tracked.write_text("changed repository content\n", encoding="utf-8")
+        fidelity = read_repo_fidelity(self.repo)
+        self.metadata["git"]["dirty"] = True
+        self.metadata["git"]["status_digest"] = fidelity.status_digest
+        self.metadata["git"]["repo_state_digest"] = fidelity.repo_state_digest
+        self.write_metadata()
+        (self.bundle / "diff.patch").write_text(
+            "diff --git a/tracked.txt b/tracked.txt\n"
+            "--- a/tracked.txt\n"
+            "+++ b/tracked.txt\n"
+            "@@ -1 +1 @@\n"
+            "-synthetic repository content\n"
+            "+tampered repository content\n",
+            encoding="utf-8",
+        )
+
+        result = self.run_checker()
+
+        self.assertEqual(1, result.returncode)
+        report = json.loads(result.stdout)
+        self.assertFalse(report["success"])
+        matching = [
+            error for error in report["errors"] if error["code"] == "repo-diff"
+        ]
+        self.assertEqual(["diff.patch"], [error["path"] for error in matching])
 
     def test_rejects_unresolved_placeholders_and_escaping_artifacts(self) -> None:
         self.metadata["artifacts"]["diff"] = "../outside.patch"

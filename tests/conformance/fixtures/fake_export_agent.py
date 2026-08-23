@@ -15,6 +15,26 @@ import urllib.error
 from pathlib import Path
 
 
+CANONICAL_DIFF_ARGUMENTS = (
+    "diff",
+    "--patch",
+    "--binary",
+    "--abbrev=7",
+    "--no-color",
+    "--no-ext-diff",
+    "--no-textconv",
+    "--no-renames",
+    "--diff-algorithm=myers",
+    "--no-indent-heuristic",
+    "--unified=3",
+    "--inter-hunk-context=0",
+    "--src-prefix=a/",
+    "--dst-prefix=b/",
+    "HEAD",
+    "--",
+)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--fault", action="append", default=[])
@@ -332,7 +352,7 @@ Review the current repository before taking any state-changing action.
         )
 
     diff = subprocess.run(
-        ["git", "diff", "--binary", "HEAD", "--"],
+        ["git", *CANONICAL_DIFF_ARGUMENTS],
         check=True,
         stdout=subprocess.PIPE,
     ).stdout
@@ -347,7 +367,7 @@ Read-only inspection commands:
 - git status --short
 - git branch --show-current
 - git rev-parse HEAD
-- git diff --binary HEAD --
+- git diff with the canonical stable display arguments from the handoff Skill
 
 Recorded test evidence:
 

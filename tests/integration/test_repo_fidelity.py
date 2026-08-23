@@ -147,6 +147,41 @@ class RepoFidelityTests(unittest.TestCase):
         self.assertEqual(checks["status_digest"].status, "ok")
         self.assertEqual(checks["repo_state_digest"].status, "error")
 
+    def test_verify_rejects_diff_patch_that_does_not_match_live_repo(self) -> None:
+        (self.repo / "unstaged.txt").write_text("captured unstaged content\n")
+        bundle = self.create_bundle()
+        patch_path = bundle / "diff.patch"
+        patch_path.write_text(
+            patch_path.read_text().replace(
+                "+captured unstaged content",
+                "+tampered unstaged content",
+            )
+        )
+
+        report = verify_repo_state(bundle, self.repo)
+        checks = self.checks_by_name(report)
+
+        self.assertTrue(report.has_errors)
+        self.assertEqual("error", checks["diff_patch"].status)
+        self.assertEqual("does not match", checks["diff_patch"].message)
+        readiness = check_export_readiness(bundle, self.repo)
+        readiness_checks = {
+            check.name: check for check in readiness.repo_report.checks
+        }
+        self.assertTrue(readiness.has_errors)
+        self.assertEqual("error", readiness_checks["diff_patch"].status)
+
+    def test_verify_accepts_captured_diff_patch(self) -> None:
+        (self.repo / "unstaged.txt").write_text("captured unstaged content\n")
+        bundle = self.create_bundle()
+
+        report = verify_repo_state(bundle, self.repo)
+        checks = self.checks_by_name(report)
+
+        self.assertFalse(report.has_errors)
+        self.assertEqual("ok", checks["diff_patch"].status)
+        self.assertEqual("matches", checks["diff_patch"].message)
+
     def test_verify_detects_changed_status_with_same_dirty_flag(self) -> None:
         (self.repo / "staged.txt").write_text("modified staged path\n")
         bundle = self.create_bundle()
@@ -203,6 +238,7 @@ class RepoFidelityTests(unittest.TestCase):
 
         self.assertFalse(report.has_errors)
         self.assertEqual(checks["repo_state_digest"].status, "ok")
+        self.assertEqual(checks["diff_patch"].status, "ok")
 
     def test_verify_legacy_bundle_without_digests_warns_but_still_matches(self) -> None:
         bundle = self.create_bundle()

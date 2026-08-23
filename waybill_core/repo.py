@@ -5,10 +5,33 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 import subprocess
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
+
+from .limits import BundleLimitError, MAX_DIFF_BYTES, list_bundle_files
+
+
+CANONICAL_DIFF_ARGUMENTS = (
+    "diff",
+    "--patch",
+    "--binary",
+    "--abbrev=7",
+    "--no-color",
+    "--no-ext-diff",
+    "--no-textconv",
+    "--no-renames",
+    "--diff-algorithm=myers",
+    "--no-indent-heuristic",
+    "--unified=3",
+    "--inter-hunk-context=0",
+    "--src-prefix=a/",
+    "--dst-prefix=b/",
+    "HEAD",
+    "--",
+)
 
 
 @dataclass(frozen=True)
@@ -36,6 +59,14 @@ class RepoFidelity:
     status: bytes
     status_digest: str
     repo_state_digest: str
+
+
+@dataclass(frozen=True)
+class RepoDiff:
+    """One bounded canonical tracked diff for bundle fidelity checks."""
+
+    content: bytes
+    truncated: bool
 
 
 def verify_repo_state(
@@ -67,6 +98,7 @@ def verify_repo_state(
         current.get("repo_state_digest"),
         checks,
     )
+    _compare_diff_patch(bundle, metadata, repo, checks)
 
     return RepoVerificationReport(bundle, repo, checks)
 
@@ -188,6 +220,186 @@ def _compare_optional_digest(
         checks.append(RepoCheck(name, "ok", expected, actual, "matches"))
     else:
         checks.append(RepoCheck(name, "error", expected, actual, "does not match"))
+
+
+def _compare_diff_patch(
+    bundle: Path,
+    metadata: dict[str, Any],
+    repo: Path,
+    checks: list[RepoCheck],
+) -> None:
+    git = metadata.get("git")
+    if not isinstance(git, dict) or git.get("dirty") is not True:
+        checks.append(
+            RepoCheck(
+                "diff_patch",
+                "ok",
+                "live diff for a dirty export",
+                "clean or proposed-patch bundle",
+                "not required for a bundle that records a clean repository",
+            )
+        )
+        return
+    artifacts = metadata.get("artifacts")
+    value = artifacts.get("diff") if isinstance(artifacts, dict) else None
+    if not isinstance(value, str) or not value.strip():
+        checks.append(
+            RepoCheck(
+                "diff_patch",
+                "warning",
+                "declared diff artifact",
+                "not declared",
+                "bundle does not declare a diff artifact",
+            )
+        )
+        return
+
+    relative = PurePosixPath(value)
+    if (
+        "\\" in value
+        or relative.is_absolute()
+        or value != relative.as_posix()
+        or any(part in {"", ".", ".."} for part in relative.parts)
+    ):
+        checks.append(
+            RepoCheck(
+                "diff_patch",
+                "error",
+                "safe relative diff artifact",
+                "invalid path",
+                "declared diff artifact path is invalid",
+            )
+        )
+        return
+
+    try:
+        inventory = {
+            item.relative_path.as_posix(): item for item in list_bundle_files(bundle)
+        }
+    except (BundleLimitError, OSError):
+        checks.append(
+            RepoCheck(
+                "diff_patch",
+                "error",
+                "safe regular diff artifact",
+                "unsafe bundle",
+                "bundle entries could not be safely inspected",
+            )
+        )
+        return
+    item = inventory.get(value)
+    if item is None:
+        checks.append(
+            RepoCheck(
+                "diff_patch",
+                "error",
+                "declared diff artifact",
+                "missing",
+                "declared diff artifact is missing",
+            )
+        )
+        return
+
+    try:
+        recorded = _read_regular_file(item.path, MAX_DIFF_BYTES)
+        current = read_repo_diff(repo, max_bytes=MAX_DIFF_BYTES)
+    except (OSError, ValueError):
+        checks.append(
+            RepoCheck(
+                "diff_patch",
+                "error",
+                "readable current diff and bundle artifact",
+                "unreadable",
+                "diff fidelity could not be inspected",
+            )
+        )
+        return
+
+    if current.truncated:
+        if recorded.startswith(b"# Diff omitted."):
+            checks.append(
+                RepoCheck(
+                    "diff_patch",
+                    "warning",
+                    "canonical tracked diff",
+                    "omission note",
+                    "live tracked diff exceeds the comparison limit",
+                )
+            )
+        else:
+            checks.append(
+                RepoCheck(
+                    "diff_patch",
+                    "error",
+                    "diff omission note",
+                    "other content",
+                    "live tracked diff exceeds the limit but the bundle does not record an omission",
+                )
+            )
+        return
+
+    if not current.content:
+        lowered = recorded.lower()
+        matches = not recorded or b"no tracked diff" in lowered
+    else:
+        matches = recorded == current.content
+    checks.append(
+        RepoCheck(
+            "diff_patch",
+            "ok" if matches else "error",
+            "canonical tracked diff",
+            "bundle diff.patch",
+            "matches" if matches else "does not match",
+        )
+    )
+
+
+def _read_regular_file(path: Path, max_bytes: int) -> bytes:
+    flags = os.O_RDONLY
+    if hasattr(os, "O_BINARY"):
+        flags |= os.O_BINARY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(path, flags)
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("diff artifact is not a regular file")
+        with os.fdopen(descriptor, "rb", closefd=False) as handle:
+            content = handle.read(max_bytes + 1)
+        if len(content) > max_bytes:
+            raise ValueError("diff artifact exceeds the comparison limit")
+        return content
+    finally:
+        os.close(descriptor)
+
+
+def read_repo_diff(
+    repo: Path,
+    *,
+    max_bytes: int = MAX_DIFF_BYTES,
+) -> RepoDiff:
+    """Read the canonical tracked diff without allowing unbounded output."""
+
+    if max_bytes < 1:
+        raise ValueError("max diff bytes must be positive")
+    process = subprocess.Popen(
+        ["git", "-C", str(repo), *CANONICAL_DIFF_ARGUMENTS],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        env=_git_environment(),
+    )
+    assert process.stdout is not None
+    with process.stdout:
+        stdout = process.stdout.read(max_bytes + 1)
+    if len(stdout) > max_bytes:
+        process.kill()
+        process.wait()
+        return RepoDiff(b"", True)
+    process.wait()
+    if process.returncode != 0:
+        raise ValueError("git diff failed")
+    return RepoDiff(stdout, False)
 
 
 def read_repo_fidelity(repo: Path) -> RepoFidelity:

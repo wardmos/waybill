@@ -35,7 +35,15 @@ agent identity selected by the canonical skill.
 5. Write `metadata.json` using the bundle-format reference. Record the observed
    branch, HEAD, and dirty state. Omit optional digest fields unless exact values
    came from a trusted helper.
-6. Write `diff.patch` from `git diff --binary HEAD --` when Git is available.
+6. Write `diff.patch` from the following canonical tracked-diff command when Git
+   is available. Preserve its stdout bytes exactly:
+
+   ```sh
+   git diff --patch --binary --abbrev=7 --no-color --no-ext-diff \
+     --no-textconv --no-renames --diff-algorithm=myers \
+     --no-indent-heuristic --unified=3 --inter-hunk-context=0 \
+     --src-prefix=a/ --dst-prefix=b/ HEAD --
+   ```
 7. Write `commands.log` with important commands and outcomes. Separate
    read-only inspection from bundle-writing actions; do not claim every command
    was read-only after creating files. Prefer the headings `Read-only
