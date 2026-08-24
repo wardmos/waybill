@@ -89,14 +89,10 @@ class CanonicalSkillLayoutTests(unittest.TestCase):
             .read_text(encoding="utf-8")
             .split()
         ).lower()
-        delegation_spec = " ".join(
-            (ROOT / "spec/delegation.md").read_text(encoding="utf-8").split()
-        ).lower()
 
         self.assertIn("result_status is a claim, not proof", import_workflow)
         self.assertIn("conditionally reviewable", import_workflow)
         self.assertIn("do not say a result is safe to accept", import_workflow)
-        self.assertIn("does not establish semantic correctness or test truth", delegation_spec)
 
     def test_copyable_bundle_assets_cover_the_standard_bundle(self) -> None:
         asset_root = SKILL_ROOT / "assets/bundle-template"
@@ -165,25 +161,6 @@ class CanonicalSkillLayoutTests(unittest.TestCase):
         self.assertFalse(
             (ROOT / "adapters/codex/.codex-plugin/plugin.json").exists()
         )
-
-    def test_user_docs_make_the_waybill_cli_an_optional_enhancement(self) -> None:
-        readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        quickstart = (ROOT / "QUICKSTART.md").read_text(encoding="utf-8")
-        install = (ROOT / "INSTALL.md").read_text(encoding="utf-8")
-        claude = (ROOT / "adapters/claude-code/README.md").read_text(
-            encoding="utf-8"
-        )
-        codex = (ROOT / "adapters/codex/README.md").read_text(encoding="utf-8")
-
-        self.assertIn("## Optional Support CLI", readme)
-        self.assertIn(
-            "does not require the Waybill CLI",
-            " ".join(quickstart.split()),
-        )
-        self.assertIn("## Optional Managed Adapter Lifecycle", install)
-        self.assertIn("without the Waybill CLI", claude)
-        self.assertIn("without the Waybill CLI", codex)
-
 
 if __name__ == "__main__":
     unittest.main()

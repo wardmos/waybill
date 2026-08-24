@@ -277,7 +277,7 @@ def create_source_repository(root: Path) -> None:
     for paths in RUNNER_CONTRACT_PATHS.values():
         for relative in paths:
             _write_source_file(root, relative, f"contract {relative}\n")
-    _write_source_file(root, "README.md", "source fixture\n")
+    _write_source_file(root, "source.txt", "source fixture\n")
     subprocess.run(
         ["git", "init", "-q", str(root)],
         check=True,
@@ -876,7 +876,7 @@ class AdapterMatrixTests(unittest.TestCase):
             [path],
             source_root=self.source_root,
         )
-        (self.source_root / "README.md").write_text("dirty\n", encoding="utf-8")
+        (self.source_root / "source.txt").write_text("dirty\n", encoding="utf-8")
 
         with self.assertRaisesRegex(ValueError, "source worktree must be clean"):
             build_adapter_matrix(

@@ -6,7 +6,6 @@ build-backend = "setuptools.build_meta"
 name = "agent-waybill"
 version = "0.1.1"
 description = "Portable handoff bundles for coding agents."
-readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 license-files = ["LICENSE"]

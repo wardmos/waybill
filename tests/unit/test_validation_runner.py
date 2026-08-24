@@ -13,8 +13,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 
-EXPECTED_NEW_REQUIRED_FILES = {
-    "CONFORMANCE.md",
+EXPECTED_REQUIRED_PRODUCT_FILES = {
     ".codex-plugin/plugin.json",
     "scripts/adapter-matrix.py",
     "scripts/build-adapters.py",
@@ -123,10 +122,14 @@ def load_validator() -> ModuleType:
 
 
 class ValidationRunnerTests(unittest.TestCase):
-    def test_required_files_cover_new_modules_and_scenarios(self) -> None:
+    def test_required_product_files_cover_modules_and_scenarios(self) -> None:
         validator = load_validator()
 
-        self.assertTrue(EXPECTED_NEW_REQUIRED_FILES.issubset(validator.REQUIRED_FILES))
+        self.assertTrue(
+            EXPECTED_REQUIRED_PRODUCT_FILES.issubset(
+                validator.REQUIRED_PRODUCT_FILES
+            )
+        )
 
     def test_check_inventory_is_stable_complete_and_unique(self) -> None:
         validator = load_validator()

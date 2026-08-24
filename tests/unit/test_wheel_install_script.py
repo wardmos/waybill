@@ -31,7 +31,7 @@ class WheelInstallScriptTests(unittest.TestCase):
             source = root / "source"
             destination = root / "copy"
             source.mkdir()
-            for name in ["LICENSE", "MANIFEST.in", "README.md", "pyproject.toml"]:
+            for name in ["LICENSE", "MANIFEST.in", "pyproject.toml"]:
                 (source / name).write_text(f"{name}\n", encoding="utf-8")
             package = source / "waybill_core"
             package.mkdir()
@@ -39,9 +39,9 @@ class WheelInstallScriptTests(unittest.TestCase):
             skill = source / "skills" / "handoff"
             skill.mkdir(parents=True)
             (skill / "SKILL.md").write_text("skill\n", encoding="utf-8")
-            adapter = source / "adapters" / "codex"
+            adapter = source / "adapters" / "codex" / "skills" / "handoff"
             adapter.mkdir(parents=True)
-            (adapter / "README.md").write_text("adapter\n", encoding="utf-8")
+            (adapter / "SKILL.md").write_text("adapter\n", encoding="utf-8")
             for ignored in [
                 ".git",
                 ".waybill",
@@ -65,7 +65,6 @@ class WheelInstallScriptTests(unittest.TestCase):
                 {
                     "LICENSE",
                     "MANIFEST.in",
-                    "README.md",
                     "pyproject.toml",
                     "waybill_core",
                     "skills",
@@ -98,7 +97,7 @@ class WheelInstallScriptTests(unittest.TestCase):
             package.mkdir(parents=True)
             (source / "skills").mkdir()
             (source / "adapters").mkdir()
-            for name in ["LICENSE", "MANIFEST.in", "README.md", "pyproject.toml"]:
+            for name in ["LICENSE", "MANIFEST.in", "pyproject.toml"]:
                 (source / name).write_text(f"{name}\n", encoding="utf-8")
             outside = root / "outside.txt"
             outside.write_text("outside\n", encoding="utf-8")

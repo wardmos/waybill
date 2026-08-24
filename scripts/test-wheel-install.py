@@ -35,7 +35,7 @@ IGNORED_SOURCE_NAMES = {
     "node_modules",
     "venv",
 }
-SOURCE_COPY_FILES = ("LICENSE", "MANIFEST.in", "README.md", "pyproject.toml")
+SOURCE_COPY_FILES = ("LICENSE", "MANIFEST.in", "pyproject.toml")
 SOURCE_COPY_DIRECTORIES = ("waybill_core", "skills", "adapters")
 EXPECTED_TEMPLATE_TARGETS = {
     "claude-code": {

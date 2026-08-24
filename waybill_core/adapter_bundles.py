@@ -37,13 +37,8 @@ class AdapterBundleReport:
     files: tuple[str, ...]
 
 
-def _extra_sources() -> tuple[AdapterBundleSource, ...]:
+def _claude_command_sources() -> tuple[AdapterBundleSource, ...]:
     return (
-        AdapterBundleSource(
-            "claude-code",
-            "adapters/claude-code/README.md",
-            "README.md",
-        ),
         AdapterBundleSource(
             "claude-code",
             "adapters/claude-code/commands/handoff-export.md",
@@ -54,23 +49,11 @@ def _extra_sources() -> tuple[AdapterBundleSource, ...]:
             "adapters/claude-code/commands/handoff-import.md",
             "commands/handoff-import.md",
         ),
-        AdapterBundleSource("cursor", "adapters/cursor/README.md", "README.md"),
-        AdapterBundleSource(
-            "gemini-cli",
-            "adapters/gemini-cli/README.md",
-            "README.md",
-        ),
-        AdapterBundleSource(
-            "opencode",
-            "adapters/opencode/README.md",
-            "README.md",
-        ),
     )
 
 
 def _codex_sources() -> tuple[AdapterBundleSource, ...]:
     return (
-        AdapterBundleSource("codex", "adapters/codex/README.md", "README.md"),
         AdapterBundleSource(
             "codex",
             ".codex-plugin/plugin.json",
@@ -95,7 +78,7 @@ def _codex_sources() -> tuple[AdapterBundleSource, ...]:
 ADAPTER_BUNDLE_SOURCES = tuple(
     AdapterBundleSource(source.adapter, source.canonical, source.bundle_target)
     for source in ADAPTER_SOURCES
-) + _extra_sources() + _codex_sources()
+) + _claude_command_sources() + _codex_sources()
 
 
 def bundle_sources_for_adapter(adapter: str) -> tuple[AdapterBundleSource, ...]:

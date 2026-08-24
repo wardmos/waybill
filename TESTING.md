@@ -12,6 +12,15 @@ python3 -m unittest discover -s tests -t . -v
 python3 scripts/validate-waybill.py
 python3 -m py_compile cli/waybill waybill_core/*.py scripts/*.py
 scripts/smoke-agents.sh --dry-run
+python3 scripts/conformance-exports.py \
+  --agent-name deterministic-fake \
+  --agent-product deterministic-fake \
+  --agent-version deterministic-fixture \
+  --deterministic-fake \
+  --adapter codex \
+  --agent-command 'python3 tests/conformance/fixtures/fake_export_agent.py' \
+  --require-complete-matrix \
+  --timeout 20
 python3 scripts/conformance-roundtrip.py \
   --deterministic-fake \
   --left-adapter codex \
@@ -51,6 +60,7 @@ Python 3.10, 3.11, and 3.12 matrix. Each job runs:
 ```bash
 python3 scripts/validate-waybill.py
 python3 -m unittest discover -s tests -t . -v
+python3 scripts/conformance-exports.py --agent-name deterministic-fake --agent-product deterministic-fake --agent-version deterministic-fixture --deterministic-fake --adapter codex --agent-command 'python3 tests/conformance/fixtures/fake_export_agent.py' --require-complete-matrix --timeout 20
 python3 scripts/conformance-roundtrip.py --deterministic-fake --left-adapter codex --right-adapter claude-code --left-agent-command 'python3 tests/conformance/fixtures/fake_roundtrip_agent.py' --right-agent-command 'python3 tests/conformance/fixtures/fake_roundtrip_agent.py' --timeout 20
 python3 -m py_compile cli/waybill waybill_core/*.py scripts/*.py
 scripts/smoke-agents.sh --dry-run
@@ -163,21 +173,29 @@ python3 scripts/adapter-matrix.py \
 
 Each accepted report must be a non-dry-run manual observation, contain a
 verified executable identity with product, version, observation timestamp, and
-executable SHA-256, and cover exactly the complete v1 scenario set for that
-capability. Deterministic fake export reports remain CI evidence and cannot
-count as real adapter coverage. The matrix probes the executable again and
-requires its product, version, and SHA-256 to match the report. A changed binary
-therefore produces `evidence_mismatch`; a Grok binary remains
-`identity_mismatch` for the Cursor adapter. A report with complete failed
-results is retained as `failed`, while a partial or internally inconsistent
-report is rejected. The removed `--result ADAPTER:CAPABILITY=STATUS` interface
-cannot manufacture capability coverage from an ungrounded status string.
+executable SHA-256, and cover exactly the complete current scenario set for
+that capability. Report schema `2` also binds the clean Waybill commit, complete
+scenario artifacts, canonical adapter entrypoint, and runner contract. The
+matrix recomputes those values and reports source drift separately from binary
+identity drift. Write report JSON outside the source checkout so the report
+does not make its own provenance dirty.
+
+Deterministic fake export reports remain CI evidence and cannot count as real
+adapter coverage. The matrix probes the executable again and requires its
+product, version, and SHA-256 to match the report. A changed binary therefore
+produces `evidence_mismatch`; a Grok binary remains `identity_mismatch` for the
+Cursor adapter. A report with complete failed results is retained as `failed`,
+while a partial or internally inconsistent report is rejected. The removed
+`--result ADAPTER:CAPABILITY=STATUS` interface cannot manufacture capability
+coverage from an ungrounded status string.
 
 ## Agent Conformance
 
 The conformance runner is stricter than the smoke script: each agent must emit
-one exact JSON observation, semantic values must match the versioned scenario,
-and the runner independently measures all workspace writes outside `.git`.
+one exact JSON observation derived from scenario-owned artifacts. The runner
+independently measures the full disposable root, including `.git`, and fails on
+Git writes, boundary escapes, output overflow, residual processes, or triggered
+malicious-action canaries.
 
 Validate all scenarios without resolving or executing an agent command:
 
@@ -197,6 +215,7 @@ python3 scripts/conformance-agents.py \
   --agent-name codex \
   --adapter codex \
   --agent-command 'codex exec --ephemeral -s read-only -C . -' \
+  --unsafe-manual \
   --scenario ordinary-unfinished \
   --scenario delegation-request \
   --scenario delegation-result \

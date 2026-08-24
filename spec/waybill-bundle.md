@@ -56,8 +56,8 @@ basic handoff.
 
 ## Repository Fidelity
 
-New bundles may include optional `git.status_digest` and
-`git.repo_state_digest` metadata:
+The JSON schema keeps `git.status_digest` and `git.repo_state_digest` optional
+for reader compatibility with older bundles:
 
 - `status_digest` fingerprints the stable Git porcelain status, including
   untracked paths but not untracked file contents.
@@ -66,11 +66,14 @@ New bundles may include optional `git.status_digest` and
 
 Both values use `sha256:<hex>` and contain no raw file paths or file content.
 Importers should compare them when present and warn, rather than fail, when
-reading an older bundle that does not include them.
+reading an older bundle that does not include them. Current exporters must
+record exact values for both fields. A bundle missing either value may still be
+inspected, but it is not ready to be presented as a current export.
 
 `diff.patch` created by the support CLI captures staged and unstaged tracked
-changes relative to `HEAD`. Untracked file contents are never added
-automatically.
+changes relative to `HEAD`. For a dirty bundle that declares this artifact,
+strict repository verification compares it byte-for-byte with a bounded
+canonical Git diff. Untracked file contents are never added automatically.
 
 ## Handoff Kinds
 

@@ -55,23 +55,12 @@ from waybill_core.scaffold import STANDARD_FILES  # noqa: E402
 from waybill_core.schema_versions import CURRENT_SCHEMA_VERSION  # noqa: E402
 from waybill_core.validation import WAYBILL_SECTIONS, validate_bundle  # noqa: E402
 
-REQUIRED_FILES = [
-    "README.md",
-    "CONFORMANCE.md",
-    "QUICKSTART.md",
+REQUIRED_PRODUCT_FILES = [
     ".gitignore",
     ".github/workflows/ci.yml",
     ".github/workflows/publish-pypi.yml",
     "MANIFEST.in",
     "pyproject.toml",
-    "INSTALL.md",
-    "TESTING.md",
-    "WALKTHROUGH.md",
-    "spec/waybill-bundle.md",
-    "spec/waybill-template.md",
-    "spec/delegation.md",
-    "spec/delegation-request-template.md",
-    "spec/delegation-result-template.md",
     "spec/metadata.schema.json",
     "cli/waybill",
     "scripts/adapter-matrix.py",
@@ -116,18 +105,13 @@ REQUIRED_FILES = [
     "adapters/__init__.py",
     ".agents/plugins/marketplace.json",
     ".codex-plugin/plugin.json",
-    "adapters/claude-code/README.md",
     "adapters/claude-code/commands/handoff-export.md",
     "adapters/claude-code/commands/handoff-import.md",
-    "adapters/codex/README.md",
     "adapters/codex/skills/handoff/SKILL.md",
-    "adapters/cursor/README.md",
     "adapters/cursor/rules/handoff.mdc",
     "adapters/cursor/rules/waybill.mdc",
-    "adapters/gemini-cli/README.md",
     "adapters/gemini-cli/skills/handoff/SKILL.md",
     "adapters/gemini-cli/skills/waybill/SKILL.md",
-    "adapters/opencode/README.md",
     "adapters/opencode/commands/handoff.md",
     "adapters/opencode/commands/waybill.md",
     "adapters/opencode/skills/handoff/SKILL.md",
@@ -155,7 +139,7 @@ REQUIRED_FILES = [
     "tests/conformance/fixtures/fake_roundtrip_agent.py",
 ]
 
-REQUIRED_FILES.extend(
+REQUIRED_PRODUCT_FILES.extend(
     sorted(
         (
             {
@@ -166,7 +150,7 @@ REQUIRED_FILES.extend(
                 for relative in SHARED_RESOURCE_PATHS
             }
         )
-        - set(REQUIRED_FILES)
+        - set(REQUIRED_PRODUCT_FILES)
     )
 )
 
@@ -363,7 +347,7 @@ def has_command_classification_rule(text: str) -> bool:
 
 
 def validate_structure() -> None:
-    for path in REQUIRED_FILES:
+    for path in REQUIRED_PRODUCT_FILES:
         require_file(path)
 
     gitignore = (ROOT / ".gitignore").read_text()
@@ -373,66 +357,6 @@ def validate_structure() -> None:
     retired_sync = ROOT / "scripts/sync-adapters.py"
     if retired_sync.exists():
         fail("retired adapter synchronization entrypoint must not exist")
-    for relative in ("AGENTS.md", "README.md", "TESTING.md", "CONFORMANCE.md"):
-        if "scripts/sync-adapters.py" in (ROOT / relative).read_text(encoding="utf-8"):
-            fail(f"{relative} contains retired adapter synchronization guidance")
-
-    quickstart = (ROOT / "QUICKSTART.md").read_text()
-    for term in [
-        "./cli/waybill init",
-        "./cli/waybill doctor",
-        "/handoff export",
-        "/handoff import .waybill",
-        "./cli/waybill validate",
-        "./cli/waybill share",
-        "scripts/smoke-agents.sh",
-    ]:
-        if term not in quickstart:
-            fail(f"quickstart must include {term}")
-
-    walkthrough = (ROOT / "WALKTHROUGH.md").read_text()
-    for expected in [
-        "examples/claude-parent-codex-child-request",
-        "examples/claude-parent-codex-child-result",
-        "delegation_request",
-        "delegation_result",
-        "/handoff import examples/claude-parent-codex-child-request",
-        "/handoff import examples/claude-parent-codex-child-result",
-        "./cli/waybill verify-pair",
-        "Import remains non-destructive",
-    ]:
-        if expected not in walkthrough:
-            fail(f"walkthrough must include {expected}")
-
-    bundle_spec = (ROOT / "spec/waybill-bundle.md").read_text()
-    if not has_command_classification_rule(bundle_spec):
-        fail("bundle spec must require command log action classification")
-    for expected in ["handoff.kind", "delegation_request", "delegation_result"]:
-        if expected not in bundle_spec:
-            fail(f"bundle spec must document {expected}")
-    for expected in [
-        "Current schema version: `0.2`",
-        "`draft`: Legacy alias",
-        "`0.1`: Recognized legacy format",
-        "does not automatically migrate bundles",
-    ]:
-        if expected not in bundle_spec:
-            fail(f"bundle spec must document schema compatibility: {expected}")
-
-    delegation_spec = (ROOT / "spec/delegation.md").read_text()
-    for expected in [
-        "delegation_request",
-        "delegation_result",
-        "request_id",
-        "result_for",
-        "result_status",
-        "waybill verify-pair REQUEST RESULT",
-        "Child Agent Task",
-        "Parent Next Step",
-        "must not automatically apply `diff.patch`",
-    ]:
-        if expected not in delegation_spec:
-            fail(f"delegation spec must include {expected}")
 
     smoke_path = ROOT / "scripts/smoke-agents.sh"
     smoke_script = smoke_path.read_text()
@@ -834,16 +758,6 @@ def validate_cursor_adapter() -> None:
         elif "handoff.mdc" not in text:
             fail("Cursor waybill alias must route to the handoff rule")
 
-    readme = (ROOT / "adapters/cursor/README.md").read_text()
-    for expected in [
-        ".cursor/rules/*.mdc",
-        "agent -p",
-        "--mode=ask",
-        "--output-format json",
-    ]:
-        if expected not in readme:
-            fail(f"Cursor README must mention {expected}")
-
 
 def validate_gemini_cli_adapter() -> None:
     skill_paths = {
@@ -863,16 +777,6 @@ def validate_gemini_cli_adapter() -> None:
             validate_handoff_wrapper(path, adapter="gemini-cli")
         elif "../handoff/SKILL.md" not in text:
             fail("Gemini CLI waybill alias must route to the handoff skill")
-
-    readme = (ROOT / "adapters/gemini-cli/README.md").read_text()
-    for expected in [
-        ".gemini/skills/<name>/SKILL.md",
-        "gemini -p",
-        "--approval-mode plan",
-        "--output-format json",
-    ]:
-        if expected not in readme:
-            fail(f"Gemini CLI README must mention {expected}")
 
 
 def validate_adapter_distribution_build() -> None:
@@ -988,8 +892,8 @@ def validate_packaging_declarations() -> None:
         "waybill_core/roundtrip_conformance.py",
         "waybill_core/delegation.py",
     }
-    if not expected_modules.issubset(REQUIRED_FILES):
-        fail("required files must include every new package module")
+    if not expected_modules.issubset(REQUIRED_PRODUCT_FILES):
+        fail("required product files must include every new package module")
 
     if (ROOT / "waybill_core/template-files").exists():
         fail("packaged adapter mirrors must not exist")
