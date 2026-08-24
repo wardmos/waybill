@@ -171,6 +171,22 @@ class RepoFidelityTests(unittest.TestCase):
         self.assertTrue(readiness.has_errors)
         self.assertEqual("error", readiness_checks["diff_patch"].status)
 
+    def test_verify_rejects_invalid_dirty_instead_of_skipping_diff_patch(self) -> None:
+        (self.repo / "unstaged.txt").write_text("captured unstaged content\n")
+        bundle = self.create_bundle()
+        metadata_path = bundle / "metadata.json"
+        metadata = json.loads(metadata_path.read_text())
+        metadata["git"]["dirty"] = "true"
+        metadata_path.write_text(json.dumps(metadata, indent=2) + "\n")
+        (bundle / "diff.patch").write_text("tampered diff\n")
+
+        report = verify_repo_state(bundle, self.repo)
+        checks = self.checks_by_name(report)
+
+        self.assertTrue(report.has_errors)
+        self.assertEqual("error", checks["dirty"].status)
+        self.assertEqual("error", checks["diff_patch"].status)
+
     def test_verify_accepts_captured_diff_patch(self) -> None:
         (self.repo / "unstaged.txt").write_text("captured unstaged content\n")
         bundle = self.create_bundle()

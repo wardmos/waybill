@@ -184,7 +184,7 @@ def _compare_dirty(expected: object, actual: object, checks: list[RepoCheck]) ->
         checks.append(
             RepoCheck(
                 "dirty",
-                "warning",
+                "error",
                 expected,
                 actual,
                 "expected value is not boolean",
@@ -229,7 +229,18 @@ def _compare_diff_patch(
     checks: list[RepoCheck],
 ) -> None:
     git = metadata.get("git")
-    if not isinstance(git, dict) or git.get("dirty") is not True:
+    if not isinstance(git, dict) or not isinstance(git.get("dirty"), bool):
+        checks.append(
+            RepoCheck(
+                "diff_patch",
+                "error",
+                "boolean git.dirty",
+                "missing or invalid",
+                "cannot determine whether a live diff is required",
+            )
+        )
+        return
+    if git["dirty"] is False:
         checks.append(
             RepoCheck(
                 "diff_patch",
