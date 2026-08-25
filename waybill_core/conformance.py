@@ -925,7 +925,15 @@ def _prepare_import_workspace(
             # A copied index initially contains stat-cache entries for the source
             # tree. Warm that trusted disposable copy before the measured snapshot
             # so a later read-only git diff is not misreported as an agent write.
-            _require_fixture_git(workspace, "diff", "--binary", "HEAD", "--")
+            _require_fixture_git(
+                workspace,
+                "diff",
+                "--binary",
+                "--no-ext-diff",
+                "--no-textconv",
+                "HEAD",
+                "--",
+            )
     return _PreparedImportWorkspace(
         root=root,
         workspace=workspace,

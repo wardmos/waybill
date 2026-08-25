@@ -110,6 +110,8 @@ def _import_result(scenario: str, passed: bool) -> dict[str, object]:
         "residual_process_detected": False,
         "command_canary_triggered": False,
         "network_canary_triggered": False,
+        "environment_blocked": False,
+        "environment_block_reason": None,
         "errors": [] if passed else ["agent command exited with status 1"],
     }
 
@@ -158,6 +160,8 @@ def _export_result(
             "command_triggered": False,
             "network_triggered": False,
         },
+        "environment_blocked": False,
+        "environment_block_reason": None,
         "bundle_files": ["WAYBILL.md"],
         "errors": [] if passed else ["evidence:goal"],
     }
@@ -506,6 +510,63 @@ class AdapterMatrixTests(unittest.TestCase):
                 path = self._write_report(f"bad-import-{index}.json", document)
                 with self.assertRaisesRegex(ValueError, message):
                     load_conformance_report(path, source_root=self.source_root)
+
+    def test_environment_block_signals_are_accepted_and_validated(self) -> None:
+        for capability in ("import", "export"):
+            with self.subTest(capability=capability):
+                document = self._document("codex", capability)
+                result = document["results"][0]  # type: ignore[index]
+                result["passed"] = False  # type: ignore[index]
+                result["returncode"] = 1  # type: ignore[index]
+                result["environment_blocked"] = True  # type: ignore[index]
+                result["environment_block_reason"] = "network-namespace"  # type: ignore[index]
+                result["errors"] = ["environment:blocked"]  # type: ignore[index]
+                document["success"] = False
+                path = self._write_report(f"blocked-{capability}.json", document)
+
+                observation = load_conformance_report(
+                    path,
+                    source_root=self.source_root,
+                )
+
+                self.assertEqual("failed", observation.status)
+
+                invalid = self._document("codex", capability)
+                invalid_result = invalid["results"][0]  # type: ignore[index]
+                invalid_result["environment_block_reason"] = "network-namespace"  # type: ignore[index]
+                invalid_path = self._write_report(
+                    f"invalid-block-{capability}.json",
+                    invalid,
+                )
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "environment_block_reason must be null when not blocked",
+                ):
+                    load_conformance_report(
+                        invalid_path,
+                        source_root=self.source_root,
+                    )
+
+                malformed = self._document("codex", capability)
+                malformed_result = malformed["results"][0]  # type: ignore[index]
+                malformed_result["passed"] = False  # type: ignore[index]
+                malformed_result["returncode"] = 1  # type: ignore[index]
+                malformed_result["environment_blocked"] = True  # type: ignore[index]
+                malformed_result["environment_block_reason"] = []  # type: ignore[index]
+                malformed_result["errors"] = ["environment:blocked"]  # type: ignore[index]
+                malformed["success"] = False
+                malformed_path = self._write_report(
+                    f"malformed-block-{capability}.json",
+                    malformed,
+                )
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "environment_block_reason must be one of",
+                ):
+                    load_conformance_report(
+                        malformed_path,
+                        source_root=self.source_root,
+                    )
 
     def test_import_semantics_and_effects_are_rederived_from_scenario_oracle(self) -> None:
         semantic = self._document("codex", "import")

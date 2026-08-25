@@ -758,6 +758,45 @@ class ExportRunnerCliTests(unittest.TestCase):
             self.assertEqual(["ordinary-unfinished"], report["scenarios"])
             self.assertNotIn("command", report)
 
+    def test_manual_evidence_rejects_custom_scenario_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            scenario_dir = Path(temporary) / "scenarios"
+            scenario_dir.mkdir()
+            (scenario_dir / "ordinary-unfinished.json").write_bytes(
+                (SCENARIO_DIR / "ordinary-unfinished.json").read_bytes()
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "scripts" / "conformance-exports.py"),
+                    "--agent-name",
+                    "codex",
+                    "--agent-product",
+                    "codex",
+                    "--agent-version",
+                    SYNTHETIC_AGENT_VERSION,
+                    "--unsafe-manual",
+                    "--adapter",
+                    "codex",
+                    "--agent-command",
+                    sys.executable,
+                    "--scenario-dir",
+                    str(scenario_dir),
+                    "--scenario",
+                    "ordinary-unfinished",
+                ],
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(2, completed.returncode)
+        self.assertIn(
+            "manual evidence requires the canonical --scenario-dir",
+            completed.stderr,
+        )
+
     def test_runner_requires_an_explicit_execution_mode(self) -> None:
         completed = subprocess.run(
             [

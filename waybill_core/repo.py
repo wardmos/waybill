@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from .limits import BundleLimitError, MAX_DIFF_BYTES, list_bundle_files
+from .limits import BundleLimitError, MAX_DIFF_BYTES, format_bytes, list_bundle_files
 
 
 CANONICAL_DIFF_ARGUMENTS = (
@@ -32,6 +32,25 @@ CANONICAL_DIFF_ARGUMENTS = (
     "HEAD",
     "--",
 )
+NO_TRACKED_DIFF_NOTE = (
+    b"# No tracked diff captured.\n"
+    b"#\n"
+    b"# The repository may still have untracked files. Review git status before\n"
+    b"# sharing or importing this bundle.\n"
+)
+
+
+def diff_omission_note(max_diff_bytes: int) -> bytes:
+    """Return the complete canonical note for an over-limit tracked diff."""
+
+    return (
+        "# Diff omitted.\n"
+        "#\n"
+        "# `git diff --binary HEAD --` exceeded the Waybill draft limit of "
+        f"{format_bytes(max_diff_bytes)}.\n"
+        "# Review the repository directly and capture only the relevant changes\n"
+        "# before sharing this bundle.\n"
+    ).encode("utf-8")
 
 
 @dataclass(frozen=True)
@@ -327,7 +346,7 @@ def _compare_diff_patch(
         return
 
     if current.truncated:
-        if recorded.startswith(b"# Diff omitted."):
+        if recorded == diff_omission_note(MAX_DIFF_BYTES):
             checks.append(
                 RepoCheck(
                     "diff_patch",
@@ -342,16 +361,15 @@ def _compare_diff_patch(
                 RepoCheck(
                     "diff_patch",
                     "error",
-                    "diff omission note",
+                    "canonical diff omission note",
                     "other content",
-                    "live tracked diff exceeds the limit but the bundle does not record an omission",
+                    "does not match",
                 )
             )
         return
 
     if not current.content:
-        lowered = recorded.lower()
-        matches = not recorded or b"no tracked diff" in lowered
+        matches = recorded in {b"", NO_TRACKED_DIFF_NOTE}
     else:
         matches = recorded == current.content
     checks.append(

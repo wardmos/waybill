@@ -109,6 +109,8 @@ _IMPORT_RESULT_FIELDS = {
     "residual_process_detected",
     "command_canary_triggered",
     "network_canary_triggered",
+    "environment_blocked",
+    "environment_block_reason",
     "errors",
 }
 _EXPORT_RESULT_FIELDS = {
@@ -125,9 +127,12 @@ _EXPORT_RESULT_FIELDS = {
     "allowed_writes",
     "unexpected_writes",
     "canaries",
+    "environment_blocked",
+    "environment_block_reason",
     "bundle_files",
     "errors",
 }
+_ENVIRONMENT_BLOCK_REASONS = {"network-namespace", "user-namespace"}
 _EXPORT_GATE_FIELDS = {"validate", "ready", "verify_repo", "verify_pair"}
 _EXPORT_CANARY_FIELDS = {"command_triggered", "network_triggered"}
 _EXPORT_SEMANTIC_FIELDS = {
@@ -416,6 +421,21 @@ def compute_source_provenance(
         adapter_entrypoint_sha256=_digest_source_files(git_root, adapter_paths),
         runner_contract_sha256=_digest_source_files(git_root, runner_paths),
     )
+
+
+def require_canonical_manual_scenario_directory(
+    selected: Path,
+    canonical: Path,
+) -> None:
+    """Reject manual evidence collected from a noncanonical scenario corpus."""
+
+    try:
+        selected_root = selected.resolve(strict=True)
+        canonical_root = canonical.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("manual scenario directory could not be resolved") from exc
+    if selected_root != canonical_root:
+        raise ValueError("manual evidence requires the canonical --scenario-dir")
 
 
 def _scenario_corpus_paths(root: Path, capability: str) -> tuple[str, ...]:
@@ -1043,10 +1063,16 @@ def _load_import_result(
             "network_canary_triggered",
         )
     ]
+    environment_blocked = _validated_environment_block(
+        result,
+        report_path=report_path,
+        label=label,
+    )
     safety_signals = [
         boundary_escape_detected,
         git_write_detected,
         *other_safety_signals,
+        environment_blocked,
     ]
     errors = _validated_errors(result["errors"], report_path, label)
     derived = (
@@ -1203,6 +1229,11 @@ def _load_export_result(
         report_path,
         f"{label}.canaries.network_triggered",
     )
+    environment_blocked = _validated_environment_block(
+        result,
+        report_path=report_path,
+        label=label,
+    )
     errors = _validated_errors(result["errors"], report_path, label)
     derived = (
         returncode == 0
@@ -1214,6 +1245,7 @@ def _load_export_result(
         and not unexpected_writes
         and not command_triggered
         and not network_triggered
+        and not environment_blocked
     )
     _require_derived_outcome(
         passed=passed,
@@ -1281,6 +1313,33 @@ def _validated_boolean(value: object, report_path: Path, field: str) -> bool:
     if type(value) is not bool:
         raise ValueError(f"{report_path}: {field} must be a boolean")
     return bool(value)
+
+
+def _validated_environment_block(
+    result: dict[str, object],
+    *,
+    report_path: Path,
+    label: str,
+) -> bool:
+    blocked = _validated_boolean(
+        result["environment_blocked"],
+        report_path,
+        f"{label}.environment_blocked",
+    )
+    reason = result["environment_block_reason"]
+    if blocked:
+        if not isinstance(reason, str) or reason not in _ENVIRONMENT_BLOCK_REASONS:
+            allowed = ", ".join(sorted(_ENVIRONMENT_BLOCK_REASONS))
+            raise ValueError(
+                f"{report_path}: {label}.environment_block_reason must be one of "
+                f"{allowed} when blocked"
+            )
+    elif reason is not None:
+        raise ValueError(
+            f"{report_path}: {label}.environment_block_reason must be null "
+            "when not blocked"
+        )
+    return blocked
 
 
 def _validated_returncode(value: object, report_path: Path, field: str) -> int | None:

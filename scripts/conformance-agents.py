@@ -30,7 +30,10 @@ from waybill_core.agent_identity import (  # noqa: E402
     current_observed_at,
     probe_agent_identity,
 )
-from waybill_core.adapter_matrix import compute_source_provenance  # noqa: E402
+from waybill_core.adapter_matrix import (  # noqa: E402
+    compute_source_provenance,
+    require_canonical_manual_scenario_directory,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -188,6 +191,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error(_sanitized_error(str(exc), args.scenario_dir, args.workspace))
     if not scenarios:
         parser.error("no scenario JSON files found")
+    if args.unsafe_manual and not args.dry_run:
+        try:
+            require_canonical_manual_scenario_directory(
+                args.scenario_dir,
+                REPO_ROOT / "conformance" / "scenarios",
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
 
     if not args.workspace.is_dir():
         parser.error("workspace is not a directory")

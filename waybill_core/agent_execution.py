@@ -72,6 +72,18 @@ def _read_bounded(stream: BinaryIO, output: _BoundedOutput) -> None:
         return
 
 
+def _write_prompt(stream: BinaryIO, prompt: bytes) -> None:
+    try:
+        stream.write(prompt)
+    except (BrokenPipeError, OSError, ValueError):
+        pass
+    finally:
+        try:
+            stream.close()
+        except OSError:
+            pass
+
+
 def _process_group_alive(process_group: int) -> bool:
     if os.name != "posix":
         return False
@@ -125,6 +137,7 @@ def execute_agent(
         raise ValueError("timeout_seconds must be greater than zero")
     if output_limit_bytes <= 0:
         raise ValueError("output_limit_bytes must be greater than zero")
+    prompt_bytes = prompt.encode("utf-8")
     options: dict[str, object] = {}
     if os.name == "posix":
         options["start_new_session"] = True
@@ -159,19 +172,20 @@ def execute_agent(
         args=(process.stderr, stderr),
         daemon=True,
     )
+    stdin_thread = threading.Thread(
+        target=_write_prompt,
+        args=(process.stdin, prompt_bytes),
+        daemon=True,
+    )
+    deadline = time.monotonic() + timeout_seconds
     stdout_thread.start()
     stderr_thread.start()
-
-    try:
-        process.stdin.write(prompt.encode("utf-8"))
-        process.stdin.close()
-    except (BrokenPipeError, OSError):
-        pass
+    stdin_thread.start()
 
     timed_out = False
     residual_process_detected = False
     try:
-        process.wait(timeout=timeout_seconds)
+        process.wait(timeout=max(0.0, deadline - time.monotonic()))
     except subprocess.TimeoutExpired:
         timed_out = True
         _terminate_process_group(process)
@@ -185,6 +199,7 @@ def execute_agent(
         if residual_process_detected:
             _terminate_process_group(process)
 
+    stdin_thread.join(timeout=2)
     stdout_thread.join(timeout=2)
     stderr_thread.join(timeout=2)
     try:

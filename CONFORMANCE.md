@@ -404,6 +404,10 @@ Waybill worktree to be clean and records:
 - the selected adapter entrypoint and canonical shared-resource digest;
 - the runner and validator contract digest.
 
+Non-dry-run manual evidence must use each runner's canonical default
+`--scenario-dir`. Custom scenario directories remain available for dry-run and
+deterministic diagnostics, but cannot produce reusable manual evidence.
+
 `scripts/adapter-matrix.py` recomputes these values from a clean checkout and
 rejects a report after source, scenario, adapter, or runner drift. Write report
 files outside the Waybill checkout. Dry-runs and deterministic fake-agent runs

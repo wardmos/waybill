@@ -98,6 +98,31 @@ CANONICAL_DIFF_ARGUMENTS = (
     "HEAD",
     "--",
 )
+NO_TRACKED_DIFF_NOTE = (
+    b"# No tracked diff captured.\n"
+    b"#\n"
+    b"# The repository may still have untracked files. Review git status before\n"
+    b"# sharing or importing this bundle.\n"
+)
+
+
+def _format_bytes(size: int) -> str:
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if size < 1024 or unit == "GiB":
+            return f"{size:.1f} {unit}" if unit != "B" else f"{size} B"
+        size /= 1024
+    return f"{size:.1f} GiB"
+
+
+def _diff_omission_note(max_diff_bytes: int) -> bytes:
+    return (
+        "# Diff omitted.\n"
+        "#\n"
+        "# `git diff --binary HEAD --` exceeded the Waybill draft limit of "
+        f"{_format_bytes(max_diff_bytes)}.\n"
+        "# Review the repository directly and capture only the relevant changes\n"
+        "# before sharing this bundle.\n"
+    ).encode("utf-8")
 
 
 @dataclass(frozen=True)
@@ -820,10 +845,10 @@ def _compare_diff_patch(
     tracked_diff = current["tracked_diff"]
     assert isinstance(tracked_diff, bytes)
     if current["tracked_diff_truncated"] is True:
-        if not recorded.startswith(b"# Diff omitted."):
+        if recorded != _diff_omission_note(MAX_DIFF_BYTES):
             checker.error(
                 "repo-diff",
-                "live tracked diff exceeds the limit but the bundle does not record an omission",
+                "recorded diff omission does not match the canonical note",
                 value,
             )
         else:
@@ -835,7 +860,7 @@ def _compare_diff_patch(
         return
 
     if not tracked_diff:
-        matches = not recorded or b"no tracked diff" in recorded.lower()
+        matches = recorded in {b"", NO_TRACKED_DIFF_NOTE}
     else:
         matches = recorded == tracked_diff
     if not matches:

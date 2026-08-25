@@ -23,7 +23,10 @@ SCENARIO_ID = "ordinary-unfinished"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from waybill_core.adapter_matrix import compute_source_provenance  # noqa: E402
+from waybill_core.adapter_matrix import (  # noqa: E402
+    compute_source_provenance,
+    require_canonical_manual_scenario_directory,
+)
 from waybill_core.agent_identity import probe_agent_identity  # noqa: E402
 from waybill_core.export_conformance import (  # noqa: E402
     SUPPORTED_EXPORT_ADAPTERS,
@@ -207,6 +210,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ValueError as exc:
         parser.error(str(exc))
     scenario = scenarios[0]
+    if args.unsafe_manual and not args.dry_run:
+        try:
+            require_canonical_manual_scenario_directory(
+                args.scenario_dir,
+                REPO_ROOT / "conformance" / "export-scenarios",
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
 
     if args.deterministic_fake:
         left_identity, left_report = _fixture_identity(

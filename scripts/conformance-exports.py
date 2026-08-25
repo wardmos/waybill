@@ -28,7 +28,10 @@ from waybill_core.agent_identity import (  # noqa: E402
     current_observed_at,
     probe_agent_identity,
 )
-from waybill_core.adapter_matrix import compute_source_provenance  # noqa: E402
+from waybill_core.adapter_matrix import (  # noqa: E402
+    compute_source_provenance,
+    require_canonical_manual_scenario_directory,
+)
 
 
 _COMPLETE_MATRIX_KINDS = {
@@ -371,6 +374,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error(str(exc))
     if not scenarios:
         parser.error("no export scenario JSON files found")
+    if args.unsafe_manual and not args.dry_run:
+        try:
+            require_canonical_manual_scenario_directory(
+                args.scenario_dir,
+                REPO_ROOT / "conformance" / "export-scenarios",
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
 
     if args.deterministic_fake:
         identity, identity_report = _deterministic_fake_identity(

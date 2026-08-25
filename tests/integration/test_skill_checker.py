@@ -63,6 +63,13 @@ class BundledSkillCheckerTests(unittest.TestCase):
             CANONICAL_DIFF_ARGUMENTS,
             CHECKER_MODULE.CANONICAL_DIFF_ARGUMENTS,
         )
+        self.assertEqual(
+            b"# No tracked diff captured.\n"
+            b"#\n"
+            b"# The repository may still have untracked files. Review git status before\n"
+            b"# sharing or importing this bundle.\n",
+            CHECKER_MODULE.NO_TRACKED_DIFF_NOTE,
+        )
 
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory(
@@ -317,6 +324,49 @@ class BundledSkillCheckerTests(unittest.TestCase):
             error for error in report["errors"] if error["code"] == "repo-diff"
         ]
         self.assertEqual(["diff.patch"], [error["path"] for error in matching])
+
+    def test_rejects_content_appended_to_no_diff_note(self) -> None:
+        (self.repo / "private-untracked.txt").write_text(
+            "private content\n",
+            encoding="utf-8",
+        )
+        fidelity = read_repo_fidelity(self.repo)
+        self.metadata["git"]["dirty"] = True
+        self.metadata["git"]["status_digest"] = fidelity.status_digest
+        self.metadata["git"]["repo_state_digest"] = fidelity.repo_state_digest
+        self.write_metadata()
+        (self.bundle / "diff.patch").write_bytes(
+            b"# No tracked diff captured.\n"
+            b"#\n"
+            b"# The repository may still have untracked files. Review git status before\n"
+            b"# sharing or importing this bundle.\n"
+            b"diff --git a/fabricated.txt b/fabricated.txt\n+fabricated\n"
+        )
+
+        result = self.run_checker()
+
+        self.assertEqual(1, result.returncode)
+        report = json.loads(result.stdout)
+        self.assertIn("repo-diff", {error["code"] for error in report["errors"]})
+
+    def test_rejects_content_appended_to_truncated_diff_note(self) -> None:
+        (self.repo / "tracked.txt").write_bytes(
+            b"x" * (CHECKER_MODULE.MAX_DIFF_BYTES + 1)
+        )
+        fidelity = read_repo_fidelity(self.repo)
+        self.metadata["git"]["dirty"] = True
+        self.metadata["git"]["status_digest"] = fidelity.status_digest
+        self.metadata["git"]["repo_state_digest"] = fidelity.repo_state_digest
+        self.write_metadata()
+        (self.bundle / "diff.patch").write_bytes(
+            b"# Diff omitted.\n#\nfabricated trailing patch\n"
+        )
+
+        result = self.run_checker()
+
+        self.assertEqual(1, result.returncode)
+        report = json.loads(result.stdout)
+        self.assertIn("repo-diff", {error["code"] for error in report["errors"]})
 
     def test_rejects_unresolved_placeholders_and_escaping_artifacts(self) -> None:
         self.metadata["artifacts"]["diff"] = "../outside.patch"

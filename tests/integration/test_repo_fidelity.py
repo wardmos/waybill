@@ -99,6 +99,16 @@ class RepoFidelityTests(unittest.TestCase):
         self.assertIn("+captured unstaged content", patch)
         self.assertNotIn("UNTRACKED-CONTENT-MUST-NOT-BE-CAPTURED", patch)
 
+    def test_new_preserves_non_utf8_diff_bytes_exactly(self) -> None:
+        (self.repo / "unstaged.txt").write_bytes(b"\xffchanged\n")
+        expected = repo_module.read_repo_diff(self.repo).content
+
+        bundle = self.create_bundle()
+
+        self.assertEqual(expected, (bundle / "diff.patch").read_bytes())
+        checks = self.checks_by_name(verify_repo_state(bundle, self.repo))
+        self.assertEqual("ok", checks["diff_patch"].status)
+
     def test_new_stores_only_sha256_repo_fidelity_values_in_metadata(self) -> None:
         (self.repo / "private-untracked-name.txt").write_text("private content\n")
 
@@ -170,6 +180,36 @@ class RepoFidelityTests(unittest.TestCase):
         }
         self.assertTrue(readiness.has_errors)
         self.assertEqual("error", readiness_checks["diff_patch"].status)
+
+    def test_verify_rejects_content_appended_to_no_diff_note(self) -> None:
+        (self.repo / "private-untracked.txt").write_text(
+            "private content\n",
+            encoding="utf-8",
+        )
+        bundle = self.create_bundle()
+        patch_path = bundle / "diff.patch"
+        patch_path.write_bytes(
+            patch_path.read_bytes()
+            + b"diff --git a/fabricated.txt b/fabricated.txt\n+fabricated\n"
+        )
+
+        checks = self.checks_by_name(verify_repo_state(bundle, self.repo))
+
+        self.assertEqual("error", checks["diff_patch"].status)
+        self.assertEqual("does not match", checks["diff_patch"].message)
+
+    def test_verify_rejects_content_appended_to_truncated_diff_note(self) -> None:
+        (self.repo / "unstaged.txt").write_bytes(
+            b"x" * (repo_module.MAX_DIFF_BYTES + 1)
+        )
+        bundle = self.create_bundle()
+        patch_path = bundle / "diff.patch"
+        patch_path.write_bytes(patch_path.read_bytes() + b"fabricated trailing patch\n")
+
+        checks = self.checks_by_name(verify_repo_state(bundle, self.repo))
+
+        self.assertEqual("error", checks["diff_patch"].status)
+        self.assertEqual("does not match", checks["diff_patch"].message)
 
     def test_verify_rejects_invalid_dirty_instead_of_skipping_diff_patch(self) -> None:
         (self.repo / "unstaged.txt").write_text("captured unstaged content\n")

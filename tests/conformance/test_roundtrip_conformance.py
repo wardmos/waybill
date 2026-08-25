@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -160,6 +161,42 @@ class RoundtripRunnerCliTests(unittest.TestCase):
         self.assertEqual(2, completed.returncode)
         self.assertIn("--deterministic-fake", completed.stderr)
         self.assertIn("--unsafe-manual", completed.stderr)
+
+    def test_manual_evidence_rejects_custom_scenario_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            scenario_dir = Path(temporary) / "scenarios"
+            scenario_dir.mkdir()
+            (scenario_dir / "ordinary-unfinished.json").write_bytes(
+                (SCENARIO_DIR / "ordinary-unfinished.json").read_bytes()
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(RUNNER),
+                    "--unsafe-manual",
+                    "--left-adapter",
+                    "codex",
+                    "--right-adapter",
+                    "claude-code",
+                    "--left-agent-command",
+                    sys.executable,
+                    "--right-agent-command",
+                    sys.executable,
+                    "--scenario-dir",
+                    str(scenario_dir),
+                ],
+                cwd=REPO_ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+
+        self.assertEqual(2, completed.returncode)
+        self.assertIn(
+            "manual evidence requires the canonical --scenario-dir",
+            completed.stderr,
+        )
 
 
 if __name__ == "__main__":

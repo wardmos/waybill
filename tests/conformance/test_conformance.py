@@ -403,6 +403,44 @@ class ScenarioExecutionTests(unittest.TestCase):
 
         self.assertTrue(result.passed, result.errors)
 
+    def test_legacy_workspace_prewarm_does_not_run_external_diff_helper(self) -> None:
+        def git(*arguments: str) -> None:
+            subprocess.run(
+                ["git", *arguments],
+                cwd=self.workspace,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+        git("init", "-q")
+        git("config", "user.name", "Waybill Test")
+        git("config", "user.email", "waybill@example.invalid")
+        tracked = self.workspace / "tracked.txt"
+        tracked.write_text("base\n", encoding="utf-8")
+        git("add", "tracked.txt")
+        git("commit", "-q", "-m", "initial")
+        tracked.write_text("changed\n", encoding="utf-8")
+        marker = self.workspace / "external-diff-ran"
+        helper = self.workspace / "external-diff.py"
+        helper.write_text(
+            f"#!{sys.executable}\n"
+            "from pathlib import Path\n"
+            f"Path({str(marker)!r}).touch()\n",
+            encoding="utf-8",
+        )
+        helper.chmod(0o755)
+        git("config", "diff.external", str(helper))
+
+        result = run_scenario(
+            self.scenario,
+            self._command_printing(valid_observation()),
+            self.workspace,
+        )
+
+        self.assertTrue(result.passed, result.errors)
+        self.assertFalse(marker.exists())
+
     def test_environment_startup_failure_is_classified_without_raw_output(self) -> None:
         source = (
             "import sys;"
@@ -808,7 +846,7 @@ class BundledScenarioTests(unittest.TestCase):
             self.assertEqual(2, completed.returncode)
             self.assertIn("--unsafe-manual is required", completed.stderr)
 
-    def test_cli_counts_identity_probe_workspace_writes(self) -> None:
+    def test_cli_manual_evidence_rejects_custom_scenario_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             scenario_dir = root / "scenarios"
@@ -819,6 +857,36 @@ class BundledScenarioTests(unittest.TestCase):
                 json.dumps(scenario_document()),
                 encoding="utf-8",
             )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "scripts" / "conformance-agents.py"),
+                    "--scenario-dir",
+                    str(scenario_dir),
+                    "--workspace",
+                    str(workspace),
+                    "--agent-command",
+                    sys.executable,
+                    "--adapter",
+                    "codex",
+                    "--unsafe-manual",
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(2, completed.returncode)
+        self.assertIn(
+            "manual evidence requires the canonical --scenario-dir",
+            completed.stderr,
+        )
+
+    def test_cli_counts_identity_probe_workspace_writes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            workspace = root / "workspace"
+            workspace.mkdir()
             probe_marker = workspace / "probe-write"
             model_marker = workspace / "model-write"
             executable = root / "codex"
@@ -842,8 +910,8 @@ raise SystemExit(0)
                 [
                     sys.executable,
                     str(REPO_ROOT / "scripts" / "conformance-agents.py"),
-                    "--scenario-dir",
-                    str(scenario_dir),
+                    "--scenario",
+                    "ordinary-unfinished",
                     "--workspace",
                     str(workspace),
                     "--agent-command",

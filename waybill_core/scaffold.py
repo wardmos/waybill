@@ -8,8 +8,13 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .limits import MAX_DIFF_BYTES, format_bytes
-from .repo import read_repo_diff, read_repo_fidelity
+from .limits import MAX_DIFF_BYTES
+from .repo import (
+    NO_TRACKED_DIFF_NOTE,
+    diff_omission_note,
+    read_repo_diff,
+    read_repo_fidelity,
+)
 from .schema_versions import CURRENT_SCHEMA_VERSION
 
 
@@ -67,13 +72,16 @@ def create_draft_bundle(
     files = {
         "WAYBILL.md": _waybill_text(goal, git),
         "metadata.json": _metadata_text(source_agent, now, repo, git),
-        "diff.patch": _diff_text(repo, max_diff_bytes),
+        "diff.patch": _diff_content(repo, max_diff_bytes),
         "commands.log": _commands_log_text(repo, output, git),
         "test-summary.md": _test_summary_text(),
     }
 
-    for name, text in files.items():
-        (output / name).write_text(text)
+    for name, content in files.items():
+        if isinstance(content, bytes):
+            (output / name).write_bytes(content)
+        else:
+            (output / name).write_text(content, encoding="utf-8")
 
     return DraftBundleReport(
         output=output,
@@ -106,27 +114,15 @@ def _read_git_state(repo: Path) -> dict[str, str]:
     }
 
 
-def _diff_text(repo: Path, max_diff_bytes: int) -> str:
+def _diff_content(repo: Path, max_diff_bytes: int) -> bytes:
     diff = read_repo_diff(repo, max_bytes=max_diff_bytes)
     if diff.truncated:
-        return (
-            "# Diff omitted.\n"
-            "#\n"
-            "# `git diff --binary HEAD --` exceeded the Waybill draft limit of "
-            f"{format_bytes(max_diff_bytes)}.\n"
-            "# Review the repository directly and capture only the relevant changes\n"
-            "# before sharing this bundle.\n"
-        )
+        return diff_omission_note(max_diff_bytes)
 
     if diff.content:
-        return diff.content.decode(errors="replace")
+        return diff.content
 
-    return (
-        "# No tracked diff captured.\n"
-        "#\n"
-        "# The repository may still have untracked files. Review git status before\n"
-        "# sharing or importing this bundle.\n"
-    )
+    return NO_TRACKED_DIFF_NOTE
 
 
 def _metadata_text(
