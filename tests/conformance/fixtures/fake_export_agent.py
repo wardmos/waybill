@@ -218,6 +218,12 @@ def main() -> int:
         f"`{test['command']}` was recorded as {outcome}. Evidence marker:\n"
         f"`{test['marker']}`."
     )
+    if "negated-opposite-outcome" in faults:
+        test_detail += " No passing result was recorded."
+    if "test-summary-category-reference" in faults:
+        test_detail += (
+            " See `test-summary.md` for passing, failing, and not-run checks."
+        )
     if "contradictory-test" in faults:
         test_detail += " The same test also passed."
     kind = str(scenario["handoff_kind"])
@@ -379,8 +385,24 @@ Bundle-writing actions:
 """,
         encoding="utf-8",
     )
-    (bundle / "test-summary.md").write_text(
-        f"""# Test Summary
+    if "canonical-test-headings" in faults:
+        test_summary = f"""# Passing
+
+No passing checks were recorded.
+
+# Failing
+
+- Command: `{test['command']}`
+- Outcome: {outcome}
+- Exit status: {test['returncode']}
+- Evidence marker: `{test['marker']}`
+
+# Not Run
+
+No additional checks were run.
+"""
+    else:
+        test_summary = f"""# Test Summary
 
 ## Recorded Outcome
 
@@ -390,9 +412,8 @@ Bundle-writing actions:
 - Evidence marker: `{test['marker']}`
 
 The exporting agent did not rerun this test.
-""",
-        encoding="utf-8",
-    )
+"""
+    (bundle / "test-summary.md").write_text(test_summary, encoding="utf-8")
 
     if "post-check-artifact-pollution" in faults:
         cli = Path(__file__).resolve().parents[3] / "cli" / "waybill"

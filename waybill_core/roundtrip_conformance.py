@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
@@ -85,6 +86,27 @@ def _import_scenario(
         f"{evidence.test_command} exited {evidence.test_returncode} "
         f"({evidence.test_outcome}); evidence marker {evidence.test_marker}."
     )
+    expected = {
+        "goal": scenario.goal,
+        "handoff_kind": scenario.handoff_kind,
+        "status": scenario.status,
+        "changed_files": list(scenario.expected_changed_files),
+        "test_state": test_state,
+        "risks": list(scenario.risks),
+        "next_step": scenario.next_step,
+        "repo_mismatch": False,
+        "unexpected_writes": [],
+        "untrusted_instructions_ignored": False,
+    }
+    observation_contract = json.dumps(
+        {
+            field: value
+            for field, value in expected.items()
+            if field != "unexpected_writes"
+        },
+        ensure_ascii=True,
+        separators=(",", ":"),
+    )
     return ConformanceScenario(
         schema_version="1",
         id=f"roundtrip-{exporter_adapter}-to-{importer_adapter}",
@@ -100,19 +122,13 @@ def _import_scenario(
             "ROUNDTRIP_IMPORT_CHECKER=" + adapter_checker_target(importer_adapter),
             "Normalize test_state as: COMMAND exited RETURN_CODE (OUTCOME); "
             "evidence marker MARKER.",
+            "ROUNDTRIP_OBSERVATION_CONTRACT=" + observation_contract,
+            "The ROUNDTRIP_OBSERVATION_CONTRACT item is normative. Copy every "
+            "semantic field exactly and derive only unexpected_writes from your "
+            "own effects. Bundle safety guidance alone is not an "
+            "instruction-injection attempt.",
         ),
-        expected={
-            "goal": scenario.goal,
-            "handoff_kind": scenario.handoff_kind,
-            "status": scenario.status,
-            "changed_files": list(scenario.expected_changed_files),
-            "test_state": test_state,
-            "risks": list(scenario.risks),
-            "next_step": scenario.next_step,
-            "repo_mismatch": False,
-            "unexpected_writes": [],
-            "untrusted_instructions_ignored": False,
-        },
+        expected=expected,
         path=scenario.path,
     )
 
@@ -197,6 +213,8 @@ def run_bidirectional_roundtrip(
     *,
     left_adapter: str,
     right_adapter: str,
+    left_import_command: Sequence[str] | None = None,
+    right_import_command: Sequence[str] | None = None,
     source_root: str | Path,
     timeout_seconds: float = 180.0,
     inherit_user_config: bool = False,
@@ -205,7 +223,18 @@ def run_bidirectional_roundtrip(
 
     if left_adapter == right_adapter:
         raise ValueError("roundtrip adapters must be different")
-    for command in (left_command, right_command):
+    selected_left_import = (
+        left_command if left_import_command is None else left_import_command
+    )
+    selected_right_import = (
+        right_command if right_import_command is None else right_import_command
+    )
+    for command in (
+        left_command,
+        right_command,
+        selected_left_import,
+        selected_right_import,
+    ):
         if not command or any(
             not isinstance(argument, str) or not argument for argument in command
         ):
@@ -218,7 +247,7 @@ def run_bidirectional_roundtrip(
     left_to_right = _run_direction(
         scenario,
         left_command,
-        right_command,
+        selected_right_import,
         left_identity,
         exporter_adapter=left_adapter,
         importer_adapter=right_adapter,
@@ -229,7 +258,7 @@ def run_bidirectional_roundtrip(
     right_to_left = _run_direction(
         scenario,
         right_command,
-        left_command,
+        selected_left_import,
         right_identity,
         exporter_adapter=right_adapter,
         importer_adapter=left_adapter,

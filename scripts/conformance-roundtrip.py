@@ -47,6 +47,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--left-agent-command", required=True)
     parser.add_argument("--right-agent-command", required=True)
     parser.add_argument(
+        "--left-import-command",
+        help=(
+            "Optional read-only command for the left adapter when it imports; "
+            "defaults to --left-agent-command."
+        ),
+    )
+    parser.add_argument(
+        "--right-import-command",
+        help=(
+            "Optional read-only command for the right adapter when it imports; "
+            "defaults to --right-agent-command."
+        ),
+    )
+    parser.add_argument(
         "--left-adapter",
         required=True,
         choices=SUPPORTED_EXPORT_ADAPTERS,
@@ -192,6 +206,21 @@ def _manual_identity(
     )
 
 
+def _require_matching_role_identity(
+    parser: argparse.ArgumentParser,
+    *,
+    side: str,
+    export_report: dict[str, object],
+    import_report: dict[str, object],
+) -> None:
+    fields = ("product", "version", "sha256")
+    if any(export_report.get(field) != import_report.get(field) for field in fields):
+        parser.error(
+            f"{side} export and import commands must resolve to the same "
+            "verified product, version, and executable"
+        )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -204,6 +233,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     right_command = _parse_command(
         parser, "--right-agent-command", args.right_agent_command
+    )
+    left_import_command = (
+        list(left_command)
+        if args.left_import_command is None
+        else _parse_command(
+            parser,
+            "--left-import-command",
+            args.left_import_command,
+        )
+    )
+    right_import_command = (
+        list(right_command)
+        if args.right_import_command is None
+        else _parse_command(
+            parser,
+            "--right-import-command",
+            args.right_import_command,
+        )
     )
     try:
         scenarios = load_export_scenarios(args.scenario_dir, [SCENARIO_ID])
@@ -226,6 +273,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         right_identity, right_report = _fixture_identity(
             parser, right_command, side="right", dry_run=args.dry_run
         )
+        if args.left_import_command is None:
+            left_import_report = left_report
+        else:
+            _, left_import_report = _fixture_identity(
+                parser,
+                left_import_command,
+                side="left import",
+                dry_run=args.dry_run,
+            )
+        if args.right_import_command is None:
+            right_import_report = right_report
+        else:
+            _, right_import_report = _fixture_identity(
+                parser,
+                right_import_command,
+                side="right import",
+                dry_run=args.dry_run,
+            )
         execution_mode = "deterministic_fake"
         provenance = None
     else:
@@ -235,6 +300,34 @@ def main(argv: Sequence[str] | None = None) -> int:
         right_identity, right_report = _manual_identity(
             parser, right_command, adapter=args.right_adapter
         )
+        if args.left_import_command is None:
+            left_import_report = left_report
+        else:
+            _, left_import_report = _manual_identity(
+                parser,
+                left_import_command,
+                adapter=args.left_adapter,
+            )
+            _require_matching_role_identity(
+                parser,
+                side="left",
+                export_report=left_report,
+                import_report=left_import_report,
+            )
+        if args.right_import_command is None:
+            right_import_report = right_report
+        else:
+            _, right_import_report = _manual_identity(
+                parser,
+                right_import_command,
+                adapter=args.right_adapter,
+            )
+            _require_matching_role_identity(
+                parser,
+                side="right",
+                export_report=right_report,
+                import_report=right_import_report,
+            )
         execution_mode = "unsafe_manual"
         provenance = None
 
@@ -247,11 +340,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             "adapter": args.left_adapter,
             "agent": left_identity.to_dict(),
             "identity": left_report,
+            "import_identity": left_import_report,
         },
         "right": {
             "adapter": args.right_adapter,
             "agent": right_identity.to_dict(),
             "identity": right_report,
+            "import_identity": right_import_report,
         },
         "scenario": SCENARIO_ID,
         "provenance": provenance,
@@ -289,6 +384,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         right_identity,
         left_adapter=args.left_adapter,
         right_adapter=args.right_adapter,
+        left_import_command=left_import_command,
+        right_import_command=right_import_command,
         source_root=REPO_ROOT,
         timeout_seconds=args.timeout,
         inherit_user_config=args.unsafe_manual,

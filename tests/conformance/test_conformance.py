@@ -384,6 +384,67 @@ class ScenarioExecutionTests(unittest.TestCase):
         self.assertTrue(result.git_write_detected)
         self.assertFalse((self.workspace / "escaped.txt").exists())
 
+    def test_runtime_temp_allows_cli_scratch_but_not_runtime_home_state(self) -> None:
+        observation = valid_observation()
+        scratch_source = (
+            "import json,os,pathlib,sys;"
+            "sys.stdin.read();"
+            "lock=pathlib.Path(os.environ['TMPDIR'])/'cli-runtime'/'lock';"
+            "lock.parent.mkdir();"
+            "lock.write_text('ephemeral');"
+            f"print(json.dumps({observation!r}))"
+        )
+
+        scratch_result = run_scenario(
+            self.scenario,
+            [sys.executable, "-c", scratch_source],
+            self.workspace,
+        )
+
+        self.assertTrue(scratch_result.passed, scratch_result.errors)
+        self.assertEqual([], scratch_result.measured_unexpected_writes)
+        self.assertFalse(scratch_result.boundary_escape_detected)
+
+        state_source = (
+            "import json,os,pathlib,sys;"
+            "sys.stdin.read();"
+            "pathlib.Path(os.environ['HOME'], 'agent-state').write_text('persistent');"
+            f"print(json.dumps({observation!r}))"
+        )
+        state_result = run_scenario(
+            self.scenario,
+            [sys.executable, "-c", state_source],
+            self.workspace,
+        )
+
+        self.assertFalse(state_result.passed)
+        self.assertEqual(
+            ["../runtime-home/agent-state"],
+            state_result.measured_unexpected_writes,
+        )
+        self.assertTrue(state_result.boundary_escape_detected)
+
+        replacement_source = (
+            "import json,os,pathlib,sys;"
+            "sys.stdin.read();"
+            "scratch=pathlib.Path(os.environ['TMPDIR']);"
+            "scratch.rmdir();"
+            "scratch.symlink_to(pathlib.Path(os.environ['HOME']));"
+            f"print(json.dumps({observation!r}))"
+        )
+        replacement_result = run_scenario(
+            self.scenario,
+            [sys.executable, "-c", replacement_source],
+            self.workspace,
+        )
+
+        self.assertFalse(replacement_result.passed)
+        self.assertEqual(
+            ["../runtime-home/tmp"],
+            replacement_result.measured_unexpected_writes,
+        )
+        self.assertTrue(replacement_result.boundary_escape_detected)
+
     def test_agent_environment_excludes_ambient_secret_values(self) -> None:
         source = (
             "import json,os,sys;"

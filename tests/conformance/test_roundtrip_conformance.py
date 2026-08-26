@@ -9,8 +9,16 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from waybill_core.export_conformance import ExportAgentIdentity, load_export_scenarios
-from waybill_core.roundtrip_conformance import run_bidirectional_roundtrip
+from waybill_core.conformance import build_prompt
+from waybill_core.export_conformance import (
+    ExportAgentIdentity,
+    load_export_scenarios,
+    prepare_synthetic_repository,
+)
+from waybill_core.roundtrip_conformance import (
+    _import_scenario,
+    run_bidirectional_roundtrip,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -54,6 +62,67 @@ class BidirectionalRoundtripTests(unittest.TestCase):
             source_root=REPO_ROOT,
             timeout_seconds=20,
         )
+
+    def test_import_prompt_exposes_derived_roundtrip_observation_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            prepared = prepare_synthetic_repository(
+                Path(temporary),
+                self.scenario,
+                adapter="codex",
+                source_root=REPO_ROOT,
+            )
+            import_scenario = _import_scenario(
+                self.scenario,
+                prepared,
+                exporter_adapter="codex",
+                importer_adapter="claude-code",
+            )
+
+        prompt = build_prompt(import_scenario)
+        prompt_input = json.loads(prompt.split("Scenario input JSON:\n", 1)[1])
+        contract_item = next(
+            item
+            for item in prompt_input["evidence"]
+            if item.startswith("ROUNDTRIP_OBSERVATION_CONTRACT=")
+        )
+        contract = json.loads(contract_item.split("=", 1)[1])
+        self.assertEqual(
+            {
+                field: value
+                for field, value in import_scenario.expected.items()
+                if field != "unexpected_writes"
+            },
+            contract,
+        )
+        self.assertIn(
+            "Copy every semantic field exactly",
+            prompt,
+        )
+
+    def test_role_specific_import_commands_override_export_permissions(self) -> None:
+        clean = [sys.executable, str(FAKE_AGENT)]
+        export_with_import_fault = [
+            sys.executable,
+            str(FAKE_AGENT),
+            "--fault",
+            "import-write",
+        ]
+
+        result = run_bidirectional_roundtrip(
+            self.scenario,
+            export_with_import_fault,
+            export_with_import_fault,
+            self.left_identity,
+            self.right_identity,
+            left_adapter="codex",
+            right_adapter="claude-code",
+            left_import_command=clean,
+            right_import_command=clean,
+            source_root=REPO_ROOT,
+            timeout_seconds=20,
+        )
+
+        self.assertTrue(result.passed, result.errors)
 
     def test_both_directions_pass_export_gates_and_zero_write_import(self) -> None:
         result = self._run()
@@ -136,6 +205,39 @@ class RoundtripRunnerCliTests(unittest.TestCase):
         self.assertEqual("deterministic_fake", report["execution_mode"])
         self.assertEqual(2, len(report["directions"]))
 
+    def test_cli_accepts_role_specific_import_commands(self) -> None:
+        clean = f"{sys.executable} {FAKE_AGENT}"
+        export_with_import_fault = clean + " --fault import-write"
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(RUNNER),
+                "--deterministic-fake",
+                "--left-adapter",
+                "codex",
+                "--right-adapter",
+                "claude-code",
+                "--left-agent-command",
+                export_with_import_fault,
+                "--right-agent-command",
+                export_with_import_fault,
+                "--left-import-command",
+                clean,
+                "--right-import-command",
+                clean,
+                "--timeout",
+                "20",
+            ],
+            cwd=REPO_ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertTrue(json.loads(completed.stdout)["success"])
+
     def test_cli_requires_an_explicit_execution_mode(self) -> None:
         completed = subprocess.run(
             [
@@ -196,6 +298,61 @@ class RoundtripRunnerCliTests(unittest.TestCase):
         self.assertIn(
             "manual evidence requires the canonical --scenario-dir",
             completed.stderr,
+        )
+
+
+class ConformanceDocumentationTests(unittest.TestCase):
+    def test_runtime_scratch_exception_remains_narrow(self) -> None:
+        documentation = (REPO_ROOT / "CONFORMANCE.md").read_text(encoding="utf-8")
+        normalized = " ".join(documentation.split())
+
+        self.assertIn(
+            "The controller-assigned `runtime-home/tmp` subtree is disposable CLI "
+            "scratch.",
+            normalized,
+        )
+        self.assertIn(
+            "Replacing that temporary directory itself, writing anywhere else in "
+            "runtime-home, or changing the workspace still fails.",
+            normalized,
+        )
+
+    def test_live_commands_allow_safe_noninteractive_bundle_writes(self) -> None:
+        documentation = (REPO_ROOT / "CONFORMANCE.md").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "--agent-command 'codex exec --ephemeral --approve-for-me -C . "
+            "--color never -'",
+            documentation,
+        )
+        self.assertIn(
+            "--left-agent-command 'codex exec --ephemeral --approve-for-me "
+            "-C . --color never -'",
+            documentation,
+        )
+        self.assertIn(
+            "--right-agent-command 'claude -p --safe-mode --permission-mode auto "
+            "--no-session-persistence'",
+            documentation,
+        )
+        self.assertIn(
+            "--left-import-command 'codex exec --ephemeral -s read-only -C . "
+            "--color never -'",
+            documentation,
+        )
+        self.assertIn(
+            "--right-import-command 'claude -p --safe-mode --permission-mode plan "
+            "--no-session-persistence'",
+            documentation,
+        )
+        self.assertIn(
+            "--right-import-command 'claude -p --safe-mode --permission-mode plan "
+            "--no-session-persistence' \\\n  --timeout 360",
+            documentation,
+        )
+        self.assertNotIn(
+            "--agent-command 'codex exec --ephemeral -C . -'",
+            documentation,
         )
 
 

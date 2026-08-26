@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -206,6 +207,72 @@ class SyntheticRepositoryTests(unittest.TestCase):
             )
             self.assertNotIn(str(prepared.repo), prompt)
 
+            prompt_input = json.loads(prompt.split("Scenario input JSON:\n", 1)[1])
+            render_contract = prompt_input["render_contract"]
+            self.assertEqual(
+                {
+                    "first_line_exact": scenario.status,
+                    "allowed_status_claims": [scenario.status],
+                },
+                render_contract["WAYBILL.md"]["Current Status"],
+            )
+            self.assertEqual(
+                {
+                    "exact_paths": prepared.evidence.changed_files,
+                    "line_format": "- `PATH`: REASON",
+                    "one_line_per_path": True,
+                    "other_nonblank_lines_allowed": False,
+                },
+                render_contract["WAYBILL.md"]["Changed Files"],
+            )
+            self.assertEqual(
+                [
+                    f"- Command: `{prepared.evidence.test_command}`",
+                    f"- Outcome: {prepared.evidence.test_outcome}",
+                    f"- Exit status: {prepared.evidence.test_returncode}",
+                    f"- Evidence marker: `{prepared.evidence.test_marker}`",
+                ],
+                render_contract["test-summary.md"]["required_exact_lines"],
+            )
+            self.assertEqual(
+                [f"- {risk}" for risk in scenario.risks],
+                render_contract["WAYBILL.md"]["Risks / Unknowns"][
+                    "exact_lines"
+                ],
+            )
+            self.assertEqual(
+                {
+                    "source_agent": prepared.evidence.adapter,
+                    "git.branch": prepared.evidence.branch,
+                    "git.head_sha": prepared.evidence.head_sha,
+                    "git.dirty": prepared.evidence.dirty,
+                    "git.status_digest": prepared.evidence.status_digest,
+                    "git.repo_state_digest": prepared.evidence.repo_state_digest,
+                },
+                render_contract["metadata.json"]["required_exact_values"],
+            )
+            self.assertEqual(
+                {
+                    "kind": "handoff",
+                    "may_be_omitted": True,
+                },
+                render_contract["metadata.json"]["handoff"],
+            )
+            self.assertEqual(
+                "sha256:" + hashlib.sha256(
+                    prepared.evidence.canonical_diff
+                ).hexdigest(),
+                render_contract["diff.patch"]["exact_sha256"],
+            )
+            self.assertIn(
+                "The render_contract object is normative",
+                prompt,
+            )
+            self.assertIn(
+                "Finish the five required files before optional verification",
+                prompt,
+            )
+
     def test_all_export_adapters_support_basic_and_enhanced_verification(self) -> None:
         scenario = load_export_scenario(SCENARIO_DIR / "ordinary-unfinished.json")
         with tempfile.TemporaryDirectory() as temporary:
@@ -292,6 +359,27 @@ class ExportExecutionTests(unittest.TestCase):
             ],
             result.allowed_writes,
         )
+
+    def test_test_summary_categories_do_not_contradict_focused_outcome(self) -> None:
+        result = self._run("ordinary-unfinished", "canonical-test-headings")
+
+        self.assertTrue(result.passed, result.errors)
+        self.assertTrue(result.semantic_checks["test_state"])
+
+    def test_negated_opposite_outcome_is_not_a_contradictory_claim(self) -> None:
+        result = self._run("ordinary-unfinished", "negated-opposite-outcome")
+
+        self.assertTrue(result.passed, result.errors)
+        self.assertTrue(result.semantic_checks["test_state"])
+
+    def test_test_summary_category_reference_is_not_an_outcome_claim(self) -> None:
+        result = self._run(
+            "ordinary-unfinished",
+            "test-summary-category-reference",
+        )
+
+        self.assertTrue(result.passed, result.errors)
+        self.assertTrue(result.semantic_checks["test_state"])
 
     def test_structurally_valid_but_unsupported_claims_fail_semantic_evidence(self) -> None:
         for fault, expected_code in [
