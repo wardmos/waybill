@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .limits import MAX_DIFF_BYTES
 from .repo import (
+    CANONICAL_DIFF_ARGUMENTS,
     NO_TRACKED_DIFF_NOTE,
     diff_omission_note,
     read_repo_diff,
@@ -232,6 +233,9 @@ dangerous commands unless the user explicitly asks.
 
 def _commands_log_text(repo: Path, output: Path, git: dict[str, str]) -> str:
     status = git["status"].strip() or "(empty)"
+    diff_command = " ".join(
+        ("git", "-C", str(repo), *CANONICAL_DIFF_ARGUMENTS)
+    )
     return f"""# Command Log
 
 Read-only inspection commands:
@@ -240,7 +244,7 @@ Read-only inspection commands:
 git -C {repo} branch --show-current -> {git["branch"]}
 git -C {repo} rev-parse HEAD -> {git["head_sha"]}
 git -C {repo} status --short -> {status}
-git -C {repo} diff --binary HEAD -- -> captured in diff.patch
+{diff_command} -> captured in diff.patch
 ```
 
 Bundle-writing actions:

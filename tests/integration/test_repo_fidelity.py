@@ -109,6 +109,15 @@ class RepoFidelityTests(unittest.TestCase):
         checks = self.checks_by_name(verify_repo_state(bundle, self.repo))
         self.assertEqual("ok", checks["diff_patch"].status)
 
+    def test_new_records_the_canonical_tracked_diff_command(self) -> None:
+        commands = (self.create_bundle() / "commands.log").read_text()
+        expected = " ".join(
+            ("git", "-C", str(self.repo), *repo_module.CANONICAL_DIFF_ARGUMENTS)
+        )
+
+        self.assertIn(expected + " -> captured in diff.patch", commands)
+        self.assertNotIn(" diff --binary HEAD -- -> captured", commands)
+
     def test_new_stores_only_sha256_repo_fidelity_values_in_metadata(self) -> None:
         (self.repo / "private-untracked-name.txt").write_text("private content\n")
 
