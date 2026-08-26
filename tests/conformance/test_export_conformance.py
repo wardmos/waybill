@@ -381,6 +381,26 @@ class ExportExecutionTests(unittest.TestCase):
         self.assertTrue(result.passed, result.errors)
         self.assertTrue(result.semantic_checks["test_state"])
 
+    def test_test_summary_rejects_a_second_outcome_for_the_focused_command(self) -> None:
+        result = self._run(
+            "ordinary-unfinished",
+            "contradictory-test-summary",
+        )
+
+        self.assertFalse(result.passed)
+        self.assertTrue(result.validation_ok)
+        self.assertIn("evidence:test-state", result.errors)
+        self.assertFalse(result.semantic_checks["test_state"])
+
+    def test_test_summary_allows_a_different_check_with_an_opposite_outcome(self) -> None:
+        result = self._run(
+            "ordinary-unfinished",
+            "other-test-opposite-outcome",
+        )
+
+        self.assertTrue(result.passed, result.errors)
+        self.assertTrue(result.semantic_checks["test_state"])
+
     def test_structurally_valid_but_unsupported_claims_fail_semantic_evidence(self) -> None:
         for fault, expected_code in [
             ("wrong-goal", "evidence:goal"),

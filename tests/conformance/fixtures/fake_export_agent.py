@@ -413,6 +413,23 @@ No additional checks were run.
 
 The exporting agent did not rerun this test.
 """
+    if "contradictory-test-summary" in faults:
+        opposite = "passed" if outcome == "failing" else "failed"
+        test_summary += f"""
+
+## Contradictory Result
+
+The same focused command, `{test['command']}`, also {opposite}.
+"""
+    if "other-test-opposite-outcome" in faults:
+        opposite = "passing" if outcome == "failing" else "failing"
+        test_summary += f"""
+
+## Other Check
+
+- Command: `python3 -m unittest tests.other_check`
+- Outcome: {opposite}
+"""
     (bundle / "test-summary.md").write_text(test_summary, encoding="utf-8")
 
     if "post-check-artifact-pollution" in faults:

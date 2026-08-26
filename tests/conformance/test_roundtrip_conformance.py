@@ -174,7 +174,8 @@ class BidirectionalRoundtripTests(unittest.TestCase):
 
 class RoundtripRunnerCliTests(unittest.TestCase):
     def test_deterministic_fake_cli_runs_both_directions(self) -> None:
-        command = f"{sys.executable} {FAKE_AGENT}"
+        relative_fixture = FAKE_AGENT.relative_to(REPO_ROOT)
+        command = f"{sys.executable} {relative_fixture}"
         completed = subprocess.run(
             [
                 sys.executable,

@@ -1029,6 +1029,35 @@ def _outcome_claims(value: str) -> set[str]:
     return claims
 
 
+def _focused_test_summary_matches(
+    value: str,
+    *,
+    command: str,
+    outcome: str,
+) -> bool:
+    blocks = [
+        block.strip()
+        for block in re.split(r"\n\s*\n", value)
+        if block.strip()
+    ]
+    command_marker = f"`{command}`"
+    focused_blocks = [block for block in blocks if command_marker in block]
+    if len(focused_blocks) != 1:
+        return False
+    if _outcome_claims(focused_blocks[0]) != {outcome}:
+        return False
+
+    opposite = "failing" if outcome == "passing" else "passing"
+    focused_reference = re.compile(
+        r"\b(?:same|focused)\s+(?:command|test|check)\b",
+        re.IGNORECASE,
+    )
+    return not any(
+        opposite in _outcome_claims(block) and focused_reference.search(block)
+        for block in blocks
+    )
+
+
 def _read_metadata(bundle: Path) -> dict[str, Any] | None:
     try:
         value = json.loads((bundle / "metadata.json").read_text(encoding="utf-8"))
@@ -1090,6 +1119,11 @@ def _semantic_errors(
     waybill_test_state = sections.get("Test State", "")
     if (
         any(test_summary.count(line) != 1 for line in expected_test_lines)
+        or not _focused_test_summary_matches(
+            test_summary,
+            command=evidence.test_command,
+            outcome=evidence.test_outcome,
+        )
         or evidence.test_command not in waybill_test_state
         or evidence.test_outcome not in waybill_test_state
         or evidence.test_marker not in waybill_test_state

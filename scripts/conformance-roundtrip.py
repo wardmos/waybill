@@ -274,6 +274,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser, right_command, side="right", dry_run=args.dry_run
         )
         if args.left_import_command is None:
+            left_import_command = list(left_command)
             left_import_report = left_report
         else:
             _, left_import_report = _fixture_identity(
@@ -283,6 +284,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 dry_run=args.dry_run,
             )
         if args.right_import_command is None:
+            right_import_command = list(right_command)
             right_import_report = right_report
         else:
             _, right_import_report = _fixture_identity(
