@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .limits import BundleLimitError, list_bundle_files
+from .limits import BundleLimitError, MAX_BUNDLE_FILE_BYTES, list_bundle_files
 from .schema_versions import (
     CURRENT_SCHEMA_VERSION,
     KNOWN_UNSUPPORTED_SCHEMA_VERSIONS,
@@ -309,6 +309,20 @@ def _validate_metadata(
                 )
         if "dirty" in git and not isinstance(git.get("dirty"), bool):
             issues.append(ValidationIssue("error", "metadata git.dirty must be boolean", str(path)))
+        diff_max_bytes = git.get("diff_max_bytes")
+        if diff_max_bytes is not None and (
+            type(diff_max_bytes) is not int
+            or diff_max_bytes < 1
+            or diff_max_bytes > MAX_BUNDLE_FILE_BYTES
+        ):
+            issues.append(
+                ValidationIssue(
+                    "error",
+                    "metadata git.diff_max_bytes must be an integer from 1 to "
+                    f"{MAX_BUNDLE_FILE_BYTES}",
+                    str(path),
+                )
+            )
         for key in ["status_digest", "repo_state_digest"]:
             if key in git and not _is_sha256_digest(git.get(key)):
                 issues.append(

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run one live generated Waybill handoff in both agent directions."""
+"""Run live generated Waybill handoffs across selected adapter routes."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from waybill_core.adapter_matrix import (  # noqa: E402
     compute_source_provenance,
     require_canonical_manual_scenario_directory,
 )
-from waybill_core.agent_identity import probe_agent_identity  # noqa: E402
+from waybill_core.agent_identity import IDENTITY_KINDS, probe_agent_identity  # noqa: E402
 from waybill_core.export_conformance import (  # noqa: E402
     SUPPORTED_EXPORT_ADAPTERS,
     ExportAgentIdentity,
@@ -39,9 +39,9 @@ from waybill_core.roundtrip_conformance import run_bidirectional_roundtrip  # no
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Export a live synthetic .waybill bundle with each coding-agent "
-            "adapter, then import it with the opposite adapter under zero-write "
-            "observation."
+            "Export a live synthetic .waybill bundle, then import it with the "
+            "selected adapter under zero-write observation. Cross-adapter pairs "
+            "run both directions; same-adapter pairs run once."
         )
     )
     parser.add_argument("--left-agent-command", required=True)
@@ -69,6 +69,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--right-adapter",
         required=True,
         choices=SUPPORTED_EXPORT_ADAPTERS,
+    )
+    parser.add_argument(
+        "--left-identity-kind",
+        choices=IDENTITY_KINDS,
+        help="Required for --unsafe-manual; scopes the left command identity.",
+    )
+    parser.add_argument(
+        "--right-identity-kind",
+        choices=IDENTITY_KINDS,
+        help="Required for --unsafe-manual; scopes the right command identity.",
     )
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument(
@@ -185,6 +195,7 @@ def _manual_identity(
     command: list[str],
     *,
     adapter: str,
+    identity_kind: str,
 ) -> tuple[ExportAgentIdentity, dict[str, object]]:
     probe = probe_agent_identity(
         adapter,
@@ -202,7 +213,10 @@ def _manual_identity(
             product=probe.product,
             version=probe.version,
         ),
-        probe.to_dict(include_private=False),
+        probe.to_dict(
+            include_private=False,
+            identity_kind=identity_kind,
+        ),
     )
 
 
@@ -213,7 +227,14 @@ def _require_matching_role_identity(
     export_report: dict[str, object],
     import_report: dict[str, object],
 ) -> None:
-    fields = ("product", "version", "sha256")
+    identity_kind = export_report.get("identity_kind")
+    fields = (
+        ("reported_product", "reported_version", "sha256")
+        if identity_kind == "launcher"
+        else ("product", "version", "sha256")
+    )
+    if import_report.get("identity_kind") != identity_kind:
+        parser.error(f"{side} export and import identity kinds must match")
     if any(export_report.get(field) != import_report.get(field) for field in fields):
         parser.error(
             f"{side} export and import commands must resolve to the same "
@@ -224,8 +245,6 @@ def _require_matching_role_identity(
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    if args.left_adapter == args.right_adapter:
-        parser.error("--left-adapter and --right-adapter must be different")
     if args.timeout <= 0:
         parser.error("--timeout must be greater than zero")
     left_command = _parse_command(
@@ -265,6 +284,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         except ValueError as exc:
             parser.error(str(exc))
+    if args.unsafe_manual and (
+        args.left_identity_kind is None or args.right_identity_kind is None
+    ):
+        parser.error(
+            "--left-identity-kind and --right-identity-kind are required "
+            "for --unsafe-manual"
+        )
 
     if args.deterministic_fake:
         left_identity, left_report = _fixture_identity(
@@ -297,10 +323,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         provenance = None
     else:
         left_identity, left_report = _manual_identity(
-            parser, left_command, adapter=args.left_adapter
+            parser,
+            left_command,
+            adapter=args.left_adapter,
+            identity_kind=args.left_identity_kind,
         )
         right_identity, right_report = _manual_identity(
-            parser, right_command, adapter=args.right_adapter
+            parser,
+            right_command,
+            adapter=args.right_adapter,
+            identity_kind=args.right_identity_kind,
         )
         if args.left_import_command is None:
             left_import_report = left_report
@@ -309,6 +341,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 parser,
                 left_import_command,
                 adapter=args.left_adapter,
+                identity_kind=args.left_identity_kind,
             )
             _require_matching_role_identity(
                 parser,
@@ -323,6 +356,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 parser,
                 right_import_command,
                 adapter=args.right_adapter,
+                identity_kind=args.right_identity_kind,
             )
             _require_matching_role_identity(
                 parser,

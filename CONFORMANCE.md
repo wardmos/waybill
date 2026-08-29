@@ -1,11 +1,11 @@
 # Agent Conformance
 
-Waybill conformance has import, export, and bidirectional roundtrip contracts. Import scenarios
+Waybill conformance has import, export, and roundtrip contracts. Import scenarios
 test whether an agent reads the same handoff evidence into the same small
 observation contract. Export scenarios test whether an agent following a
 canonical adapter creates a valid bundle whose claims match independently
 measured repository and test evidence. Roundtrip conformance passes each live
-generated bundle directly to the opposite adapter under the import zero-write
+generated bundle directly to the selected adapter under the import zero-write
 contract. All runners are local and use only the Python standard library.
 
 Neither runner schedules agents, applies patches, accepts delegation results,
@@ -95,8 +95,12 @@ workspace.
 
 Every non-dry run requires `--adapter`. Before sending any prompt, the runner
 resolves `command[0]`, fingerprints its bytes, and verifies the actual product
-and version. A command-name alias or mismatched product cannot count toward
-adapter coverage.
+and version. It also requires an explicit `--identity-kind`: use `executable`
+only when `command[0]` is the agent binary itself, and use `launcher` when that
+path forwards to an agent in a container or another runtime. Launcher reports
+keep the launcher SHA-256 separate from the product and version reported by the
+downstream agent; they do not claim a digest for that downstream executable. A
+command-name alias or mismatched product cannot count toward adapter coverage.
 
 Run one scenario:
 
@@ -106,6 +110,7 @@ python3 scripts/conformance-agents.py \
   --adapter codex \
   --agent-command 'codex exec --ephemeral -s read-only -C . -' \
   --unsafe-manual \
+  --identity-kind executable \
   --scenario failed-test
 ```
 
@@ -118,6 +123,7 @@ python3 scripts/conformance-agents.py \
   --adapter codex \
   --agent-command 'codex exec --ephemeral -s read-only -C . -' \
   --unsafe-manual \
+  --identity-kind executable \
   --scenario ordinary-unfinished \
   --scenario malicious-embedded-instruction \
   --timeout 240
@@ -132,6 +138,7 @@ python3 scripts/conformance-agents.py \
   --adapter codex \
   --agent-command 'codex exec --ephemeral -s read-only -C . -' \
   --unsafe-manual \
+  --identity-kind executable \
   --scenario ordinary-unfinished \
   --scenario delegation-request \
   --scenario delegation-result \
@@ -177,7 +184,9 @@ records file modes and symbolic-link targets across the disposable root,
 including `.git` and the isolated runtime-home area. Created, modified, deleted,
 or retargeted entries are reported relative to the synthetic workspace. Git
 writes, sibling-directory escapes, output truncation, timeouts, and residual
-process groups are explicit failure signals.
+descendant processes are explicit failure signals. POSIX runners isolate and
+terminate the process group; Windows runners assign the agent tree to a
+kill-on-close Job Object.
 
 The controller-assigned `runtime-home/tmp` subtree is disposable CLI scratch.
 Entries below it are excluded from workspace-effect failures because sandbox
@@ -332,8 +341,8 @@ These canaries detect the named actions when they reach their harness endpoints;
 they do not prove that every equivalent process or network action was absent.
 The harness is not a general operating-system sandbox, process tracer, or proof
 that an agent made no other network connection. It kills the agent's ordinary
-process group before final observation and gives the process a small environment
-allowlist, but an intentionally detached process or a write outside the
+process tree before final observation and gives the process a small environment
+allowlist, but an intentionally detached POSIX process or a write outside the
 disposable root still requires OS-level containment. In particular, a hosted
 model's own API transport is outside this check. Real-agent mode therefore
 requires the explicit `--unsafe-manual` acknowledgement. Use the agent's
@@ -358,9 +367,12 @@ python3 scripts/conformance-exports.py \
 
 Run a real agent only with the manual acknowledgement. The runner probes
 `command[0] --version`, fingerprints the resolved executable, and rejects a
-declared product or version that does not match the observed identity. Run the
-ordinary scenario first. Set `OBSERVED_AGENT_RELEASE` to the normalized value
-reported by the executable before running the command:
+declared product or version that does not match the observed identity. Declare
+whether that path is the direct agent `executable` or a forwarding `launcher`;
+the latter records reported product/version fields rather than presenting the
+launcher hash as the agent executable hash. Run the ordinary scenario first.
+Set `OBSERVED_AGENT_RELEASE` to the normalized value reported by the executable
+before running the command:
 
 ```sh
 python3 scripts/conformance-exports.py \
@@ -368,6 +380,7 @@ python3 scripts/conformance-exports.py \
   --agent-product codex \
   --agent-version "$OBSERVED_AGENT_RELEASE" \
   --unsafe-manual \
+  --identity-kind executable \
   --adapter codex \
   --agent-command 'codex exec --ephemeral --approve-for-me -C . --color never -' \
   --scenario ordinary-unfinished \
@@ -387,10 +400,12 @@ deliberately omits the temporary repository path and raw agent stdout/stderr.
 Keep any retained manual bundles, transcripts, or detailed logs in a private
 directory outside this repository.
 
-## Bidirectional roundtrip conformance
+## Roundtrip conformance
 
-`scripts/conformance-roundtrip.py` verifies both directions in separate fresh
-repositories: left export to right import, then right export to left import.
+`scripts/conformance-roundtrip.py` verifies cross-adapter pairs in both
+directions using separate fresh repositories: left export to right import, then
+right export to left import. A same-adapter pair runs left export to right import
+once, so it produces one route instead of two duplicate route names.
 Both adapter entrypoints and their shared resources are installed before the
 synthetic base commit. The exporter may write only `.waybill/**`; its bundle
 must pass `validate`, `ready`, `verify-repo`, and the independent semantic
@@ -398,24 +413,35 @@ evidence checks. The importer then receives that exact generated bundle in a
 disposable copy and must leave every workspace entry, including `.git`,
 unchanged.
 
-Roundtrip import evidence includes a normative observation contract for every
-semantic field after the export has already passed its independent evidence
-gates. The importer copies those values exactly and derives only its own
-`unexpected_writes`. This keeps the roundtrip focused on transport fidelity and
-zero-write behavior; the separate import matrix retains its withheld semantic
-oracle. Ordinary safety guidance inside a bundle does not make the
-instruction-injection boolean true.
+The expected roundtrip observation remains controller-side after the export has
+passed its independent evidence gates. The importer receives only the exact live
+bundle, installed adapter/checker locations, and normalization rules, then must
+derive every semantic field itself without writes. The controller compares that
+observation with its withheld oracle. Ordinary safety guidance inside a bundle
+does not make the instruction-injection boolean true.
 
-Run the deterministic CI contract with:
+The public `test_state` normalization template ends with a period immediately
+after the evidence marker. That punctuation is part of the exact observation
+contract rather than hidden controller data.
+
+The complete deterministic CI matrix uses three invocations. The Codex/Claude
+Code pair emits both cross-adapter routes; each same-adapter pair emits one
+self-roundtrip route:
 
 ```sh
-python3 scripts/conformance-roundtrip.py \
-  --deterministic-fake \
-  --left-adapter codex \
-  --right-adapter claude-code \
-  --left-agent-command 'python3 tests/conformance/fixtures/fake_roundtrip_agent.py' \
-  --right-agent-command 'python3 tests/conformance/fixtures/fake_roundtrip_agent.py' \
-  --timeout 20
+run_roundtrip() {
+  python3 scripts/conformance-roundtrip.py \
+    --deterministic-fake \
+    --left-adapter "$1" \
+    --right-adapter "$2" \
+    --left-agent-command 'python3 tests/conformance/fixtures/fake_roundtrip_agent.py' \
+    --right-agent-command 'python3 tests/conformance/fixtures/fake_roundtrip_agent.py' \
+    --timeout 20
+}
+
+run_roundtrip codex claude-code
+run_roundtrip codex codex
+run_roundtrip claude-code claude-code
 ```
 
 For live Codex and Claude Code coverage, use safe modes that can complete both
@@ -427,12 +453,21 @@ python3 scripts/conformance-roundtrip.py \
   --unsafe-manual \
   --left-adapter codex \
   --right-adapter claude-code \
+  --left-identity-kind executable \
+  --right-identity-kind executable \
   --left-agent-command 'codex exec --ephemeral --approve-for-me -C . --color never -' \
   --right-agent-command 'claude -p --safe-mode --permission-mode auto --no-session-persistence' \
   --left-import-command 'codex exec --ephemeral -s read-only -C . --color never -' \
   --right-import-command 'claude -p --safe-mode --permission-mode plan --no-session-persistence' \
   --timeout 360
 ```
+
+That cross-adapter invocation covers `codex-to-claude-code` and
+`claude-code-to-codex`. Run two additional invocations with both adapter options
+and both role commands set to Codex, then to Claude Code, to cover
+`codex-to-codex` and `claude-code-to-claude-code`. For a same-adapter pair, the
+runner uses the left export command and right import command for its single
+route; it still probes and reports both sides.
 
 Export and import commands are separate because export needs bounded write
 permission while import is a zero-write observation. Claude Code's
@@ -445,6 +480,11 @@ each role; 360 seconds accommodates observed live-model latency without adding
 a retry or weakening permissions. The runner probes both executable identities
 and binds clean source provenance before it starts. It does not retain bundles
 or raw stdout/stderr.
+
+Manual execution also preserves only the named, non-secret routing variables
+needed by authenticated CLI wrappers, such as the selected model and LiteLLM
+base URL. Credentials, proxy settings, dynamic-loader hooks, Python injection
+variables, and Git routing overrides remain excluded from agent subprocesses.
 
 Known namespace startup failures are classified as `environment_blocked` with
 a stable reason such as `network-namespace` or `user-namespace`. Every role is

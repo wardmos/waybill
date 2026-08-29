@@ -41,6 +41,12 @@
         "dirty": {
           "type": "boolean"
         },
+        "diff_max_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5000000,
+          "description": "Optional byte limit used to capture and later compare diff.patch. Omission means the default 1000000-byte limit."
+        },
         "status_digest": {
           "type": "string",
           "pattern": "^sha256:[0-9a-f]{64}$",

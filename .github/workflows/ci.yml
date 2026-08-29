@@ -8,6 +8,28 @@ permissions:
   contents: read
 
 jobs:
+  windows-process-tree:
+    name: Windows platform regressions
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Test Windows process-tree and Git fidelity regressions
+        run: >-
+          python -m unittest -v
+          tests.unit.test_agent_execution
+          tests.integration.test_repo_fidelity
+          tests.integration.test_skill_checker.BundledSkillCheckerTests.test_accepts_the_recorded_custom_diff_limit
+          tests.integration.test_skill_checker.BundledSkillCheckerTests.test_accepts_an_unborn_repository_bundle
+          tests.integration.test_skill_checker.BundledSkillCheckerTests.test_user_level_attributes_do_not_change_checker_fidelity
+
   validate:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
@@ -46,11 +68,31 @@ jobs:
           --require-complete-matrix
           --timeout 20
 
-      - name: Run deterministic bidirectional roundtrip
+      - name: Run deterministic cross-adapter roundtrip
         run: >-
           python3 scripts/conformance-roundtrip.py
           --deterministic-fake
           --left-adapter codex
+          --right-adapter claude-code
+          --left-agent-command "python3 tests/conformance/fixtures/fake_roundtrip_agent.py"
+          --right-agent-command "python3 tests/conformance/fixtures/fake_roundtrip_agent.py"
+          --timeout 20
+
+      - name: Run deterministic Codex self-roundtrip
+        run: >-
+          python3 scripts/conformance-roundtrip.py
+          --deterministic-fake
+          --left-adapter codex
+          --right-adapter codex
+          --left-agent-command "python3 tests/conformance/fixtures/fake_roundtrip_agent.py"
+          --right-agent-command "python3 tests/conformance/fixtures/fake_roundtrip_agent.py"
+          --timeout 20
+
+      - name: Run deterministic Claude Code self-roundtrip
+        run: >-
+          python3 scripts/conformance-roundtrip.py
+          --deterministic-fake
+          --left-adapter claude-code
           --right-adapter claude-code
           --left-agent-command "python3 tests/conformance/fixtures/fake_roundtrip_agent.py"
           --right-agent-command "python3 tests/conformance/fixtures/fake_roundtrip_agent.py"

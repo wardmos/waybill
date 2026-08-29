@@ -977,6 +977,10 @@ def validate_ci_workflow() -> None:
         "--require-complete-matrix",
         "--left-adapter codex",
         "--right-adapter claude-code",
+        "Run deterministic Codex self-roundtrip",
+        "--right-adapter codex",
+        "Run deterministic Claude Code self-roundtrip",
+        "--left-adapter claude-code",
         "python3 -m py_compile cli/waybill waybill_core/*.py scripts/*.py",
         "scripts/smoke-agents.sh --dry-run",
     ]
@@ -1246,50 +1250,64 @@ def validate_roundtrip_conformance_runner_dry_run() -> None:
             ]
         )
         before = snapshot_tree(workspace)
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(ROOT / "scripts/conformance-roundtrip.py"),
-                "--deterministic-fake",
-                "--left-adapter",
-                "codex",
-                "--right-adapter",
-                "claude-code",
-                "--left-agent-command",
-                agent_command,
-                "--right-agent-command",
-                agent_command,
-                "--scenario-dir",
-                str(ROOT / "conformance/export-scenarios"),
-                "--dry-run",
-            ],
-            cwd=workspace,
-            text=True,
-            capture_output=True,
+        adapter_pairs = (
+            ("codex", "claude-code"),
+            ("codex", "codex"),
+            ("claude-code", "claude-code"),
         )
-        report = parse_cli_json(result, "roundtrip conformance dry-run")
-        if (
-            report.get("dry_run") is not True
-            or report.get("capability") != "roundtrip"
-            or report.get("execution_mode") != "deterministic_fake"
-            or report.get("directions") != []
-        ):
-            fail("roundtrip conformance dry-run must identify its mode")
-        for side in ("left", "right"):
-            endpoint = report.get(side)
-            identity = endpoint.get("identity") if isinstance(endpoint, dict) else None
+        for left_adapter, right_adapter in adapter_pairs:
+            label = f"roundtrip conformance dry-run {left_adapter}/{right_adapter}"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts/conformance-roundtrip.py"),
+                    "--deterministic-fake",
+                    "--left-adapter",
+                    left_adapter,
+                    "--right-adapter",
+                    right_adapter,
+                    "--left-agent-command",
+                    agent_command,
+                    "--right-agent-command",
+                    agent_command,
+                    "--scenario-dir",
+                    str(ROOT / "conformance/export-scenarios"),
+                    "--dry-run",
+                ],
+                cwd=workspace,
+                text=True,
+                capture_output=True,
+            )
+            report = parse_cli_json(result, label)
             if (
-                not isinstance(identity, dict)
-                or identity.get("verified") is not True
-                or re.fullmatch(
-                    r"sha256:[0-9a-f]{64}",
-                    str(identity.get("sha256", "")),
-                )
-                is None
+                report.get("dry_run") is not True
+                or report.get("capability") != "roundtrip"
+                or report.get("execution_mode") != "deterministic_fake"
+                or report.get("directions") != []
             ):
-                fail(f"roundtrip dry-run must bind the {side} fake identity")
-        if marker.exists() or snapshot_tree(workspace) != before:
-            fail("roundtrip conformance dry-run must not execute or create a repository")
+                fail(f"{label} must identify its mode")
+            for side, adapter in (
+                ("left", left_adapter),
+                ("right", right_adapter),
+            ):
+                endpoint = report.get(side)
+                identity = (
+                    endpoint.get("identity") if isinstance(endpoint, dict) else None
+                )
+                if (
+                    not isinstance(endpoint, dict)
+                    or endpoint.get("adapter") != adapter
+                    or not isinstance(identity, dict)
+                    or identity.get("verified") is not True
+                    or re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(identity.get("sha256", "")),
+                    )
+                    is None
+                ):
+                    fail(f"{label} must bind the {side} fake identity")
+            if marker.exists() or snapshot_tree(workspace) != before:
+                fail(f"{label} must not execute or create a repository")
 
 
 def validate_missing_delegation_section(example: str, section: str) -> None:

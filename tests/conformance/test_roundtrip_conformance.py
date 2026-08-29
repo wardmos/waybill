@@ -44,7 +44,14 @@ class BidirectionalRoundtripTests(unittest.TestCase):
             version="999.0.0-test-only",
         )
 
-    def _run(self, *, left_fault: str | None = None, right_fault: str | None = None):
+    def _run(
+        self,
+        *,
+        left_adapter: str = "codex",
+        right_adapter: str = "claude-code",
+        left_fault: str | None = None,
+        right_fault: str | None = None,
+    ):
         left = [sys.executable, str(FAKE_AGENT)]
         right = [sys.executable, str(FAKE_AGENT)]
         if left_fault is not None:
@@ -57,13 +64,13 @@ class BidirectionalRoundtripTests(unittest.TestCase):
             right,
             self.left_identity,
             self.right_identity,
-            left_adapter="codex",
-            right_adapter="claude-code",
+            left_adapter=left_adapter,
+            right_adapter=right_adapter,
             source_root=REPO_ROOT,
             timeout_seconds=20,
         )
 
-    def test_import_prompt_exposes_derived_roundtrip_observation_contract(self) -> None:
+    def test_import_prompt_withholds_the_controller_semantic_oracle(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             prepared = prepare_synthetic_repository(
                 Path(temporary),
@@ -80,22 +87,20 @@ class BidirectionalRoundtripTests(unittest.TestCase):
 
         prompt = build_prompt(import_scenario)
         prompt_input = json.loads(prompt.split("Scenario input JSON:\n", 1)[1])
-        contract_item = next(
-            item
-            for item in prompt_input["evidence"]
-            if item.startswith("ROUNDTRIP_OBSERVATION_CONTRACT=")
+        self.assertNotIn("expected", prompt_input)
+        self.assertFalse(
+            any(
+                item.startswith("ROUNDTRIP_OBSERVATION_CONTRACT=")
+                for item in prompt_input["evidence"]
+            )
         )
-        contract = json.loads(contract_item.split("=", 1)[1])
-        self.assertEqual(
-            {
-                field: value
-                for field, value in import_scenario.expected.items()
-                if field != "unexpected_writes"
-            },
-            contract,
+        self.assertNotIn("Copy every semantic field exactly", prompt)
+        self.assertNotIn(
+            json.dumps(import_scenario.expected, sort_keys=True),
+            prompt,
         )
         self.assertIn(
-            "Copy every semantic field exactly",
+            "The normalized value must end with a period immediately after MARKER.",
             prompt,
         )
 
@@ -146,6 +151,29 @@ class BidirectionalRoundtripTests(unittest.TestCase):
                 self.assertEqual(
                     [], direction.import_result.measured_unexpected_writes
                 )
+
+    def test_route_matrix_covers_all_four_ordered_adapter_pairs(self) -> None:
+        results = (
+            self._run(),
+            self._run(left_adapter="codex", right_adapter="codex"),
+            self._run(left_adapter="claude-code", right_adapter="claude-code"),
+        )
+
+        self.assertTrue(all(result.passed for result in results))
+        self.assertEqual([2, 1, 1], [len(result.directions) for result in results])
+        self.assertEqual(
+            {
+                "codex-to-claude-code",
+                "claude-code-to-codex",
+                "codex-to-codex",
+                "claude-code-to-claude-code",
+            },
+            {
+                direction.direction
+                for result in results
+                for direction in result.directions
+            },
+        )
 
     def test_import_workspace_write_fails_only_the_affected_direction(self) -> None:
         result = self._run(right_fault="import-write")
@@ -206,6 +234,43 @@ class RoundtripRunnerCliTests(unittest.TestCase):
         self.assertEqual("deterministic_fake", report["execution_mode"])
         self.assertEqual(2, len(report["directions"]))
 
+    def test_deterministic_fake_cli_runs_each_same_adapter_route_once(self) -> None:
+        relative_fixture = FAKE_AGENT.relative_to(REPO_ROOT)
+        command = f"{sys.executable} {relative_fixture}"
+
+        for adapter in ("codex", "claude-code"):
+            with self.subTest(adapter=adapter):
+                completed = subprocess.run(
+                    [
+                        sys.executable,
+                        str(RUNNER),
+                        "--deterministic-fake",
+                        "--left-adapter",
+                        adapter,
+                        "--right-adapter",
+                        adapter,
+                        "--left-agent-command",
+                        command,
+                        "--right-agent-command",
+                        command,
+                        "--timeout",
+                        "20",
+                    ],
+                    cwd=REPO_ROOT,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                )
+
+                self.assertEqual(0, completed.returncode, completed.stderr)
+                report = json.loads(completed.stdout)
+                self.assertTrue(report["success"])
+                self.assertEqual(
+                    [f"{adapter}-to-{adapter}"],
+                    [direction["direction"] for direction in report["directions"]],
+                )
+
     def test_cli_accepts_role_specific_import_commands(self) -> None:
         clean = f"{sys.executable} {FAKE_AGENT}"
         export_with_import_fault = clean + " --fault import-write"
@@ -265,6 +330,48 @@ class RoundtripRunnerCliTests(unittest.TestCase):
         self.assertIn("--deterministic-fake", completed.stderr)
         self.assertIn("--unsafe-manual", completed.stderr)
 
+    def test_manual_dry_run_records_launcher_scoped_identities(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            launcher = Path(temporary) / "codex-wrapper"
+            launcher.write_text(
+                "#!/bin/sh\nprintf 'codex-cli 999.0.0-test-only\\n'\n",
+                encoding="utf-8",
+            )
+            launcher.chmod(0o755)
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(RUNNER),
+                    "--unsafe-manual",
+                    "--dry-run",
+                    "--left-adapter",
+                    "codex",
+                    "--right-adapter",
+                    "codex",
+                    "--left-identity-kind",
+                    "launcher",
+                    "--right-identity-kind",
+                    "launcher",
+                    "--left-agent-command",
+                    str(launcher),
+                    "--right-agent-command",
+                    str(launcher),
+                ],
+                cwd=REPO_ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        report = json.loads(completed.stdout)
+        for side in ("left", "right"):
+            identity = report[side]["identity"]
+            self.assertEqual("launcher", identity["identity_kind"])
+            self.assertEqual("codex", identity["reported_product"])
+            self.assertNotIn("product", identity)
+
     def test_manual_evidence_rejects_custom_scenario_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             scenario_dir = Path(temporary) / "scenarios"
@@ -303,6 +410,15 @@ class RoundtripRunnerCliTests(unittest.TestCase):
 
 
 class ConformanceDocumentationTests(unittest.TestCase):
+    def test_roundtrip_documentation_keeps_the_oracle_controller_side(self) -> None:
+        documentation = (REPO_ROOT / "CONFORMANCE.md").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "The expected roundtrip observation remains controller-side",
+            documentation,
+        )
+        self.assertNotIn("The importer copies those values exactly", documentation)
+
     def test_runtime_scratch_exception_remains_narrow(self) -> None:
         documentation = (REPO_ROOT / "CONFORMANCE.md").read_text(encoding="utf-8")
         normalized = " ".join(documentation.split())

@@ -28,6 +28,7 @@ DEFAULT_EXECUTABLES = {
     "cursor": "agent",
     "gemini-cli": "gemini",
 }
+IDENTITY_KINDS = ("executable", "launcher")
 
 _PRODUCT_PATTERNS = (
     ("grok", re.compile(r"\bgrok\b", re.IGNORECASE)),
@@ -63,19 +64,41 @@ class AgentIdentity:
     def verified(self) -> bool:
         return self.status == "verified"
 
-    def to_dict(self, *, include_private: bool) -> dict[str, object]:
-        """Serialize identity, omitting machine paths and raw output when public."""
+    def to_dict(
+        self,
+        *,
+        include_private: bool,
+        identity_kind: str = "executable",
+    ) -> dict[str, object]:
+        """Serialize a direct executable or launcher-scoped identity report."""
+
+        if identity_kind not in IDENTITY_KINDS:
+            raise ValueError(
+                "identity_kind must be one of: " + ", ".join(IDENTITY_KINDS)
+            )
 
         document: dict[str, object] = {
             "adapter": self.adapter,
-            "identity_kind": "executable",
+            "identity_kind": identity_kind,
             "status": self.status,
             "sha256": self.sha256,
-            "product": self.product,
-            "version": self.version,
             "observed_at": self.observed_at,
             "error_code": self.error_code,
         }
+        if identity_kind == "launcher":
+            document.update(
+                {
+                    "reported_product": self.product,
+                    "reported_version": self.version,
+                }
+            )
+        else:
+            document.update(
+                {
+                    "product": self.product,
+                    "version": self.version,
+                }
+            )
         if include_private:
             document.update(
                 {

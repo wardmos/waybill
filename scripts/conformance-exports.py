@@ -25,6 +25,7 @@ from waybill_core.export_conformance import (  # noqa: E402
     run_export_scenario,
 )
 from waybill_core.agent_identity import (  # noqa: E402
+    IDENTITY_KINDS,
     current_observed_at,
     probe_agent_identity,
 )
@@ -95,6 +96,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--deterministic-fake",
         action="store_true",
         help="Run the repository-owned deterministic fake used by CI.",
+    )
+    parser.add_argument(
+        "--identity-kind",
+        choices=IDENTITY_KINDS,
+        help=(
+            "Required for --unsafe-manual: executable when the first command "
+            "path is the agent binary, or launcher when it forwards to an agent."
+        ),
     )
     execution_mode.add_argument(
         "--unsafe-manual",
@@ -229,6 +238,8 @@ def _manual_identity(
     args: argparse.Namespace,
     command: list[str],
 ) -> tuple[ExportAgentIdentity, dict[str, object]]:
+    if args.identity_kind is None:
+        parser.error("--identity-kind is required for --unsafe-manual")
     probe = probe_agent_identity(
         args.adapter,
         executable=command[0],
@@ -253,9 +264,11 @@ def _manual_identity(
         product=probe.product,
         version=probe.version,
     )
-    report = probe.to_dict(include_private=False)
+    report = probe.to_dict(
+        include_private=False,
+        identity_kind=args.identity_kind,
+    )
     report["verified"] = True
-    report["identity_kind"] = "executable"
     return identity, report
 
 
@@ -439,6 +452,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             adapter=args.adapter,
             source_root=REPO_ROOT,
             timeout_seconds=args.timeout,
+            inherit_user_config=args.unsafe_manual,
         )
         for scenario in scenarios
     ]

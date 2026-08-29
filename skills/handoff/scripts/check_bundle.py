@@ -80,8 +80,7 @@ COMMAND_LOG_MARKERS = (
         re.compile(r"\bbundle(?:-|\s+)writing\b|\bbundle\s+writes?\b"),
     ),
 )
-CANONICAL_DIFF_ARGUMENTS = (
-    "diff",
+CANONICAL_DIFF_OPTIONS = (
     "--patch",
     "--binary",
     "--abbrev=7",
@@ -95,7 +94,22 @@ CANONICAL_DIFF_ARGUMENTS = (
     "--inter-hunk-context=0",
     "--src-prefix=a/",
     "--dst-prefix=b/",
+)
+CANONICAL_DIFF_ARGUMENTS = (
+    "diff",
+    *CANONICAL_DIFF_OPTIONS,
     "HEAD",
+    "--",
+)
+CANONICAL_UNBORN_INDEX_DIFF_ARGUMENTS = (
+    "diff",
+    *CANONICAL_DIFF_OPTIONS,
+    "--cached",
+    "--",
+)
+CANONICAL_UNBORN_WORKTREE_DIFF_ARGUMENTS = (
+    "diff",
+    *CANONICAL_DIFF_OPTIONS,
     "--",
 )
 NO_TRACKED_DIFF_NOTE = (
@@ -441,6 +455,17 @@ def _validate_metadata(
         _require_string(git, name, checker)
     if not isinstance(git.get("dirty"), bool):
         checker.error("git-dirty", "git.dirty must be boolean", "metadata.json")
+    diff_max_bytes = git.get("diff_max_bytes")
+    if diff_max_bytes is not None and (
+        type(diff_max_bytes) is not int
+        or diff_max_bytes < 1
+        or diff_max_bytes > MAX_FILE_BYTES
+    ):
+        checker.error(
+            "diff-limit",
+            f"git.diff_max_bytes must be an integer from 1 to {MAX_FILE_BYTES}",
+            "metadata.json",
+        )
     for name, missing_code in (
         ("status_digest", "status-digest-missing"),
         ("repo_state_digest", "repo-state-digest-missing"),
@@ -679,19 +704,47 @@ def _git_environment() -> dict[str, str]:
             or name.startswith("GIT_CONFIG_VALUE_")
         ):
             environment.pop(name, None)
-    environment["GIT_OPTIONAL_LOCKS"] = "0"
-    environment["GIT_TERMINAL_PROMPT"] = "0"
+    environment.update(
+        {
+            "GIT_ATTR_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+    )
     return environment
 
 
-def _git(repo: Path, *arguments: str) -> bytes:
-    result = subprocess.run(
-        ["git", "-C", str(repo), *arguments],
+def _git_command(repo: Path, *arguments: str) -> tuple[str, ...]:
+    return (
+        "git",
+        "-c",
+        "safe.directory=*",
+        "-c",
+        f"core.attributesFile={os.devnull}",
+        "-c",
+        f"core.excludesFile={os.devnull}",
+        "-c",
+        "core.fsmonitor=false",
+        "-C",
+        str(repo),
+        *arguments,
+    )
+
+
+def _git_result(repo: Path, *arguments: str) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
+        _git_command(repo, *arguments),
         check=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         env=_git_environment(),
     )
+
+
+def _git(repo: Path, *arguments: str) -> bytes:
+    result = _git_result(repo, *arguments)
     if result.returncode != 0:
         raise ValueError("Git repository state could not be read")
     return result.stdout
@@ -709,9 +762,15 @@ def _digest(domain: bytes, components: list[tuple[bytes, bytes]]) -> str:
     return f"sha256:{digest.hexdigest()}"
 
 
-def _repo_state(repo: Path) -> dict[str, object]:
+def _repo_state(repo: Path, diff_limit: int) -> dict[str, object]:
     branch = _git(repo, "branch", "--show-current").decode("utf-8").strip() or "HEAD"
-    head_sha = _git(repo, "rev-parse", "HEAD").decode("ascii").strip()
+    head = _git_result(repo, "rev-parse", "--verify", "HEAD")
+    if head.returncode == 0:
+        head_sha = head.stdout.decode("ascii").strip()
+    elif _is_git_work_tree(repo):
+        head_sha = "unknown"
+    else:
+        raise ValueError("Git repository state could not be read")
     status = _git(repo, "status", "--porcelain=v1", "-z", "--untracked-files=all")
     index = _git(repo, "ls-files", "--stage", "-z")
     diff = _git(
@@ -730,11 +789,7 @@ def _repo_state(repo: Path) -> dict[str, object]:
         "--dst-prefix=b/",
         "--",
     )
-    tracked_diff, tracked_diff_truncated = _git_limited(
-        repo,
-        MAX_DIFF_BYTES,
-        *CANONICAL_DIFF_ARGUMENTS,
-    )
+    tracked_diff, tracked_diff_truncated = _read_tracked_diff(repo, diff_limit)
     return {
         "branch": branch,
         "head_sha": head_sha,
@@ -762,7 +817,7 @@ def _git_limited(
     *arguments: str,
 ) -> tuple[bytes, bool]:
     process = subprocess.Popen(
-        ["git", "-C", str(repo), *arguments],
+        _git_command(repo, *arguments),
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         env=_git_environment(),
@@ -780,14 +835,56 @@ def _git_limited(
     return output, False
 
 
+def _is_git_work_tree(repo: Path) -> bool:
+    result = _git_result(repo, "rev-parse", "--is-inside-work-tree")
+    return result.returncode == 0 and result.stdout.strip() == b"true"
+
+
+def _read_tracked_diff(repo: Path, max_bytes: int) -> tuple[bytes, bool]:
+    head = _git_result(repo, "rev-parse", "--verify", "HEAD")
+    if head.returncode == 0:
+        commands = (CANONICAL_DIFF_ARGUMENTS,)
+    elif _is_git_work_tree(repo):
+        commands = (
+            CANONICAL_UNBORN_INDEX_DIFF_ARGUMENTS,
+            CANONICAL_UNBORN_WORKTREE_DIFF_ARGUMENTS,
+        )
+    else:
+        raise ValueError("Git repository diff could not be read")
+
+    content = bytearray()
+    for arguments in commands:
+        part, truncated = _git_limited(
+            repo,
+            max_bytes - len(content),
+            *arguments,
+        )
+        if truncated:
+            return b"", True
+        content.extend(part)
+    return bytes(content), False
+
+
 def _compare_repo(
     metadata: dict[str, Any],
     files: dict[str, Path],
     repo: Path,
     checker: BundleChecker,
 ) -> None:
+    expected = metadata.get("git")
+    diff_limit_value = (
+        expected.get("diff_max_bytes", MAX_DIFF_BYTES)
+        if isinstance(expected, dict)
+        else MAX_DIFF_BYTES
+    )
+    diff_limit = (
+        diff_limit_value
+        if type(diff_limit_value) is int
+        and 1 <= diff_limit_value <= MAX_FILE_BYTES
+        else MAX_DIFF_BYTES
+    )
     try:
-        current = _repo_state(repo)
+        current = _repo_state(repo, diff_limit)
     except (OSError, UnicodeDecodeError, ValueError):
         checker.error("repo-state", "target Git repository could not be inspected")
         return
@@ -795,7 +892,6 @@ def _compare_repo(
         "status_digest": str(current["status_digest"]),
         "repo_state_digest": str(current["repo_state_digest"]),
     }
-    expected = metadata.get("git")
     if not isinstance(expected, dict):
         return
     for name, code in (
@@ -822,6 +918,13 @@ def _compare_diff_patch(
     git = metadata.get("git")
     if not isinstance(git, dict) or git.get("dirty") is not True:
         return
+    diff_limit = git.get("diff_max_bytes", MAX_DIFF_BYTES)
+    if (
+        type(diff_limit) is not int
+        or diff_limit < 1
+        or diff_limit > MAX_FILE_BYTES
+    ):
+        return
     artifacts = metadata.get("artifacts")
     value = artifacts.get("diff") if isinstance(artifacts, dict) else None
     if not isinstance(value, str) or not value.strip():
@@ -838,14 +941,16 @@ def _compare_diff_patch(
     recorded = _read_regular_bytes(path, value, checker)
     if recorded is None:
         return
-    if len(recorded) > MAX_DIFF_BYTES:
+    omission_note = _diff_omission_note(diff_limit)
+    artifact_limit = max(diff_limit, len(omission_note), len(NO_TRACKED_DIFF_NOTE))
+    if len(recorded) > artifact_limit:
         checker.error("repo-diff", "diff artifact exceeds the comparison limit", value)
         return
 
     tracked_diff = current["tracked_diff"]
     assert isinstance(tracked_diff, bytes)
     if current["tracked_diff_truncated"] is True:
-        if recorded != _diff_omission_note(MAX_DIFF_BYTES):
+        if recorded != omission_note:
             checker.error(
                 "repo-diff",
                 "recorded diff omission does not match the canonical note",

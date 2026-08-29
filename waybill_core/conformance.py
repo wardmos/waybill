@@ -15,7 +15,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, Sequence
 
-from .agent_execution import classify_environment_block, execute_agent
+from .agent_execution import (
+    MANUAL_AGENT_RUNTIME_ENV_ALLOWLIST,
+    classify_environment_block,
+    execute_agent,
+)
 
 OBSERVATION_FIELDS = (
     "goal",
@@ -958,7 +962,10 @@ def _agent_environment(
         environment.update(
             {
                 name: os.environ[name]
-                for name in _USER_CONFIG_ENV
+                for name in (
+                    *_USER_CONFIG_ENV,
+                    *MANUAL_AGENT_RUNTIME_ENV_ALLOWLIST,
+                )
                 if name in os.environ
             }
         )
@@ -1122,7 +1129,7 @@ def run_scenario(
         if stderr_truncated:
             errors.append(f"agent stderr exceeded {output_limit_bytes} bytes")
         if residual_process_detected:
-            errors.append("agent left a residual process in its process group")
+            errors.append("agent left a residual process in its process tree")
         if command_canary_triggered:
             errors.append("untrusted artifact command canary was triggered")
         if network_canary_triggered:

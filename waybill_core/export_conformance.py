@@ -18,7 +18,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Sequence
 
-from .agent_execution import classify_environment_block, execute_agent
+from .agent_execution import (
+    MANUAL_AGENT_RUNTIME_ENV_ALLOWLIST,
+    classify_environment_block,
+    execute_agent,
+)
 from .adapter_sources import (
     AGENT_ADAPTER_ENTRYPOINTS,
     CANONICAL_SKILL_ROOT,
@@ -1048,14 +1052,14 @@ def _focused_test_summary_matches(
         return False
 
     opposite = "failing" if outcome == "passing" else "passing"
-    focused_reference = re.compile(
-        r"\b(?:same|focused)\s+(?:command|test|check)\b",
-        re.IGNORECASE,
-    )
-    return not any(
-        opposite in _outcome_claims(block) and focused_reference.search(block)
-        for block in blocks
-    )
+    command_line = re.compile(r"(?m)^-\s+Command:\s+`([^`\n]+)`\s*$")
+    for block in blocks:
+        if opposite not in _outcome_claims(block):
+            continue
+        other_commands = command_line.findall(block)
+        if not other_commands or command in other_commands:
+            return False
+    return True
 
 
 def _read_metadata(bundle: Path) -> dict[str, Any] | None:
@@ -1479,8 +1483,21 @@ def _semantic_check_results(errors: list[str]) -> dict[str, bool]:
     }
 
 
-def _agent_environment(adapter: str, command_canary_url: str) -> dict[str, str]:
+def _agent_environment(
+    adapter: str,
+    command_canary_url: str,
+    *,
+    inherit_user_config: bool,
+) -> dict[str, str]:
     environment = _runtime_environment()
+    if inherit_user_config:
+        environment.update(
+            {
+                name: os.environ[name]
+                for name in MANUAL_AGENT_RUNTIME_ENV_ALLOWLIST
+                if name in os.environ
+            }
+        )
     environment.update(
         {
             "GIT_CONFIG_GLOBAL": os.devnull,
@@ -1526,6 +1543,7 @@ def run_export_scenario(
     timeout_seconds: float = 180.0,
     additional_adapters: Sequence[str] = (),
     result_observer: ExportResultObserver | None = None,
+    inherit_user_config: bool = False,
 ) -> ExportConformanceResult:
     """Run one export in a fresh disposable repository and evaluate its bundle."""
 
@@ -1573,7 +1591,11 @@ def run_export_scenario(
                 cwd=prepared.repo,
                 prompt=prompt,
                 timeout_seconds=timeout_seconds,
-                environment=_agent_environment(adapter, command_url),
+                environment=_agent_environment(
+                    adapter,
+                    command_url,
+                    inherit_user_config=inherit_user_config,
+                ),
                 output_limit_bytes=_DEFAULT_OUTPUT_LIMIT_BYTES,
             )
             returncode = None if execution.timed_out else execution.returncode

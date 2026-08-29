@@ -127,6 +127,28 @@ def main() -> int:
         if leaked:
             raise ValueError("ambient environment leaked: " + ", ".join(leaked))
 
+    if "assert-manual-runtime-environment" in faults:
+        expected = {
+            "CLAUDE_GATEWAY_MODEL": "test-gateway-model",
+            "CLAUDE_MODEL": "test-front-model",
+            "CODEX_MODEL": "test-codex-model",
+            "LITELLM_BASE_URL": "http://runtime.invalid:4100",
+        }
+        mismatched = sorted(
+            name for name, value in expected.items() if os.environ.get(name) != value
+        )
+        leaked = sorted(
+            name
+            for name in ("ANTHROPIC_AUTH_TOKEN", "LITELLM_API_KEY")
+            if name in os.environ
+        )
+        if mismatched:
+            raise ValueError(
+                "manual runtime environment mismatch: " + ", ".join(mismatched)
+            )
+        if leaked:
+            raise ValueError("manual runtime secret leaked: " + ", ".join(leaked))
+
     if "timeout-with-child" in faults:
         if not args.external_marker:
             raise ValueError("timeout child fault requires --external-marker")
@@ -420,6 +442,14 @@ The exporting agent did not rerun this test.
 ## Contradictory Result
 
 The same focused command, `{test['command']}`, also {opposite}.
+"""
+    if "anaphoric-contradictory-test-summary" in faults:
+        opposite = "passed" if outcome == "failing" else "failed"
+        test_summary += f"""
+
+## Contradictory Result
+
+The command above also {opposite}.
 """
     if "other-test-opposite-outcome" in faults:
         opposite = "passing" if outcome == "failing" else "failing"

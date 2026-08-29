@@ -180,6 +180,20 @@ class BundleValidationTestCase(unittest.TestCase):
                     self._error_messages(self._issues_for(metadata)),
                 )
 
+    def test_optional_diff_limit_must_fit_the_bundle_file_limit(self) -> None:
+        metadata = copy.deepcopy(self.metadata)
+        metadata["git"]["diff_max_bytes"] = 128
+        self.assertEqual([], self._error_messages(self._issues_for(metadata)))
+
+        for value in (True, 0, -1, 5_000_001, "128"):
+            with self.subTest(value=value):
+                metadata = copy.deepcopy(self.metadata)
+                metadata["git"]["diff_max_bytes"] = value
+                self.assertIn(
+                    "metadata git.diff_max_bytes must be an integer from 1 to 5000000",
+                    self._error_messages(self._issues_for(metadata)),
+                )
+
     def test_artifact_paths_must_be_non_empty_strings(self) -> None:
         metadata = copy.deepcopy(self.metadata)
         del metadata["artifacts"]["waybill"]

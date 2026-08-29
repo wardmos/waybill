@@ -21,7 +21,7 @@ DIGEST_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class RepoFidelityTests(unittest.TestCase):
-    def test_git_environment_preserves_user_config_but_strips_repo_routing(self) -> None:
+    def test_git_environment_isolates_user_config_and_repo_routing(self) -> None:
         configured = {
             "GIT_CONFIG_GLOBAL": "/tmp/synthetic-global-config",
             "GIT_DIR": "/tmp/wrong-git-dir",
@@ -37,10 +37,9 @@ class RepoFidelityTests(unittest.TestCase):
         with mock.patch.dict(os.environ, configured, clear=True):
             environment = repo_module._git_environment()
 
-        self.assertEqual(
-            "/tmp/synthetic-global-config",
-            environment["GIT_CONFIG_GLOBAL"],
-        )
+        self.assertEqual(os.devnull, environment["GIT_CONFIG_GLOBAL"])
+        self.assertEqual("1", environment["GIT_CONFIG_NOSYSTEM"])
+        self.assertEqual("1", environment["GIT_ATTR_NOSYSTEM"])
         for name in configured.keys() - {"GIT_CONFIG_GLOBAL"}:
             self.assertNotIn(name, environment)
 
@@ -111,9 +110,7 @@ class RepoFidelityTests(unittest.TestCase):
 
     def test_new_records_the_canonical_tracked_diff_command(self) -> None:
         commands = (self.create_bundle() / "commands.log").read_text()
-        expected = " ".join(
-            ("git", "-C", str(self.repo), *repo_module.CANONICAL_DIFF_ARGUMENTS)
-        )
+        expected = " ".join(repo_module.canonical_diff_commands(self.repo)[0])
 
         self.assertIn(expected + " -> captured in diff.patch", commands)
         self.assertNotIn(" diff --binary HEAD -- -> captured", commands)
@@ -137,6 +134,130 @@ class RepoFidelityTests(unittest.TestCase):
         for name in ("status_digest", "repo_state_digest"):
             self.assertIn(name, git_schema["properties"])
             self.assertNotIn(name, git_schema["required"])
+        self.assertIn("diff_max_bytes", git_schema["properties"])
+        self.assertNotIn("diff_max_bytes", git_schema["required"])
+        self.assertEqual(1, git_schema["properties"]["diff_max_bytes"]["minimum"])
+        self.assertEqual(
+            5_000_000,
+            git_schema["properties"]["diff_max_bytes"]["maximum"],
+        )
+
+    def test_custom_diff_limit_roundtrips_through_metadata_and_verification(self) -> None:
+        (self.repo / "unstaged.txt").write_text("x" * 4096)
+        bundle = self.parent / "custom-limit-bundle"
+
+        create_draft_bundle(bundle, self.repo, max_diff_bytes=128)
+
+        metadata = json.loads((bundle / "metadata.json").read_text())
+        self.assertEqual(128, metadata["git"]["diff_max_bytes"])
+        self.assertEqual(
+            repo_module.diff_omission_note(128),
+            (bundle / "diff.patch").read_bytes(),
+        )
+        report = verify_repo_state(bundle, self.repo)
+        checks = self.checks_by_name(report)
+        self.assertFalse(report.has_errors)
+        self.assertEqual("warning", checks["diff_patch"].status)
+
+    def test_new_rejects_a_diff_limit_larger_than_a_bundle_file(self) -> None:
+        with self.assertRaisesRegex(ValueError, "bundle file limit"):
+            create_draft_bundle(
+                self.parent / "oversized-limit-bundle",
+                self.repo,
+                max_diff_bytes=5_000_001,
+            )
+
+    def test_new_and_verify_support_an_unborn_repository(self) -> None:
+        unborn = self.parent / "unborn"
+        unborn.mkdir()
+        subprocess.run(
+            ["git", "init", "-q", str(unborn)],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        tracked = unborn / "tracked.txt"
+        tracked.write_text("staged content\n")
+        subprocess.run(
+            ["git", "-C", str(unborn), "add", "tracked.txt"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        tracked.write_text("worktree content\n")
+        (unborn / "untracked.txt").write_text("private untracked content\n")
+        bundle = self.parent / "unborn-bundle"
+
+        create_draft_bundle(bundle, unborn)
+
+        metadata = json.loads((bundle / "metadata.json").read_text())
+        patch = (bundle / "diff.patch").read_text()
+        self.assertEqual("unknown", metadata["git"]["head_sha"])
+        self.assertIn("+staged content", patch)
+        self.assertIn("-staged content", patch)
+        self.assertIn("+worktree content", patch)
+        self.assertNotIn("private untracked content", patch)
+        self.assertEqual(
+            2,
+            (bundle / "commands.log").read_text().count(
+                "-> captured in diff.patch"
+            ),
+        )
+        report = verify_repo_state(bundle, unborn)
+        checks = self.checks_by_name(report)
+        self.assertFalse(report.has_errors)
+        self.assertEqual("warning", checks["head_sha"].status)
+        self.assertEqual("ok", checks["diff_patch"].status)
+
+    def test_user_level_attributes_do_not_change_repo_fidelity(self) -> None:
+        (self.repo / "unstaged.txt").write_text("stable changed content\n")
+        (self.repo / "visible-untracked.txt").write_text("private content\n")
+        expected = repo_module.read_repo_diff(self.repo).content
+        bundle = self.parent / "isolated-config-bundle"
+        create_draft_bundle(bundle, self.repo)
+        attributes = self.parent / "global-attributes"
+        attributes.write_text("*.txt binary\n")
+        excludes = self.parent / "global-excludes"
+        excludes.write_text("visible-untracked.txt\n")
+        global_config = self.parent / "global-gitconfig"
+        subprocess.run(
+            [
+                "git",
+                "config",
+                "--file",
+                str(global_config),
+                "core.attributesFile",
+                str(attributes),
+            ],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        subprocess.run(
+            [
+                "git",
+                "config",
+                "--file",
+                str(global_config),
+                "core.excludesFile",
+                str(excludes),
+            ],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        with mock.patch.dict(
+            os.environ,
+            {"GIT_CONFIG_GLOBAL": str(global_config)},
+            clear=False,
+        ):
+            actual = repo_module.read_repo_diff(self.repo).content
+            report = verify_repo_state(bundle, self.repo)
+
+        self.assertEqual(expected, actual)
+        self.assertNotIn(b"GIT binary patch", actual)
+        self.assertFalse(report.has_errors)
 
     def test_verify_detects_changed_unstaged_content_with_same_basic_state(self) -> None:
         (self.repo / "unstaged.txt").write_text("first unstaged content\n")

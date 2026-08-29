@@ -11,11 +11,16 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from .limits import BundleLimitError, MAX_DIFF_BYTES, format_bytes, list_bundle_files
+from .limits import (
+    BundleLimitError,
+    MAX_BUNDLE_FILE_BYTES,
+    MAX_DIFF_BYTES,
+    format_bytes,
+    list_bundle_files,
+)
 
 
-CANONICAL_DIFF_ARGUMENTS = (
-    "diff",
+CANONICAL_DIFF_OPTIONS = (
     "--patch",
     "--binary",
     "--abbrev=7",
@@ -29,7 +34,22 @@ CANONICAL_DIFF_ARGUMENTS = (
     "--inter-hunk-context=0",
     "--src-prefix=a/",
     "--dst-prefix=b/",
+)
+CANONICAL_DIFF_ARGUMENTS = (
+    "diff",
+    *CANONICAL_DIFF_OPTIONS,
     "HEAD",
+    "--",
+)
+CANONICAL_UNBORN_INDEX_DIFF_ARGUMENTS = (
+    "diff",
+    *CANONICAL_DIFF_OPTIONS,
+    "--cached",
+    "--",
+)
+CANONICAL_UNBORN_WORKTREE_DIFF_ARGUMENTS = (
+    "diff",
+    *CANONICAL_DIFF_OPTIONS,
     "--",
 )
 NO_TRACKED_DIFF_NOTE = (
@@ -155,12 +175,14 @@ def _read_repo_state(repo: Path, checks: list[RepoCheck]) -> dict[str, object] |
         return None
 
     branch = _git(repo, "branch", "--show-current")
-    head = _git(repo, "rev-parse", "HEAD")
-    failed = [result for result in [branch, head] if result.returncode != 0]
-    if failed:
+    head = _git(repo, "rev-parse", "--verify", "HEAD")
+    if branch.returncode != 0 or (
+        head.returncode != 0 and not _is_git_work_tree(repo)
+    ):
+        failed = branch if branch.returncode != 0 else head
         message = (
-            failed[0].stderr.strip()
-            or failed[0].stdout.strip()
+            failed.stderr.strip()
+            or failed.stdout.strip()
             or "git command failed"
         )
         checks.append(_error("repo", "git repository", str(repo), message))
@@ -175,7 +197,7 @@ def _read_repo_state(repo: Path, checks: list[RepoCheck]) -> dict[str, object] |
     checks.append(RepoCheck("repo", "ok", "git repository", str(repo), "read"))
     return {
         "branch": branch.stdout.strip() or "HEAD",
-        "head_sha": head.stdout.strip(),
+        "head_sha": head.stdout.strip() if head.returncode == 0 else "unknown",
         "dirty": bool(fidelity.status),
         "status_digest": fidelity.status_digest,
         "repo_state_digest": fidelity.repo_state_digest,
@@ -259,6 +281,22 @@ def _compare_diff_patch(
             )
         )
         return
+    diff_limit = git.get("diff_max_bytes", MAX_DIFF_BYTES)
+    if (
+        type(diff_limit) is not int
+        or diff_limit < 1
+        or diff_limit > MAX_BUNDLE_FILE_BYTES
+    ):
+        checks.append(
+            RepoCheck(
+                "diff_patch",
+                "error",
+                f"integer from 1 to {MAX_BUNDLE_FILE_BYTES}",
+                diff_limit,
+                "git.diff_max_bytes is invalid",
+            )
+        )
+        return
     if git["dirty"] is False:
         checks.append(
             RepoCheck(
@@ -331,8 +369,14 @@ def _compare_diff_patch(
         return
 
     try:
-        recorded = _read_regular_file(item.path, MAX_DIFF_BYTES)
-        current = read_repo_diff(repo, max_bytes=MAX_DIFF_BYTES)
+        omission_note = diff_omission_note(diff_limit)
+        artifact_limit = max(
+            diff_limit,
+            len(omission_note),
+            len(NO_TRACKED_DIFF_NOTE),
+        )
+        recorded = _read_regular_file(item.path, artifact_limit)
+        current = read_repo_diff(repo, max_bytes=diff_limit)
     except (OSError, ValueError):
         checks.append(
             RepoCheck(
@@ -346,7 +390,7 @@ def _compare_diff_patch(
         return
 
     if current.truncated:
-        if recorded == diff_omission_note(MAX_DIFF_BYTES):
+        if recorded == omission_note:
             checks.append(
                 RepoCheck(
                     "diff_patch",
@@ -410,10 +454,35 @@ def read_repo_diff(
 ) -> RepoDiff:
     """Read the canonical tracked diff without allowing unbounded output."""
 
-    if max_bytes < 1:
+    if type(max_bytes) is not int or max_bytes < 1:
         raise ValueError("max diff bytes must be positive")
+    command_arguments: tuple[tuple[str, ...], ...]
+    if _has_head(repo):
+        command_arguments = (CANONICAL_DIFF_ARGUMENTS,)
+    elif _is_git_work_tree(repo):
+        command_arguments = (
+            CANONICAL_UNBORN_INDEX_DIFF_ARGUMENTS,
+            CANONICAL_UNBORN_WORKTREE_DIFF_ARGUMENTS,
+        )
+    else:
+        raise ValueError("git diff failed")
+
+    content = bytearray()
+    for arguments in command_arguments:
+        part = _read_git_limited(repo, arguments, max_bytes - len(content))
+        if part.truncated:
+            return RepoDiff(b"", True)
+        content.extend(part.content)
+    return RepoDiff(bytes(content), False)
+
+
+def _read_git_limited(
+    repo: Path,
+    arguments: tuple[str, ...],
+    max_bytes: int,
+) -> RepoDiff:
     process = subprocess.Popen(
-        ["git", "-C", str(repo), *CANONICAL_DIFF_ARGUMENTS],
+        _git_command(repo, *arguments),
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         env=_git_environment(),
@@ -429,6 +498,21 @@ def read_repo_diff(
     if process.returncode != 0:
         raise ValueError("git diff failed")
     return RepoDiff(stdout, False)
+
+
+def canonical_diff_commands(repo: Path) -> tuple[tuple[str, ...], ...]:
+    """Return the exact tracked-diff command or unborn-repository fallback."""
+
+    if _has_head(repo):
+        arguments = (CANONICAL_DIFF_ARGUMENTS,)
+    elif _is_git_work_tree(repo):
+        arguments = (
+            CANONICAL_UNBORN_INDEX_DIFF_ARGUMENTS,
+            CANONICAL_UNBORN_WORKTREE_DIFF_ARGUMENTS,
+        )
+    else:
+        raise ValueError("repo path is not a git work tree")
+    return tuple(_git_command(repo, *item) for item in arguments)
 
 
 def read_repo_fidelity(repo: Path) -> RepoFidelity:
@@ -490,9 +574,8 @@ def _digest(domain: bytes, components: list[tuple[bytes, bytes]]) -> str:
 
 
 def _git_environment() -> dict[str, str]:
-    # Keep normal user/system Git configuration (including safe.directory), but
-    # do not let environment overrides redirect or reconfigure the explicit -C
-    # target.
+    # Repository evidence must not vary with a caller's user/system Git config.
+    # safe.directory is restored narrowly on each explicit read-only command.
     environment = os.environ.copy()
     unsafe_overrides = {
         "GIT_ALTERNATE_OBJECT_DIRECTORIES",
@@ -519,6 +602,9 @@ def _git_environment() -> dict[str, str]:
             environment.pop(name)
     environment.update(
         {
+            "GIT_ATTR_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_OPTIONAL_LOCKS": "0",
             "GIT_TERMINAL_PROMPT": "0",
         }
@@ -528,7 +614,7 @@ def _git_environment() -> dict[str, str]:
 
 def _git_bytes(repo: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(
-        ["git", "-C", str(repo), *args],
+        _git_command(repo, *args),
         check=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -548,12 +634,45 @@ def _require_git_bytes(
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["git", "-C", str(repo), *args],
+        _git_command(repo, *args),
         check=False,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         env=_git_environment(),
+    )
+
+
+def read_repo_git_text(repo: Path, *args: str) -> str | None:
+    """Read one Git value under the same isolated fidelity environment."""
+
+    result = _git(repo, *args)
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def _has_head(repo: Path) -> bool:
+    return _git(repo, "rev-parse", "--verify", "HEAD").returncode == 0
+
+
+def _is_git_work_tree(repo: Path) -> bool:
+    result = _git(repo, "rev-parse", "--is-inside-work-tree")
+    return result.returncode == 0 and result.stdout.strip() == "true"
+
+
+def _git_command(repo: Path, *args: str) -> tuple[str, ...]:
+    return (
+        "git",
+        "-c",
+        "safe.directory=*",
+        "-c",
+        f"core.attributesFile={os.devnull}",
+        "-c",
+        f"core.excludesFile={os.devnull}",
+        "-c",
+        "core.fsmonitor=false",
+        "-C",
+        str(repo),
+        *args,
     )
 
 

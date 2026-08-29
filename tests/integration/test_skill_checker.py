@@ -16,7 +16,14 @@ from pathlib import Path
 from types import ModuleType
 from unittest import mock
 
-from waybill_core.repo import CANONICAL_DIFF_ARGUMENTS, read_repo_fidelity
+from waybill_core.repo import (
+    CANONICAL_DIFF_ARGUMENTS,
+    CANONICAL_UNBORN_INDEX_DIFF_ARGUMENTS,
+    CANONICAL_UNBORN_WORKTREE_DIFF_ARGUMENTS,
+    diff_omission_note,
+    read_repo_fidelity,
+)
+from waybill_core.scaffold import create_draft_bundle
 from waybill_core.validation import WAYBILL_SECTIONS, validate_bundle
 
 
@@ -62,6 +69,14 @@ class BundledSkillCheckerTests(unittest.TestCase):
         self.assertEqual(
             CANONICAL_DIFF_ARGUMENTS,
             CHECKER_MODULE.CANONICAL_DIFF_ARGUMENTS,
+        )
+        self.assertEqual(
+            CANONICAL_UNBORN_INDEX_DIFF_ARGUMENTS,
+            CHECKER_MODULE.CANONICAL_UNBORN_INDEX_DIFF_ARGUMENTS,
+        )
+        self.assertEqual(
+            CANONICAL_UNBORN_WORKTREE_DIFF_ARGUMENTS,
+            CHECKER_MODULE.CANONICAL_UNBORN_WORKTREE_DIFF_ARGUMENTS,
         )
         self.assertEqual(
             b"# No tracked diff captured.\n"
@@ -132,6 +147,7 @@ class BundledSkillCheckerTests(unittest.TestCase):
         self,
         bundle: Path | None = None,
         *extra: str,
+        repo: Path | None = None,
     ) -> subprocess.CompletedProcess[str]:
         git_executable = shutil.which("git")
         self.assertIsNotNone(git_executable)
@@ -144,7 +160,7 @@ class BundledSkillCheckerTests(unittest.TestCase):
                 str(CHECKER),
                 str(self.bundle if bundle is None else bundle),
                 "--repo",
-                str(self.repo),
+                str(self.repo if repo is None else repo),
                 "--json",
                 *extra,
             ],
@@ -367,6 +383,95 @@ class BundledSkillCheckerTests(unittest.TestCase):
         self.assertEqual(1, result.returncode)
         report = json.loads(result.stdout)
         self.assertIn("repo-diff", {error["code"] for error in report["errors"]})
+
+    def test_accepts_the_recorded_custom_diff_limit(self) -> None:
+        (self.repo / "tracked.txt").write_bytes(b"x" * 4096)
+        bundle = self.root / "custom-limit-bundle"
+        create_draft_bundle(bundle, self.repo, max_diff_bytes=128)
+
+        result = self.run_checker(bundle)
+
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+        report = json.loads(result.stdout)
+        self.assertTrue(report["success"])
+        self.assertEqual(
+            diff_omission_note(128),
+            (bundle / "diff.patch").read_bytes(),
+        )
+        self.assertIn(
+            "repo-diff-omitted",
+            {warning["code"] for warning in report["warnings"]},
+        )
+
+    def test_rejects_an_invalid_recorded_diff_limit(self) -> None:
+        self.metadata["git"]["diff_max_bytes"] = True
+        self.write_metadata()
+
+        result = self.run_checker()
+
+        self.assertEqual(1, result.returncode)
+        report = json.loads(result.stdout)
+        self.assertIn("diff-limit", {error["code"] for error in report["errors"]})
+
+    def test_accepts_an_unborn_repository_bundle(self) -> None:
+        unborn = self.root / "unborn"
+        unborn.mkdir()
+        run_git(unborn, "init", "-q")
+        tracked = unborn / "tracked.txt"
+        tracked.write_text("staged content\n", encoding="utf-8")
+        run_git(unborn, "add", "tracked.txt")
+        tracked.write_text("worktree content\n", encoding="utf-8")
+        bundle = self.root / "unborn-bundle"
+        create_draft_bundle(bundle, unborn)
+
+        result = self.run_checker(bundle, repo=unborn)
+
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+        report = json.loads(result.stdout)
+        self.assertTrue(report["success"])
+
+    def test_user_level_attributes_do_not_change_checker_fidelity(self) -> None:
+        (self.repo / "tracked.txt").write_text(
+            "stable changed content\n",
+            encoding="utf-8",
+        )
+        (self.repo / "visible-untracked.txt").write_text(
+            "private content\n",
+            encoding="utf-8",
+        )
+        bundle = self.root / "isolated-config-bundle-with-untracked"
+        create_draft_bundle(bundle, self.repo)
+        attributes = self.root / "global-attributes"
+        attributes.write_text("*.txt binary\n", encoding="utf-8")
+        excludes = self.root / "global-excludes"
+        excludes.write_text("visible-untracked.txt\n", encoding="utf-8")
+        global_config = self.root / "global-gitconfig"
+        run_git(
+            self.repo,
+            "config",
+            "--file",
+            str(global_config),
+            "core.attributesFile",
+            str(attributes),
+        )
+        run_git(
+            self.repo,
+            "config",
+            "--file",
+            str(global_config),
+            "core.excludesFile",
+            str(excludes),
+        )
+
+        with mock.patch.dict(
+            os.environ,
+            {"GIT_CONFIG_GLOBAL": str(global_config)},
+            clear=False,
+        ):
+            result = self.run_checker(bundle)
+
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+        self.assertTrue(json.loads(result.stdout)["success"])
 
     def test_rejects_unresolved_placeholders_and_escaping_artifacts(self) -> None:
         self.metadata["artifacts"]["diff"] = "../outside.patch"

@@ -26,6 +26,7 @@ from waybill_core.conformance import (  # noqa: E402
     snapshot_workspace,
 )
 from waybill_core.agent_identity import (  # noqa: E402
+    IDENTITY_KINDS,
     SUPPORTED_AGENT_PRODUCTS,
     current_observed_at,
     probe_agent_identity,
@@ -69,6 +70,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--private-identity",
         action="store_true",
         help="include the resolved executable path and raw identity probe output",
+    )
+    parser.add_argument(
+        "--identity-kind",
+        choices=IDENTITY_KINDS,
+        help=(
+            "Required for a real run: executable for a direct agent binary or "
+            "launcher for a command that forwards to an agent."
+        ),
     )
     parser.add_argument(
         "--unsafe-manual",
@@ -199,6 +208,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         except ValueError as exc:
             parser.error(str(exc))
+    if not args.dry_run and args.identity_kind is None:
+        parser.error("--identity-kind is required for a real run")
 
     if not args.workspace.is_dir():
         parser.error("workspace is not a directory")
@@ -255,7 +266,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             "agent": args.agent_name,
             "adapter": args.adapter,
             "observed_at": observed_at,
-            "identity": identity.to_dict(include_private=args.private_identity),
+            "identity": identity.to_dict(
+                include_private=args.private_identity,
+                identity_kind=args.identity_kind,
+            ),
             "identity_probe_unexpected_writes": identity_probe_writes,
             "execution_mode": "unsafe_manual",
             "safety": _safety_report(manual_acknowledged=True),
@@ -293,7 +307,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         "adapter": args.adapter,
         "observed_at": observed_at,
         "identity": (
-            identity.to_dict(include_private=args.private_identity)
+            identity.to_dict(
+                include_private=args.private_identity,
+                identity_kind=args.identity_kind,
+            )
             if identity is not None
             else None
         ),

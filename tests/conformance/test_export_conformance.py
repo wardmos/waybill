@@ -323,7 +323,12 @@ class ExportExecutionTests(unittest.TestCase):
             version=SYNTHETIC_AGENT_VERSION,
         )
 
-    def _run(self, scenario_id: str, *faults: str):
+    def _run(
+        self,
+        scenario_id: str,
+        *faults: str,
+        inherit_user_config: bool = False,
+    ):
         command = [sys.executable, str(FAKE_AGENT)]
         for fault in faults:
             command.extend(["--fault", fault])
@@ -334,6 +339,7 @@ class ExportExecutionTests(unittest.TestCase):
             adapter="codex",
             source_root=REPO_ROOT,
             timeout_seconds=20,
+            inherit_user_config=inherit_user_config,
         )
 
     def test_ordinary_export_passes_all_grounded_gates(self) -> None:
@@ -385,6 +391,17 @@ class ExportExecutionTests(unittest.TestCase):
         result = self._run(
             "ordinary-unfinished",
             "contradictory-test-summary",
+        )
+
+        self.assertFalse(result.passed)
+        self.assertTrue(result.validation_ok)
+        self.assertIn("evidence:test-state", result.errors)
+        self.assertFalse(result.semantic_checks["test_state"])
+
+    def test_test_summary_rejects_an_anaphoric_opposite_outcome(self) -> None:
+        result = self._run(
+            "ordinary-unfinished",
+            "anaphoric-contradictory-test-summary",
         )
 
         self.assertFalse(result.passed)
@@ -583,6 +600,28 @@ class ExportExecutionTests(unittest.TestCase):
         }
         with mock.patch.dict(os.environ, poisoned, clear=False):
             result = self._run("ordinary-unfinished", "assert-clean-environment")
+
+        self.assertTrue(result.passed, result.errors)
+
+    def test_manual_environment_inherits_only_nonsecret_agent_routing(self) -> None:
+        routing = {
+            "CLAUDE_GATEWAY_MODEL": "test-gateway-model",
+            "CLAUDE_MODEL": "test-front-model",
+            "CODEX_MODEL": "test-codex-model",
+            "LITELLM_BASE_URL": "http://runtime.invalid:4100",
+        }
+        ambient = {
+            **routing,
+            "ANTHROPIC_AUTH_TOKEN": "must-not-be-inherited",
+            "LITELLM_API_KEY": "must-not-be-inherited",
+        }
+
+        with mock.patch.dict(os.environ, ambient, clear=False):
+            result = self._run(
+                "ordinary-unfinished",
+                "assert-manual-runtime-environment",
+                inherit_user_config=True,
+            )
 
         self.assertTrue(result.passed, result.errors)
 
@@ -794,6 +833,8 @@ class ExportRunnerCliTests(unittest.TestCase):
                     "--agent-version",
                     SYNTHETIC_AGENT_VERSION,
                     "--unsafe-manual",
+                    "--identity-kind",
+                    "executable",
                     "--adapter",
                     "codex",
                     "--agent-command",
@@ -817,6 +858,49 @@ class ExportRunnerCliTests(unittest.TestCase):
         self.assertEqual("codex", report["identity"]["product"])
         self.assertEqual(SYNTHETIC_AGENT_VERSION, report["identity"]["version"])
         self.assertRegex(report["identity"]["sha256"], r"^sha256:[0-9a-f]{64}$")
+
+    def test_manual_launcher_dry_run_labels_forwarded_agent_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            launcher = Path(temporary) / "codex-wrapper"
+            launcher.write_text(
+                f"#!/bin/sh\nprintf 'codex-cli {SYNTHETIC_AGENT_VERSION}\\n'\n",
+                encoding="utf-8",
+            )
+            launcher.chmod(0o755)
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "scripts" / "conformance-exports.py"),
+                    "--agent-name",
+                    "codex",
+                    "--agent-product",
+                    "codex",
+                    "--agent-version",
+                    SYNTHETIC_AGENT_VERSION,
+                    "--unsafe-manual",
+                    "--identity-kind",
+                    "launcher",
+                    "--adapter",
+                    "codex",
+                    "--agent-command",
+                    str(launcher),
+                    "--scenario",
+                    "ordinary-unfinished",
+                    "--dry-run",
+                ],
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        identity = json.loads(completed.stdout)["identity"]
+        self.assertEqual("launcher", identity["identity_kind"])
+        self.assertEqual("codex", identity["reported_product"])
+        self.assertEqual(SYNTHETIC_AGENT_VERSION, identity["reported_version"])
+        self.assertNotIn("product", identity)
+        self.assertNotIn("version", identity)
 
     def test_dry_run_validates_without_running_agent_or_creating_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

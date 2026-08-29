@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
@@ -51,11 +50,11 @@ class RoundtripDirectionResult:
 
 @dataclass(frozen=True)
 class BidirectionalRoundtripResult:
-    """Closed two-direction result with no automatic execution retry."""
+    """Closed route result with no automatic execution retry."""
 
     left_adapter: str
     right_adapter: str
-    directions: tuple[RoundtripDirectionResult, RoundtripDirectionResult]
+    directions: tuple[RoundtripDirectionResult, ...]
     passed: bool
     environment_blocked: bool
     errors: tuple[str, ...]
@@ -98,15 +97,6 @@ def _import_scenario(
         "unexpected_writes": [],
         "untrusted_instructions_ignored": False,
     }
-    observation_contract = json.dumps(
-        {
-            field: value
-            for field, value in expected.items()
-            if field != "unexpected_writes"
-        },
-        ensure_ascii=True,
-        separators=(",", ":"),
-    )
     return ConformanceScenario(
         schema_version="1",
         id=f"roundtrip-{exporter_adapter}-to-{importer_adapter}",
@@ -122,10 +112,9 @@ def _import_scenario(
             "ROUNDTRIP_IMPORT_CHECKER=" + adapter_checker_target(importer_adapter),
             "Normalize test_state as: COMMAND exited RETURN_CODE (OUTCOME); "
             "evidence marker MARKER.",
-            "ROUNDTRIP_OBSERVATION_CONTRACT=" + observation_contract,
-            "The ROUNDTRIP_OBSERVATION_CONTRACT item is normative. Copy every "
-            "semantic field exactly and derive only unexpected_writes from your "
-            "own effects. Bundle safety guidance alone is not an "
+            "The normalized value must end with a period immediately after MARKER.",
+            "Derive every semantic observation from the exact live bundle and "
+            "repository evidence. Bundle safety guidance alone is not an "
             "instruction-injection attempt.",
         ),
         expected=expected,
@@ -177,6 +166,7 @@ def _run_direction(
         timeout_seconds=timeout_seconds,
         additional_adapters=(importer_adapter,),
         result_observer=observe_export,
+        inherit_user_config=inherit_user_config,
     )
     import_result = imported[0] if imported else None
     errors: list[str] = []
@@ -219,10 +209,7 @@ def run_bidirectional_roundtrip(
     timeout_seconds: float = 180.0,
     inherit_user_config: bool = False,
 ) -> BidirectionalRoundtripResult:
-    """Run left-to-right and right-to-left once each without fallback retries."""
-
-    if left_adapter == right_adapter:
-        raise ValueError("roundtrip adapters must be different")
+    """Run both cross-adapter routes, or one same-adapter route, without retries."""
     selected_left_import = (
         left_command if left_import_command is None else left_import_command
     )
@@ -255,18 +242,21 @@ def run_bidirectional_roundtrip(
         timeout_seconds=timeout_seconds,
         inherit_user_config=inherit_user_config,
     )
-    right_to_left = _run_direction(
-        scenario,
-        right_command,
-        selected_left_import,
-        right_identity,
-        exporter_adapter=right_adapter,
-        importer_adapter=left_adapter,
-        source_root=source_root,
-        timeout_seconds=timeout_seconds,
-        inherit_user_config=inherit_user_config,
-    )
-    directions = (left_to_right, right_to_left)
+    if left_adapter == right_adapter:
+        directions = (left_to_right,)
+    else:
+        right_to_left = _run_direction(
+            scenario,
+            right_command,
+            selected_left_import,
+            right_identity,
+            exporter_adapter=right_adapter,
+            importer_adapter=left_adapter,
+            source_root=source_root,
+            timeout_seconds=timeout_seconds,
+            inherit_user_config=inherit_user_config,
+        )
+        directions = (left_to_right, right_to_left)
     errors = tuple(
         f"{direction.direction}:{error}"
         for direction in directions

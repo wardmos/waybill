@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .limits import MAX_DIFF_BYTES
+from .limits import MAX_BUNDLE_FILE_BYTES, MAX_DIFF_BYTES
 from .repo import (
-    CANONICAL_DIFF_ARGUMENTS,
     NO_TRACKED_DIFF_NOTE,
+    canonical_diff_commands,
     diff_omission_note,
     read_repo_diff,
     read_repo_fidelity,
+    read_repo_git_text,
 )
 from .schema_versions import CURRENT_SCHEMA_VERSION
 
@@ -55,9 +55,14 @@ def create_draft_bundle(
         raise NotADirectoryError(f"repo path is not a directory: {repo}")
     if not source_agent.strip():
         raise ValueError("source agent must be non-empty")
-    if max_diff_bytes < 1:
+    if type(max_diff_bytes) is not int or max_diff_bytes < 1:
         raise ValueError("max diff bytes must be positive")
-    if _git_value(repo, "rev-parse", "--is-inside-work-tree") != "true":
+    if max_diff_bytes > MAX_BUNDLE_FILE_BYTES:
+        raise ValueError(
+            "max diff bytes must not exceed the bundle file limit of "
+            f"{MAX_BUNDLE_FILE_BYTES}"
+        )
+    if read_repo_git_text(repo, "rev-parse", "--is-inside-work-tree") != "true":
         raise ValueError(f"repo path is not a git work tree: {repo}")
 
     _check_output_path(output, force)
@@ -72,7 +77,12 @@ def create_draft_bundle(
     )
     files = {
         "WAYBILL.md": _waybill_text(goal, git),
-        "metadata.json": _metadata_text(source_agent, now, repo, git),
+        "metadata.json": _metadata_text(
+            source_agent,
+            now,
+            git,
+            max_diff_bytes,
+        ),
         "diff.patch": _diff_content(repo, max_diff_bytes),
         "commands.log": _commands_log_text(repo, output, git),
         "test-summary.md": _test_summary_text(),
@@ -106,10 +116,10 @@ def _check_output_path(output: Path, force: bool) -> None:
 def _read_git_state(repo: Path) -> dict[str, str]:
     fidelity = read_repo_fidelity(repo)
     return {
-        "branch": _git_value(repo, "branch", "--show-current") or "HEAD",
+        "branch": read_repo_git_text(repo, "branch", "--show-current") or "HEAD",
         "base_ref": "unknown",
-        "head_sha": _git_value(repo, "rev-parse", "HEAD") or "unknown",
-        "status": _git_value(repo, "status", "--short"),
+        "head_sha": read_repo_git_text(repo, "rev-parse", "HEAD") or "unknown",
+        "status": read_repo_git_text(repo, "status", "--short") or "",
         "status_digest": fidelity.status_digest,
         "repo_state_digest": fidelity.repo_state_digest,
     }
@@ -129,22 +139,25 @@ def _diff_content(repo: Path, max_diff_bytes: int) -> bytes:
 def _metadata_text(
     source_agent: str,
     created_at: str,
-    repo: Path,
     git: dict[str, str],
+    max_diff_bytes: int,
 ) -> str:
+    git_metadata: dict[str, object] = {
+        "branch": git["branch"],
+        "base_ref": git["base_ref"],
+        "head_sha": git["head_sha"],
+        "dirty": bool(git["status"].strip()),
+        "status_digest": git["status_digest"],
+        "repo_state_digest": git["repo_state_digest"],
+    }
+    if max_diff_bytes != MAX_DIFF_BYTES:
+        git_metadata["diff_max_bytes"] = max_diff_bytes
     metadata = {
         "schema_version": CURRENT_SCHEMA_VERSION,
         "source_agent": source_agent,
         "created_at": created_at,
         "repo_root": ".",
-        "git": {
-            "branch": git["branch"],
-            "base_ref": git["base_ref"],
-            "head_sha": git["head_sha"],
-            "dirty": bool(git["status"].strip()),
-            "status_digest": git["status_digest"],
-            "repo_state_digest": git["repo_state_digest"],
-        },
+        "git": git_metadata,
         "artifacts": {
             "waybill": "WAYBILL.md",
             "diff": "diff.patch",
@@ -233,8 +246,9 @@ dangerous commands unless the user explicitly asks.
 
 def _commands_log_text(repo: Path, output: Path, git: dict[str, str]) -> str:
     status = git["status"].strip() or "(empty)"
-    diff_command = " ".join(
-        ("git", "-C", str(repo), *CANONICAL_DIFF_ARGUMENTS)
+    diff_commands = "\n".join(
+        " ".join(command) + " -> captured in diff.patch"
+        for command in canonical_diff_commands(repo)
     )
     return f"""# Command Log
 
@@ -244,7 +258,7 @@ Read-only inspection commands:
 git -C {repo} branch --show-current -> {git["branch"]}
 git -C {repo} rev-parse HEAD -> {git["head_sha"]}
 git -C {repo} status --short -> {status}
-{diff_command} -> captured in diff.patch
+{diff_commands}
 ```
 
 Bundle-writing actions:
@@ -274,16 +288,3 @@ def _test_summary_text() -> str:
 
 - Tests were not run by `waybill new`.
 """
-
-
-def _git_value(repo: Path, *args: str) -> str:
-    result = subprocess.run(
-        ["git", "-C", str(repo), *args],
-        check=False,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    if result.returncode != 0:
-        return "unknown"
-    return result.stdout.strip()

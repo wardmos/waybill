@@ -86,6 +86,39 @@ raise SystemExit(97)
         self.assertEqual(str(link), private["requested_executable"])
         self.assertIn("codex-cli", private["version_output"])
 
+    def test_launcher_report_separates_launcher_hash_from_reported_agent(self) -> None:
+        launcher = self._fake_executable(
+            "codex-launcher",
+            version_output=f"codex-cli {SYNTHETIC_AGENT_VERSION}",
+        )
+        identity = probe_agent_identity(
+            "codex",
+            executable=str(launcher),
+            observed_at="2026-07-01T12:34:56Z",
+        )
+
+        report = identity.to_dict(
+            include_private=False,
+            identity_kind="launcher",
+        )
+
+        self.assertEqual("launcher", report["identity_kind"])
+        self.assertEqual(identity.sha256, report["sha256"])
+        self.assertEqual("codex", report["reported_product"])
+        self.assertEqual(SYNTHETIC_AGENT_VERSION, report["reported_version"])
+        self.assertNotIn("product", report)
+        self.assertNotIn("version", report)
+
+    def test_identity_report_rejects_an_unknown_identity_kind(self) -> None:
+        executable = self._fake_executable(
+            "codex",
+            version_output=f"codex-cli {SYNTHETIC_AGENT_VERSION}",
+        )
+        identity = probe_agent_identity("codex", executable=str(executable))
+
+        with self.assertRaisesRegex(ValueError, "identity_kind"):
+            identity.to_dict(include_private=False, identity_kind="container")
+
     def test_cursor_probe_rejects_grok_even_when_binary_is_named_agent(self) -> None:
         agent = self._fake_executable(
             "agent",

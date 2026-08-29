@@ -361,11 +361,13 @@ then confirms import inspection and preflight leave the workspace unchanged.
 This guards the local product path without claiming live external-agent
 coverage.
 
-The bidirectional conformance runner goes one step further: it makes each side
-export a fresh bundle, runs `validate`, `ready`, and `verify-repo`, then gives
-that exact bundle to the opposite adapter's import workflow. Import runs in a
-disposable repository whose entire workspace, including `.git`, must remain
-byte-for-byte unchanged. The deterministic fake covers this contract in CI;
+The roundtrip conformance runner goes one step further: cross-adapter pairs make
+each side export a fresh bundle and cover both ordered routes, while a
+same-adapter pair covers its single self-roundtrip route once. Every export runs
+`validate`, `ready`, and `verify-repo`, then gives that exact bundle to the
+selected adapter's import workflow. Import runs in a disposable repository
+whose entire workspace, including `.git`, must remain byte-for-byte unchanged.
+The deterministic fake covers the Codex/Claude Code four-route matrix in CI;
 real-agent execution requires `--unsafe-manual`.
 
 Known local namespace or sandbox startup failures are reported as

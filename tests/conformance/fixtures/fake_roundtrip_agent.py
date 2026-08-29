@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic fake coding agent for bidirectional roundtrip coverage."""
+"""Deterministic fake coding agent for roundtrip route coverage."""
 
 from __future__ import annotations
 

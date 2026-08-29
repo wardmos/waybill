@@ -464,6 +464,38 @@ class ScenarioExecutionTests(unittest.TestCase):
 
         self.assertTrue(result.passed, result.errors)
 
+    def test_manual_environment_inherits_only_nonsecret_agent_routing(self) -> None:
+        routing = {
+            "CLAUDE_GATEWAY_MODEL": "test-gateway-model",
+            "CLAUDE_MODEL": "test-front-model",
+            "CODEX_MODEL": "test-codex-model",
+            "LITELLM_BASE_URL": "http://runtime.invalid:4100",
+        }
+        source = (
+            "import json,os,sys;"
+            "sys.stdin.read();"
+            f"expected={routing!r};"
+            "assert all(os.environ.get(k) == v for k,v in expected.items());"
+            "assert 'ANTHROPIC_AUTH_TOKEN' not in os.environ;"
+            "assert 'LITELLM_API_KEY' not in os.environ;"
+            f"print(json.dumps({valid_observation()!r}))"
+        )
+        ambient = {
+            **routing,
+            "ANTHROPIC_AUTH_TOKEN": "must-not-be-inherited",
+            "LITELLM_API_KEY": "must-not-be-inherited",
+        }
+
+        with mock.patch.dict(os.environ, ambient, clear=False):
+            result = run_scenario(
+                self.scenario,
+                [sys.executable, "-c", source],
+                self.workspace,
+                inherit_user_config=True,
+            )
+
+        self.assertTrue(result.passed, result.errors)
+
     def test_legacy_workspace_prewarm_does_not_run_external_diff_helper(self) -> None:
         def git(*arguments: str) -> None:
             subprocess.run(
@@ -931,6 +963,8 @@ class BundledScenarioTests(unittest.TestCase):
                     "--adapter",
                     "codex",
                     "--unsafe-manual",
+                    "--identity-kind",
+                    "executable",
                 ],
                 text=True,
                 capture_output=True,
@@ -980,6 +1014,8 @@ raise SystemExit(0)
                     "--adapter",
                     "codex",
                     "--unsafe-manual",
+                    "--identity-kind",
+                    "executable",
                 ],
                 text=True,
                 capture_output=True,

@@ -71,9 +71,16 @@ record exact values for both fields. A bundle missing either value may still be
 inspected, but it is not ready to be presented as a current export.
 
 `diff.patch` created by the support CLI captures staged and unstaged tracked
-changes relative to `HEAD`. For a dirty bundle that declares this artifact,
-strict repository verification compares it byte-for-byte with a bounded
-canonical Git diff. Untracked file contents are never added automatically.
+changes relative to `HEAD`. In an unborn repository, the canonical fallback
+concatenates the staged empty-tree-to-index diff and the index-to-worktree diff.
+For a dirty bundle that declares this artifact, strict repository verification
+compares it byte-for-byte with the same bounded definition. Untracked file
+contents are never added automatically.
+
+`git.diff_max_bytes` optionally records a non-default capture limit. Readers
+that do not see the field use the 1,000,000-byte default. Current writers and
+strict verifiers accept values from 1 through the 5,000,000-byte single-file
+limit and use the recorded value for both the omission note and live comparison.
 
 ## Handoff Kinds
 
@@ -113,7 +120,8 @@ Waybill Bundles are intended to be small handoff artifacts, not full repository
 snapshots. The CLI enforces default local limits before reading, redacting,
 packing, or unpacking bundle content:
 
-- `git diff --binary` capture in `waybill new`: 1,000,000 bytes.
+- `git diff --binary` capture in `waybill new`: 1,000,000 bytes by default;
+  `--max-diff-bytes` may select 1 through 5,000,000 bytes and records the value.
 - Bundle files: 100 files total.
 - Single bundle file: 5,000,000 bytes.
 - Total bundle size: 10,000,000 bytes.
@@ -169,6 +177,10 @@ An adapter exporting a bundle should:
    - `git branch --show-current`
    - `git rev-parse HEAD`
    - `git diff --binary HEAD --`
+   For an unborn repository, use `git diff --cached --` followed by
+   `git diff --` with the same canonical display options. Support-tool Git
+   reads neutralize user/system configuration and user-level attributes so the
+   same repository evidence is stable across machines.
 3. Create `.waybill/`.
 4. Write `WAYBILL.md` using the exact section headings from the standard
    template.
