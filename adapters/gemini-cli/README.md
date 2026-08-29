@@ -21,13 +21,16 @@ Gemini CLI can run interactively with `gemini`, or non-interactively with
 Prompt Gemini CLI with:
 
 ```text
+handoff
+waybill
 handoff export
 waybill export
 handoff import .waybill
 waybill import .waybill
 ```
 
-`handoff` is the primary workflow name. `waybill` is an alias.
+`handoff` is the primary workflow name and defaults to export when the
+direction is omitted. `waybill` is an alias with the same behavior.
 
 ## Install In A Project
 

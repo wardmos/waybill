@@ -155,6 +155,10 @@ The alias is:
 /waybill
 ```
 
+The direction argument is optional. `/handoff` and `/waybill` default to
+`export`. If a path is supplied without a direction, it is the export
+destination. Use an explicit `import` direction to read a bundle.
+
 These pairs are equivalent:
 
 ```text

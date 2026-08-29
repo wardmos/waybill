@@ -36,9 +36,10 @@ The default installation unit is the adapter's Skill or plugin directory:
 | Gemini CLI | `dist/adapters/gemini-cli/skills/*` in `.gemini/skills/` |
 
 The generated directories are self-contained. Copying or enabling the relevant
-one is enough for `/handoff export` and `/handoff import`; no Waybill CLI
-process runs behind the Skill. The source `adapters/` directories are not
-standalone distributions. The per-agent sections below give exact mappings.
+one is enough for `/handoff` (which defaults to export) and `/handoff import`;
+no Waybill CLI process runs behind the Skill. The source `adapters/`
+directories are not standalone distributions. The per-agent sections below
+give exact mappings.
 
 ## Optional Managed Adapter Lifecycle
 

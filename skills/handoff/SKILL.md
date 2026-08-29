@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: Export or import local Waybill Bundles for unfinished coding-agent tasks. Use when a user asks to create, inspect, or continue from a Waybill handoff or delegation bundle.
+description: Export or import local Waybill Bundles for unfinished coding-agent tasks. Use for /handoff, /waybill, or requests to create, inspect, or continue from a Waybill handoff or delegation bundle.
 ---
 
 # Waybill Handoff
@@ -10,18 +10,20 @@ tasks. `handoff` is the primary workflow name; `waybill` is an alias.
 
 ## Dispatch
 
-- For `/handoff export`, `handoff export`, `/waybill export`, `waybill export`,
-  or a request to create a handoff,
+- When neither `export` nor `import` is supplied, default to `export`.
+- For `/handoff`, `handoff`, `/waybill`, `waybill`, `/handoff export`,
+  `handoff export`, `/waybill export`, `waybill export`, or a request to create
+  a handoff,
   read [bundle format](references/bundle-format.md) and
   [export workflow](references/export.md), then follow both.
 - For `/handoff import`, `handoff import`, `/waybill import`, `waybill import`,
   or a request to continue from a bundle, read
   [bundle format](references/bundle-format.md) and
   [import workflow](references/import.md), then follow both.
-- If the requested direction is unclear, ask whether the user wants to export
-  or import.
 
 Use `.waybill/` when the user does not provide a path.
+When a command supplies a path without a direction, use it as the export
+destination.
 
 ## Resources
 

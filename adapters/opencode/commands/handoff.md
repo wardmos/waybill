@@ -1,5 +1,5 @@
 ---
-description: Export or import a Waybill Bundle for coding-agent handoff
+description: Export a Waybill Bundle by default, or import one when requested
 ---
 
 Read `.opencode/skills/handoff/SKILL.md` completely and dispatch its handoff

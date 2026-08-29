@@ -749,13 +749,14 @@ it.
 3. Ask Claude Code:
 
    ```text
-   /handoff export
+   /handoff
    ```
 
-   The alias should also work:
+   This verifies that an omitted direction defaults to export. The alias should
+   also work:
 
    ```text
-   /waybill export
+   /waybill
    ```
 
 4. Confirm `.waybill/` exists with at least:
@@ -807,7 +808,7 @@ Use the same flow in the opposite direction:
 2. Ask Codex:
 
    ```text
-   /handoff export
+   /handoff
    ```
 
 3. Open the same repository in Claude Code.

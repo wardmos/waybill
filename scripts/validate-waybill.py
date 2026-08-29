@@ -167,6 +167,10 @@ COMMAND_CLASSIFICATION_TERMS = [
     "bundle-writing",
     "commands.log",
 ]
+DEFAULT_EXPORT_RULE = (
+    "When neither `export` nor `import` is supplied, default to `export`."
+)
+
 
 class ValidationError(Exception):
     pass
@@ -522,6 +526,13 @@ def validate_canonical_handoff_skill() -> None:
         fail("canonical handoff skill must start with frontmatter")
     if "name: handoff" not in skill or "description:" not in skill:
         fail("canonical handoff skill must declare name and description")
+    if DEFAULT_EXPORT_RULE not in skill:
+        fail("canonical handoff skill must default an omitted direction to export")
+    if re.search(
+        r"ask whether (?:the user wants to )?export or import",
+        " ".join(skill.lower().split()),
+    ):
+        fail("canonical handoff skill must not prompt for an omitted direction")
 
     references = {
         name: (
@@ -613,6 +624,13 @@ def validate_handoff_wrapper(
         fail(f"{path.relative_to(ROOT)} must start with descriptive frontmatter")
     if f"`{adapter}` as `source_agent`" not in text:
         fail(f"{path.relative_to(ROOT)} must declare source_agent {adapter}")
+    if DEFAULT_EXPORT_RULE not in text:
+        fail(f"{path.relative_to(ROOT)} must default an omitted direction to export")
+    if re.search(
+        r"ask whether (?:the user wants to )?export or import",
+        " ".join(text.lower().split()),
+    ):
+        fail(f"{path.relative_to(ROOT)} must not prompt for an omitted direction")
     for name in ("bundle-format", "export", "import"):
         if f"{reference_prefix}/{name}.md" not in text:
             fail(f"{path.relative_to(ROOT)} must route to {name}.md")
@@ -643,7 +661,14 @@ def validate_codex_plugin() -> None:
     skill = skill_path.read_text()
     if "name: handoff" not in skill:
         fail("Codex handoff skill frontmatter must name the skill")
-    for command in ["/handoff export", "/waybill export", "/handoff import", "/waybill import"]:
+    for command in [
+        "`/handoff`",
+        "`/waybill`",
+        "`/handoff export`",
+        "`/waybill export`",
+        "`/handoff import`",
+        "`/waybill import`",
+    ]:
         if command not in skill:
             fail(f"Codex handoff skill missing command trigger: {command}")
 
@@ -691,6 +716,8 @@ def validate_claude_skills() -> None:
             fail(f"Claude skill {name} must start with frontmatter")
         if "argument-hint:" not in text:
             fail(f"Claude skill {name} must declare argument-hint")
+        if 'argument-hint: "[export | import] [bundle-path]"' not in text:
+            fail(f"Claude skill {name} must mark the direction as optional")
         if name == "handoff":
             validate_handoff_wrapper(path, adapter="claude-code")
         elif "../handoff/SKILL.md" not in text or "$ARGUMENTS" not in text:

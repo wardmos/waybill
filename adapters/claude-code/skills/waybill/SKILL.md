@@ -1,6 +1,6 @@
 ---
-description: Alias for the Waybill handoff workflow. Use when the user asks for /waybill export or /waybill import.
-argument-hint: "export | import <bundle-path>"
+description: Alias for the Waybill handoff workflow. Use when the user asks for /waybill, /waybill export, or /waybill import.
+argument-hint: "[export | import] [bundle-path]"
 ---
 
 # Waybill Alias

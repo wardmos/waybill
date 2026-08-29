@@ -1,6 +1,6 @@
 ---
 name: waybill
-description: Alias for the Waybill handoff workflow. Use when the user asks for waybill export or waybill import.
+description: Alias for the Waybill handoff workflow. Use when the user asks for waybill or its export or import forms.
 ---
 
 # Waybill Alias

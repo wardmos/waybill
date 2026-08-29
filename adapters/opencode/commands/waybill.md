@@ -1,5 +1,5 @@
 ---
-description: Alias for the Waybill handoff workflow
+description: Alias that exports by default or imports when requested
 ---
 
 Read `.opencode/skills/handoff/SKILL.md` completely and dispatch its handoff

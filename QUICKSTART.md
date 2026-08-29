@@ -78,14 +78,17 @@ stale install or a local edit. Codex remains outside this optional lifecycle.
 In the agent where the task is currently stuck or unfinished, ask for:
 
 ```text
-/handoff export
+/handoff
 ```
 
 The alias has the same behavior:
 
 ```text
-/waybill export
+/waybill
 ```
+
+The direction is optional: `/handoff` defaults to `export`. The explicit
+`/handoff export` and `/waybill export` forms remain supported.
 
 Expected result:
 

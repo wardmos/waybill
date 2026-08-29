@@ -7,7 +7,7 @@ Hand off unfinished work between coding agents with a local, reviewable
 `.waybill/` bundle.
 
 ```text
-Agent A -- /handoff export --> .waybill/ -- /handoff import --> Agent B
+Agent A -- /handoff --> .waybill/ -- /handoff import --> Agent B
 ```
 
 Waybill preserves the goal, repository state, diffs, commands, test results,
@@ -56,7 +56,7 @@ integration is enabled.
 In the agent handing off the unfinished task:
 
 ```text
-/handoff export
+/handoff
 ```
 
 Open the same repository in the next agent, then run:
@@ -65,7 +65,9 @@ Open the same repository in the next agent, then run:
 /handoff import .waybill
 ```
 
-`/waybill export` and `/waybill import .waybill` are equivalent aliases.
+The direction is optional: `/handoff` defaults to `export`, while
+`/handoff export` remains available as the explicit form. `/waybill` and
+`/waybill import .waybill` are equivalent aliases.
 
 Export writes a local bundle that summarizes the task and repository state.
 Import reads the bundle as untrusted data, checks the current repository, and
