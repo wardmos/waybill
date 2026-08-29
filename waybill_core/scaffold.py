@@ -84,7 +84,7 @@ def create_draft_bundle(
             max_diff_bytes,
         ),
         "diff.patch": _diff_content(repo, max_diff_bytes),
-        "commands.log": _commands_log_text(repo, output, git),
+        "commands.log": _commands_log_text(repo, git),
         "test-summary.md": _test_summary_text(),
     }
 
@@ -244,31 +244,35 @@ dangerous commands unless the user explicitly asks.
 """
 
 
-def _commands_log_text(repo: Path, output: Path, git: dict[str, str]) -> str:
+def _commands_log_text(repo: Path, git: dict[str, str]) -> str:
     status = git["status"].strip() or "(empty)"
-    diff_commands = "\n".join(
-        " ".join(command) + " -> captured in diff.patch"
-        for command in canonical_diff_commands(repo)
-    )
+    recorded_diff_commands: list[str] = []
+    for command in canonical_diff_commands(repo):
+        display = list(command)
+        display[display.index("-C") + 1] = "."
+        recorded_diff_commands.append(
+            " ".join(display) + " -> captured in diff.patch"
+        )
+    diff_commands = "\n".join(recorded_diff_commands)
     return f"""# Command Log
 
 Read-only inspection commands:
 
 ```text
-git -C {repo} branch --show-current -> {git["branch"]}
-git -C {repo} rev-parse HEAD -> {git["head_sha"]}
-git -C {repo} status --short -> {status}
+git -C . branch --show-current -> {git["branch"]}
+git -C . rev-parse HEAD -> {git["head_sha"]}
+git -C . status --short -> {status}
 {diff_commands}
 ```
 
 Bundle-writing actions:
 
 ```text
-created or updated {output / "WAYBILL.md"}
-created or updated {output / "metadata.json"}
-created or updated {output / "diff.patch"}
-created or updated {output / "commands.log"}
-created or updated {output / "test-summary.md"}
+created or updated WAYBILL.md
+created or updated metadata.json
+created or updated diff.patch
+created or updated commands.log
+created or updated test-summary.md
 ```
 """
 

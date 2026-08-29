@@ -182,13 +182,16 @@ class BundleChecker:
 
 
 def _file_identity(metadata: os.stat_result) -> tuple[int, int, int, int, int, int]:
+    # On Windows, st_ctime_ns is creation time rather than a reliable metadata
+    # change counter and can differ between path- and handle-based stat calls.
+    change_time = 0 if os.name == "nt" else metadata.st_ctime_ns
     return (
         metadata.st_dev,
         metadata.st_ino,
         metadata.st_mode,
         metadata.st_size,
         metadata.st_mtime_ns,
-        metadata.st_ctime_ns,
+        change_time,
     )
 
 
@@ -727,6 +730,10 @@ def _git_command(repo: Path, *arguments: str) -> tuple[str, ...]:
         f"core.excludesFile={os.devnull}",
         "-c",
         "core.fsmonitor=false",
+        "-c",
+        "core.autocrlf=input",
+        "-c",
+        "core.eol=lf",
         "-C",
         str(repo),
         *arguments,

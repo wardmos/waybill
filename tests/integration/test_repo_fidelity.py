@@ -108,12 +108,68 @@ class RepoFidelityTests(unittest.TestCase):
         checks = self.checks_by_name(verify_repo_state(bundle, self.repo))
         self.assertEqual("ok", checks["diff_patch"].status)
 
-    def test_new_records_the_canonical_tracked_diff_command(self) -> None:
-        commands = (self.create_bundle() / "commands.log").read_text()
-        expected = " ".join(repo_module.canonical_diff_commands(self.repo)[0])
+    def test_new_records_a_privacy_safe_canonical_tracked_diff_command(self) -> None:
+        bundle = self.create_bundle()
+        commands = (bundle / "commands.log").read_text()
+        canonical = list(repo_module.canonical_diff_commands(self.repo)[0])
+        canonical[canonical.index("-C") + 1] = "."
+        expected = " ".join(canonical)
 
         self.assertIn(expected + " -> captured in diff.patch", commands)
         self.assertNotIn(" diff --binary HEAD -- -> captured", commands)
+        self.assertNotIn(str(self.repo), commands)
+        self.assertNotIn(str(bundle), commands)
+        for artifact in (
+            "WAYBILL.md",
+            "metadata.json",
+            "diff.patch",
+            "commands.log",
+            "test-summary.md",
+        ):
+            self.assertIn(f"created or updated {artifact}", commands)
+
+    def test_repo_fidelity_normalizes_crlf_like_the_index(self) -> None:
+        crlf_repo = self.parent / "crlf-repo"
+        crlf_repo.mkdir()
+
+        def git(*arguments: str, autocrlf: str | None = None) -> None:
+            command = ["git"]
+            if autocrlf is not None:
+                command.extend(["-c", f"core.autocrlf={autocrlf}"])
+            command.extend(["-C", str(crlf_repo), *arguments])
+            subprocess.run(
+                command,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+        git("init", "-q")
+        git("config", "user.name", "Waybill Test")
+        git("config", "user.email", "waybill@example.invalid")
+        first = crlf_repo / "first.txt"
+        second = crlf_repo / "second.txt"
+        first.write_bytes(b"base\r\n")
+        second.write_bytes(b"base\r\n")
+        git("add", "first.txt", "second.txt", autocrlf="true")
+        git("commit", "-q", "-m", "initial")
+
+        for path in (first, second):
+            path.write_bytes(b"base\r\n")
+            metadata = path.stat()
+            os.utime(
+                path,
+                ns=(metadata.st_atime_ns, metadata.st_mtime_ns + 2_000_000_000),
+            )
+
+        self.assertEqual(b"", repo_module.read_repo_fidelity(crlf_repo).status)
+
+        first.write_bytes(b"changed\r\n")
+
+        self.assertEqual(
+            b" M first.txt\x00",
+            repo_module.read_repo_fidelity(crlf_repo).status,
+        )
 
     def test_new_stores_only_sha256_repo_fidelity_values_in_metadata(self) -> None:
         (self.repo / "private-untracked-name.txt").write_text("private content\n")

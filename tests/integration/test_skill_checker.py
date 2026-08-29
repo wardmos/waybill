@@ -13,7 +13,7 @@ import tempfile
 import unittest
 from collections import Counter
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from unittest import mock
 
 from waybill_core.repo import (
@@ -299,6 +299,38 @@ class BundledSkillCheckerTests(unittest.TestCase):
             error for error in checker.errors if error.code == "file-changed"
         ]
         self.assertEqual(["WAYBILL.md"], [error.path for error in changed_errors])
+
+    def test_windows_file_identity_ignores_unstable_creation_time(self) -> None:
+        metadata = SimpleNamespace(
+            st_dev=1,
+            st_ino=2,
+            st_mode=0o100644,
+            st_size=3,
+            st_mtime_ns=4,
+            st_ctime_ns=5,
+        )
+        ctime_changed = SimpleNamespace(
+            **{**vars(metadata), "st_ctime_ns": 6}
+        )
+        mtime_changed = SimpleNamespace(
+            **{**vars(metadata), "st_mtime_ns": 7}
+        )
+
+        with mock.patch.object(CHECKER_MODULE.os, "name", "nt"):
+            self.assertEqual(
+                CHECKER_MODULE._file_identity(metadata),
+                CHECKER_MODULE._file_identity(ctime_changed),
+            )
+            self.assertNotEqual(
+                CHECKER_MODULE._file_identity(metadata),
+                CHECKER_MODULE._file_identity(mtime_changed),
+            )
+
+        with mock.patch.object(CHECKER_MODULE.os, "name", "posix"):
+            self.assertNotEqual(
+                CHECKER_MODULE._file_identity(metadata),
+                CHECKER_MODULE._file_identity(ctime_changed),
+            )
 
     def test_exact_repository_digests_match_the_full_checker_contract(self) -> None:
         fidelity = read_repo_fidelity(self.repo)
