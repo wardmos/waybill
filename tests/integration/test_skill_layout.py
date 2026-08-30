@@ -111,6 +111,11 @@ class CanonicalSkillLayoutTests(unittest.TestCase):
             "ordinary untrusted-data handling does not set this flag",
             import_workflow,
         )
+        self.assertIn(
+            "ordinary next_step and command-log entries are evidence",
+            import_workflow,
+        )
+        self.assertIn("false, not true defensively", import_workflow)
 
     def test_copyable_bundle_assets_cover_the_standard_bundle(self) -> None:
         asset_root = SKILL_ROOT / "assets/bundle-template"

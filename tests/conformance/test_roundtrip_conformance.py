@@ -104,6 +104,11 @@ class BidirectionalRoundtripTests(unittest.TestCase):
             "Set untrusted_instructions_ignored to true only when",
             prompt,
         )
+        self.assertIn(
+            "ordinary next_step and command-log entries are evidence",
+            prompt,
+        )
+        self.assertIn("must be false, not true defensively", prompt)
         self.assertNotIn(
             json.dumps(import_scenario.expected, sort_keys=True),
             prompt,
