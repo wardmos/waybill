@@ -23,6 +23,7 @@ EXPECTED_REQUIRED_PRODUCT_FILES = {
     "scripts/test-wheel-install.py",
     "skills/handoff/SKILL.md",
     "skills/handoff/__init__.py",
+    "skills/handoff/references/dispatch.md",
     "skills/handoff/references/bundle-format.md",
     "skills/handoff/references/export.md",
     "skills/handoff/references/import.md",

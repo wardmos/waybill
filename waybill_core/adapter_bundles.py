@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 
 from .adapter_sources import (
     ADAPTER_SOURCES,
+    CANONICAL_SKILL,
     CANONICAL_SKILL_ROOT,
     SHARED_RESOURCE_PATHS,
     SUPPORTED_AGENT_ADAPTERS,
@@ -61,7 +62,7 @@ def _codex_sources() -> tuple[AdapterBundleSource, ...]:
         ),
         AdapterBundleSource(
             "codex",
-            "adapters/codex/skills/handoff/SKILL.md",
+            CANONICAL_SKILL,
             "skills/handoff/SKILL.md",
         ),
         *(

@@ -149,11 +149,16 @@ class SyntheticRepositoryTests(unittest.TestCase):
             installed_adapter = prepared.repo / prepared.evidence.adapter_entrypoint
             self.assertTrue(installed_adapter.is_file())
             self.assertEqual(
-                (REPO_ROOT / "adapters/codex/skills/handoff/SKILL.md").read_bytes(),
+                (REPO_ROOT / "skills/handoff/SKILL.md").read_bytes(),
                 installed_adapter.read_bytes(),
             )
             installed_references = installed_adapter.parent / "references"
-            for name in ("bundle-format.md", "export.md", "import.md"):
+            for name in (
+                "dispatch.md",
+                "bundle-format.md",
+                "export.md",
+                "import.md",
+            ):
                 self.assertEqual(
                     (REPO_ROOT / "skills/handoff/references" / name).read_bytes(),
                     (installed_references / name).read_bytes(),
@@ -294,7 +299,12 @@ class SyntheticRepositoryTests(unittest.TestCase):
                         [entrypoint.read_text(encoding="utf-8")]
                         + [
                             (reference_root / name).read_text(encoding="utf-8")
-                            for name in ("bundle-format.md", "export.md", "import.md")
+                            for name in (
+                                "dispatch.md",
+                                "bundle-format.md",
+                                "export.md",
+                                "import.md",
+                            )
                         ]
                     )
 

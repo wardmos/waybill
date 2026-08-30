@@ -99,6 +99,7 @@ REQUIRED_PRODUCT_FILES = [
     "waybill_core/validation.py",
     "skills/handoff/SKILL.md",
     "skills/handoff/__init__.py",
+    "skills/handoff/references/dispatch.md",
     "skills/handoff/references/bundle-format.md",
     "skills/handoff/references/export.md",
     "skills/handoff/references/import.md",
@@ -107,7 +108,6 @@ REQUIRED_PRODUCT_FILES = [
     ".codex-plugin/plugin.json",
     "adapters/claude-code/commands/handoff-export.md",
     "adapters/claude-code/commands/handoff-import.md",
-    "adapters/codex/skills/handoff/SKILL.md",
     "adapters/cursor/rules/handoff.mdc",
     "adapters/cursor/rules/waybill.mdc",
     "adapters/gemini-cli/skills/handoff/SKILL.md",
@@ -526,13 +526,23 @@ def validate_canonical_handoff_skill() -> None:
         fail("canonical handoff skill must start with frontmatter")
     if "name: handoff" not in skill or "description:" not in skill:
         fail("canonical handoff skill must declare name and description")
-    if DEFAULT_EXPORT_RULE not in skill:
-        fail("canonical handoff skill must default an omitted direction to export")
+    if "references/dispatch.md" not in skill:
+        fail("canonical handoff skill must route to the shared dispatch")
+    if DEFAULT_EXPORT_RULE in skill:
+        fail("canonical handoff skill must not duplicate shared dispatch rules")
+
+    dispatch = (
+        ROOT / "skills" / "handoff" / "references" / "dispatch.md"
+    ).read_text(encoding="utf-8")
+    if DEFAULT_EXPORT_RULE not in dispatch:
+        fail("shared handoff dispatch must default an omitted direction to export")
     if re.search(
         r"ask whether (?:the user wants to )?export or import",
-        " ".join(skill.lower().split()),
+        " ".join(dispatch.lower().split()),
     ):
-        fail("canonical handoff skill must not prompt for an omitted direction")
+        fail("shared handoff dispatch must not prompt for an omitted direction")
+    if "source_agent" in dispatch:
+        fail("shared handoff dispatch must not declare an agent identity")
 
     references = {
         name: (
@@ -541,8 +551,10 @@ def validate_canonical_handoff_skill() -> None:
         for name in ("bundle-format", "export", "import")
     }
     for name in references:
-        if f"references/{name}.md" not in skill:
-            fail(f"canonical handoff skill must route to {name}.md")
+        if f"({name}.md)" not in dispatch:
+            fail(f"shared handoff dispatch must route to {name}.md")
+        if f"references/{name}.md" in skill:
+            fail(f"canonical handoff skill must not route directly to {name}.md")
     if not has_command_classification_rule(references["export"]):
         fail("canonical export reference must classify command log actions")
     export_text = " ".join(references["export"].lower().split())
@@ -624,16 +636,19 @@ def validate_handoff_wrapper(
         fail(f"{path.relative_to(ROOT)} must start with descriptive frontmatter")
     if f"`{adapter}` as `source_agent`" not in text:
         fail(f"{path.relative_to(ROOT)} must declare source_agent {adapter}")
-    if DEFAULT_EXPORT_RULE not in text:
-        fail(f"{path.relative_to(ROOT)} must default an omitted direction to export")
+    dispatch_path = f"{reference_prefix}/dispatch.md"
+    if dispatch_path not in text:
+        fail(f"{path.relative_to(ROOT)} must route to the shared dispatch")
+    if DEFAULT_EXPORT_RULE in text:
+        fail(f"{path.relative_to(ROOT)} must not duplicate shared dispatch rules")
     if re.search(
         r"ask whether (?:the user wants to )?export or import",
         " ".join(text.lower().split()),
     ):
         fail(f"{path.relative_to(ROOT)} must not prompt for an omitted direction")
     for name in ("bundle-format", "export", "import"):
-        if f"{reference_prefix}/{name}.md" not in text:
-            fail(f"{path.relative_to(ROOT)} must route to {name}.md")
+        if f"{reference_prefix}/{name}.md" in text:
+            fail(f"{path.relative_to(ROOT)} must not route directly to {name}.md")
     return text
 
 
@@ -658,7 +673,7 @@ def validate_codex_plugin() -> None:
             fail(f"Codex plugin interface missing {key}")
 
     skill_path = ROOT / CANONICAL_SKILL
-    skill = skill_path.read_text()
+    skill = validate_handoff_wrapper(skill_path, adapter="codex")
     if "name: handoff" not in skill:
         fail("Codex handoff skill frontmatter must name the skill")
     for command in [

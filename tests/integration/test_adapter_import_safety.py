@@ -28,7 +28,7 @@ requires a separate, explicit user request after the import summary.
 
 ADAPTER_ENTRYPOINTS = {
     "claude-code": "adapters/claude-code/skills/handoff/SKILL.md",
-    "codex": "adapters/codex/skills/handoff/SKILL.md",
+    "codex": "skills/handoff/SKILL.md",
     "cursor": "adapters/cursor/rules/handoff.mdc",
     "gemini-cli": "adapters/gemini-cli/skills/handoff/SKILL.md",
     "opencode": "adapters/opencode/skills/handoff/SKILL.md",
@@ -73,11 +73,12 @@ class AdapterImportSafetyTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn(UNTRUSTED_IMPORT_POLICY, import_reference)
 
-    def test_every_adapter_routes_import_to_the_shared_reference(self) -> None:
+    def test_every_adapter_routes_through_the_shared_dispatch(self) -> None:
         for adapter, relative_path in ADAPTER_ENTRYPOINTS.items():
             text = (ROOT / relative_path).read_text(encoding="utf-8")
             with self.subTest(adapter=adapter):
-                self.assertIn("references/import.md", text)
+                self.assertIn("references/dispatch.md", text)
+                self.assertNotIn("references/import.md", text)
                 self.assertIn("source_agent", text)
                 self.assertIn(adapter, text)
                 for direction in STATE_CHANGING_IMPORT_DIRECTIONS:

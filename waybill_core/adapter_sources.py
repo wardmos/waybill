@@ -8,7 +8,7 @@ from pathlib import Path, PurePosixPath
 
 CANONICAL_SKILL = "skills/handoff/SKILL.md"
 CANONICAL_SKILL_ROOT = "skills/handoff"
-REFERENCE_NAMES = ("bundle-format.md", "export.md", "import.md")
+REFERENCE_NAMES = ("dispatch.md", "bundle-format.md", "export.md", "import.md")
 BUNDLE_ASSET_NAMES = (
     "WAYBILL.md",
     "metadata.json",
@@ -25,7 +25,7 @@ SHARED_RESOURCE_PATHS = (
 
 AGENT_ADAPTER_ENTRYPOINTS = {
     "claude-code": "adapters/claude-code/skills/handoff/SKILL.md",
-    "codex": "adapters/codex/skills/handoff/SKILL.md",
+    "codex": CANONICAL_SKILL,
     "cursor": "adapters/cursor/rules/handoff.mdc",
     "gemini-cli": "adapters/gemini-cli/skills/handoff/SKILL.md",
     "opencode": "adapters/opencode/skills/handoff/SKILL.md",

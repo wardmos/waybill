@@ -10,11 +10,12 @@ automation layer.
 For the shortest setup path, start with `QUICKSTART.md`. This document keeps
 the fuller per-adapter details.
 
-The only shared source of truth is `skills/handoff/`. Directories under
-`adapters/` contain product-specific wrappers, commands, rules, and manifests,
-but no copies of shared references, assets, or checker code. The support CLI
-fans the canonical files out during installation. For a standalone copyable
-distribution, build all adapters into the ignored `dist/` directory:
+The only shared source of truth is `skills/handoff/`, including direction and
+path dispatch. Directories under `adapters/` contain product-specific wrappers,
+commands, rules, and manifests, but no copies of shared workflow rules,
+references, assets, or checker code. The support CLI fans the canonical files
+out during installation. For a standalone copyable distribution, build all
+adapters into the ignored `dist/` directory:
 
 ```bash
 python3 scripts/build-adapters.py

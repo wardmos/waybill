@@ -107,7 +107,17 @@ def main() -> int:
 
     entrypoint = Path(str(adapter_data["entrypoint"]))
     adapter_text = entrypoint.read_text(encoding="utf-8")
-    if "export" not in adapter_text.lower() or ".waybill/" not in adapter_text:
+    dispatch_match = re.search(
+        r"\(([^)\n]*references/dispatch\.md)\)",
+        adapter_text,
+    )
+    if dispatch_match is None:
+        raise ValueError("canonical adapter does not route to shared dispatch")
+    dispatch_text = (entrypoint.parent / dispatch_match.group(1)).read_text(
+        encoding="utf-8"
+    )
+    instructions = f"{adapter_text}\n{dispatch_text}"
+    if "export" not in instructions.lower() or ".waybill/" not in instructions:
         raise ValueError("canonical adapter does not define export")
 
     if "assert-clean-environment" in faults:

@@ -15,9 +15,10 @@ local handoff bundle in the repository:
 This guide uses the agent-native Skill workflow. It does not require the
 Waybill CLI, a Python package, or a separate Waybill process.
 
-The complete shared workflow lives only in `skills/handoff/`. Agent-specific
-files under `adapters/` are thin source wrappers. The support CLI installs them
-directly, or `scripts/build-adapters.py` creates self-contained distributions.
+The shared dispatch and operation workflow live only in `skills/handoff/`.
+Agent-specific files under `adapters/` are thin source wrappers containing only
+platform metadata and routing details. The support CLI installs them directly,
+or `scripts/build-adapters.py` creates self-contained distributions.
 
 ## 1. Enable The Agent-Native Skill
 

@@ -10,7 +10,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SKILL_ROOT = ROOT / "skills/handoff"
-REFERENCE_NAMES = ("bundle-format.md", "export.md", "import.md")
+OPERATION_REFERENCE_NAMES = ("bundle-format.md", "export.md", "import.md")
+REFERENCE_NAMES = ("dispatch.md", *OPERATION_REFERENCE_NAMES)
 BUNDLE_ASSET_NAMES = (
     "WAYBILL.md",
     "metadata.json",
@@ -42,8 +43,15 @@ class CanonicalSkillLayoutTests(unittest.TestCase):
         self.assertTrue(skill.startswith("---\n"))
         self.assertIn("name: handoff", skill)
         self.assertIn("description:", skill)
-        for reference in REFERENCE_NAMES:
-            self.assertIn(f"references/{reference}", skill)
+        self.assertIn("references/dispatch.md", skill)
+        for reference in OPERATION_REFERENCE_NAMES:
+            self.assertNotIn(f"references/{reference}", skill)
+
+        dispatch = (SKILL_ROOT / "references/dispatch.md").read_text(
+            encoding="utf-8"
+        )
+        for reference in OPERATION_REFERENCE_NAMES:
+            self.assertIn(f"({reference})", dispatch)
 
     def test_canonical_references_are_focused_and_discoverable(self) -> None:
         references = SKILL_ROOT / "references"
@@ -183,6 +191,9 @@ class CanonicalSkillLayoutTests(unittest.TestCase):
         self.assertEqual("./", marketplace["plugins"][0]["source"]["path"])
         self.assertFalse(
             (ROOT / "adapters/codex/.codex-plugin/plugin.json").exists()
+        )
+        self.assertFalse(
+            (ROOT / "adapters/codex/skills/handoff/SKILL.md").exists()
         )
 
 if __name__ == "__main__":

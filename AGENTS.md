@@ -8,6 +8,9 @@ agent work between coding agents.
   wrappers only under `adapters/`, plus the repository-root Codex manifest and
   `.agents/plugins/marketplace.json`, in git. Standalone adapter bundles and
   agent-local installations are generated outputs.
+- Keep common dispatch and operation behavior under `skills/`. Limit adapter
+  wrappers to platform metadata, exact agent identity, argument bridging, and
+  platform-specific resource paths.
 - Do not commit local artifacts such as handoff bundles, package installs,
   caches, bytecode, archives, or generated reports.
 - Keep changes small, focused, and consistent with existing module boundaries.

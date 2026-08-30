@@ -3,9 +3,9 @@
 The repository root is the local Codex plugin for exporting and importing
 Waybill Bundles. It uses the canonical `skills/handoff/` tree directly.
 
-This directory retains the Codex-specific wrapper used when generating a
-standalone adapter distribution. Shared references, assets, and checker code
-are not tracked here.
+The optional standalone Codex distribution reuses that same canonical Skill;
+this directory contains only Codex-specific documentation. Shared dispatch,
+references, assets, and checker code remain under `skills/handoff/`.
 
 Supported commands:
 
