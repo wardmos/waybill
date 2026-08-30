@@ -18,6 +18,15 @@ from typing import Mapping
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from waybill_core.adapter_sources import (  # noqa: E402
+    INSTALL_ADAPTERS,
+    sources_for_adapter,
+)
+
+
 IGNORED_SOURCE_NAMES = {
     ".coverage",
     ".git",
@@ -37,65 +46,13 @@ IGNORED_SOURCE_NAMES = {
 }
 SOURCE_COPY_FILES = ("LICENSE", "MANIFEST.in", "pyproject.toml")
 SOURCE_COPY_DIRECTORIES = ("waybill_core", "skills", "adapters")
+# The canonical install manifest owns adapter targets. The integration sync test
+# retains an independent target oracle for catching manifest mistakes.
 EXPECTED_TEMPLATE_TARGETS = {
-    "claude-code": {
-        ".claude/skills/handoff/SKILL.md",
-        ".claude/skills/handoff/references/dispatch.md",
-        ".claude/skills/handoff/references/bundle-format.md",
-        ".claude/skills/handoff/references/export.md",
-        ".claude/skills/handoff/references/import.md",
-        ".claude/skills/handoff/assets/bundle-template/WAYBILL.md",
-        ".claude/skills/handoff/assets/bundle-template/metadata.json",
-        ".claude/skills/handoff/assets/bundle-template/diff.patch",
-        ".claude/skills/handoff/assets/bundle-template/commands.log",
-        ".claude/skills/handoff/assets/bundle-template/test-summary.md",
-        ".claude/skills/handoff/scripts/check_bundle.py",
-        ".claude/skills/waybill/SKILL.md",
-    },
-    "opencode": {
-        ".opencode/commands/handoff.md",
-        ".opencode/commands/waybill.md",
-        ".opencode/skills/handoff/SKILL.md",
-        ".opencode/skills/handoff/references/dispatch.md",
-        ".opencode/skills/handoff/references/bundle-format.md",
-        ".opencode/skills/handoff/references/export.md",
-        ".opencode/skills/handoff/references/import.md",
-        ".opencode/skills/handoff/assets/bundle-template/WAYBILL.md",
-        ".opencode/skills/handoff/assets/bundle-template/metadata.json",
-        ".opencode/skills/handoff/assets/bundle-template/diff.patch",
-        ".opencode/skills/handoff/assets/bundle-template/commands.log",
-        ".opencode/skills/handoff/assets/bundle-template/test-summary.md",
-        ".opencode/skills/handoff/scripts/check_bundle.py",
-        ".opencode/skills/waybill/SKILL.md",
-    },
-    "cursor": {
-        ".cursor/rules/handoff.mdc",
-        ".cursor/rules/waybill-handoff/references/dispatch.md",
-        ".cursor/rules/waybill-handoff/references/bundle-format.md",
-        ".cursor/rules/waybill-handoff/references/export.md",
-        ".cursor/rules/waybill-handoff/references/import.md",
-        ".cursor/rules/waybill-handoff/assets/bundle-template/WAYBILL.md",
-        ".cursor/rules/waybill-handoff/assets/bundle-template/metadata.json",
-        ".cursor/rules/waybill-handoff/assets/bundle-template/diff.patch",
-        ".cursor/rules/waybill-handoff/assets/bundle-template/commands.log",
-        ".cursor/rules/waybill-handoff/assets/bundle-template/test-summary.md",
-        ".cursor/rules/waybill-handoff/scripts/check_bundle.py",
-        ".cursor/rules/waybill.mdc",
-    },
-    "gemini-cli": {
-        ".gemini/skills/handoff/SKILL.md",
-        ".gemini/skills/handoff/references/dispatch.md",
-        ".gemini/skills/handoff/references/bundle-format.md",
-        ".gemini/skills/handoff/references/export.md",
-        ".gemini/skills/handoff/references/import.md",
-        ".gemini/skills/handoff/assets/bundle-template/WAYBILL.md",
-        ".gemini/skills/handoff/assets/bundle-template/metadata.json",
-        ".gemini/skills/handoff/assets/bundle-template/diff.patch",
-        ".gemini/skills/handoff/assets/bundle-template/commands.log",
-        ".gemini/skills/handoff/assets/bundle-template/test-summary.md",
-        ".gemini/skills/handoff/scripts/check_bundle.py",
-        ".gemini/skills/waybill/SKILL.md",
-    },
+    adapter: {
+        source.install_target for source in sources_for_adapter(adapter)
+    }
+    for adapter in INSTALL_ADAPTERS
 }
 SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 COMMAND_TIMEOUT_SECONDS = 300

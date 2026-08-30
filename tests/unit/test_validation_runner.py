@@ -13,59 +13,6 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 
-EXPECTED_REQUIRED_PRODUCT_FILES = {
-    ".codex-plugin/plugin.json",
-    "scripts/adapter-matrix.py",
-    "scripts/build-adapters.py",
-    "scripts/conformance-agents.py",
-    "scripts/conformance-exports.py",
-    "scripts/conformance-roundtrip.py",
-    "scripts/test-wheel-install.py",
-    "skills/handoff/SKILL.md",
-    "skills/handoff/__init__.py",
-    "skills/handoff/references/dispatch.md",
-    "skills/handoff/references/bundle-format.md",
-    "skills/handoff/references/export.md",
-    "skills/handoff/references/import.md",
-    "skills/handoff/assets/bundle-template/WAYBILL.md",
-    "skills/handoff/assets/bundle-template/metadata.json",
-    "skills/handoff/assets/bundle-template/diff.patch",
-    "skills/handoff/assets/bundle-template/commands.log",
-    "skills/handoff/assets/bundle-template/test-summary.md",
-    "skills/handoff/scripts/check_bundle.py",
-    "waybill_core/adapter_matrix.py",
-    "waybill_core/adapter_bundles.py",
-    "waybill_core/adapter_installation.py",
-    "waybill_core/adapter_sources.py",
-    "waybill_core/agent_identity.py",
-    "waybill_core/agent_execution.py",
-    "waybill_core/application.py",
-    "waybill_core/conformance.py",
-    "waybill_core/export_conformance.py",
-    "waybill_core/roundtrip_conformance.py",
-    "waybill_core/delegation.py",
-    "conformance/scenarios/cross-agent-divergence-recovery.json",
-    "conformance/scenarios/delegation-blocked.json",
-    "conformance/scenarios/delegation-partial.json",
-    "conformance/scenarios/delegation-request.json",
-    "conformance/scenarios/delegation-result.json",
-    "conformance/scenarios/failed-test.json",
-    "conformance/scenarios/legacy-unknown-schema.json",
-    "conformance/scenarios/malicious-embedded-instruction.json",
-    "conformance/scenarios/missing-recommended-artifact.json",
-    "conformance/scenarios/multi-request-mismatch.json",
-    "conformance/scenarios/ordinary-unfinished.json",
-    "conformance/scenarios/patch-verification.json",
-    "conformance/scenarios/read-only-code-review.json",
-    "conformance/scenarios/stale-repository.json",
-    "conformance/export-scenarios/delegation-request.json",
-    "conformance/export-scenarios/delegation-result-blocked.json",
-    "conformance/export-scenarios/delegation-result-completed.json",
-    "conformance/export-scenarios/delegation-result-partial.json",
-    "conformance/export-scenarios/malicious-session-instruction.json",
-    "conformance/export-scenarios/ordinary-unfinished.json",
-}
-
 EXPECTED_CHECK_NAMES = (
     "structure",
     "metadata schema",
@@ -123,14 +70,70 @@ def load_validator() -> ModuleType:
 
 
 class ValidationRunnerTests(unittest.TestCase):
-    def test_required_product_files_cover_modules_and_scenarios(self) -> None:
+    def test_entrypoint_inventory_excludes_domain_owned_files(self) -> None:
         validator = load_validator()
+        inventory = set(validator.REPOSITORY_ENTRYPOINT_FILES)
+        adapter_sources = {
+            source.canonical for source in validator.ADAPTER_BUNDLE_SOURCES
+        }
 
+        self.assertFalse(hasattr(validator, "REQUIRED_PRODUCT_FILES"))
+        self.assertFalse(hasattr(validator, "CORE_REPOSITORY_FILES"))
+        self.assertEqual(
+            len(validator.REPOSITORY_ENTRYPOINT_FILES),
+            len(inventory),
+        )
         self.assertTrue(
-            EXPECTED_REQUIRED_PRODUCT_FILES.issubset(
-                validator.REQUIRED_PRODUCT_FILES
+            {".gitignore", "LICENSE", "MANIFEST.in", "pyproject.toml"}
+            <= inventory
+        )
+        self.assertTrue(inventory.isdisjoint(adapter_sources))
+        self.assertFalse(
+            any(
+                path.startswith(
+                    ("conformance/scenarios/", "conformance/export-scenarios/")
+                )
+                for path in inventory
             )
         )
+        self.assertFalse(
+            any(
+                path.startswith("waybill_core/")
+                and path not in {"waybill_core/__init__.py", "waybill_core/cli.py"}
+                for path in inventory
+            )
+        )
+
+    def test_adapter_distribution_checks_manifest_owned_sources(self) -> None:
+        validator = load_validator()
+        expected = sorted(
+            {source.canonical for source in validator.ADAPTER_BUNDLE_SOURCES}
+        )
+        checked: list[str] = []
+
+        def record_required_file(path: str) -> Path:
+            checked.append(path)
+            return ROOT / path
+
+        with (
+            mock.patch.object(
+                validator,
+                "require_file",
+                side_effect=record_required_file,
+            ),
+            mock.patch.object(
+                validator,
+                "build_adapter_bundles",
+                side_effect=validator.ValidationError("stop after source checks"),
+            ),
+            self.assertRaisesRegex(
+                validator.ValidationError,
+                "stop after source checks",
+            ),
+        ):
+            validator.validate_adapter_distribution_build()
+
+        self.assertEqual(expected, checked)
 
     def test_check_inventory_is_stable_complete_and_unique(self) -> None:
         validator = load_validator()

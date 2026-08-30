@@ -36,9 +36,7 @@ from waybill_core.adapter_sources import (  # noqa: E402
     ADAPTER_SOURCES,
     BUNDLE_ASSET_NAMES,
     CANONICAL_SKILL,
-    CANONICAL_SKILL_ROOT,
     CHECKER_SCRIPT_NAMES,
-    SHARED_RESOURCE_PATHS,
     sources_for_adapter,
 )
 from waybill_core.conformance import (  # noqa: E402
@@ -55,10 +53,14 @@ from waybill_core.scaffold import STANDARD_FILES  # noqa: E402
 from waybill_core.schema_versions import CURRENT_SCHEMA_VERSION  # noqa: E402
 from waybill_core.validation import WAYBILL_SECTIONS, validate_bundle  # noqa: E402
 
-REQUIRED_PRODUCT_FILES = [
+# Keep only repository entry points without another source of truth here.
+# Domain-owned resources are validated from their manifests and definitions.
+REPOSITORY_ENTRYPOINT_FILES = (
     ".gitignore",
     ".github/workflows/ci.yml",
     ".github/workflows/publish-pypi.yml",
+    ".agents/plugins/marketplace.json",
+    "LICENSE",
     "MANIFEST.in",
     "pyproject.toml",
     "spec/metadata.schema.json",
@@ -71,87 +73,11 @@ REQUIRED_PRODUCT_FILES = [
     "scripts/smoke-agents.sh",
     "scripts/test-wheel-install.py",
     "waybill_core/__init__.py",
-    "waybill_core/adapter_bundles.py",
-    "waybill_core/adapter_matrix.py",
-    "waybill_core/adapter_installation.py",
-    "waybill_core/adapter_sources.py",
-    "waybill_core/agent_execution.py",
-    "waybill_core/agent_identity.py",
-    "waybill_core/application.py",
     "waybill_core/cli.py",
-    "waybill_core/conformance.py",
-    "waybill_core/export_conformance.py",
-    "waybill_core/roundtrip_conformance.py",
-    "waybill_core/delegation.py",
-    "waybill_core/doctor.py",
-    "waybill_core/install.py",
-    "waybill_core/limits.py",
-    "waybill_core/packing.py",
-    "waybill_core/paths.py",
-    "waybill_core/preflight.py",
-    "waybill_core/readiness.py",
-    "waybill_core/redaction.py",
-    "waybill_core/repo.py",
-    "waybill_core/rendering.py",
-    "waybill_core/scaffold.py",
-    "waybill_core/schema_versions.py",
-    "waybill_core/sharing.py",
-    "waybill_core/validation.py",
-    "skills/handoff/SKILL.md",
     "skills/handoff/__init__.py",
-    "skills/handoff/references/dispatch.md",
-    "skills/handoff/references/bundle-format.md",
-    "skills/handoff/references/export.md",
-    "skills/handoff/references/import.md",
     "adapters/__init__.py",
-    ".agents/plugins/marketplace.json",
-    ".codex-plugin/plugin.json",
-    "adapters/claude-code/commands/handoff-export.md",
-    "adapters/claude-code/commands/handoff-import.md",
-    "adapters/cursor/rules/handoff.mdc",
-    "adapters/cursor/rules/waybill.mdc",
-    "adapters/gemini-cli/skills/handoff/SKILL.md",
-    "adapters/gemini-cli/skills/waybill/SKILL.md",
-    "adapters/opencode/commands/handoff.md",
-    "adapters/opencode/commands/waybill.md",
-    "adapters/opencode/skills/handoff/SKILL.md",
-    "adapters/opencode/skills/waybill/SKILL.md",
-    "conformance/scenarios/cross-agent-divergence-recovery.json",
-    "conformance/scenarios/delegation-blocked.json",
-    "conformance/scenarios/delegation-partial.json",
-    "conformance/scenarios/delegation-request.json",
-    "conformance/scenarios/delegation-result.json",
-    "conformance/scenarios/failed-test.json",
-    "conformance/scenarios/legacy-unknown-schema.json",
-    "conformance/scenarios/malicious-embedded-instruction.json",
-    "conformance/scenarios/missing-recommended-artifact.json",
-    "conformance/scenarios/multi-request-mismatch.json",
-    "conformance/scenarios/ordinary-unfinished.json",
-    "conformance/scenarios/patch-verification.json",
-    "conformance/scenarios/read-only-code-review.json",
-    "conformance/scenarios/stale-repository.json",
-    "conformance/export-scenarios/delegation-request.json",
-    "conformance/export-scenarios/delegation-result-blocked.json",
-    "conformance/export-scenarios/delegation-result-completed.json",
-    "conformance/export-scenarios/delegation-result-partial.json",
-    "conformance/export-scenarios/malicious-session-instruction.json",
-    "conformance/export-scenarios/ordinary-unfinished.json",
+    "tests/conformance/fixtures/fake_export_agent.py",
     "tests/conformance/fixtures/fake_roundtrip_agent.py",
-]
-
-REQUIRED_PRODUCT_FILES.extend(
-    sorted(
-        (
-            {
-                source.canonical for source in ADAPTER_SOURCES
-            }
-            | {
-                f"{CANONICAL_SKILL_ROOT}/{relative}"
-                for relative in SHARED_RESOURCE_PATHS
-            }
-        )
-        - set(REQUIRED_PRODUCT_FILES)
-    )
 )
 
 EXAMPLES = [
@@ -351,7 +277,7 @@ def has_command_classification_rule(text: str) -> bool:
 
 
 def validate_structure() -> None:
-    for path in REQUIRED_PRODUCT_FILES:
+    for path in REPOSITORY_ENTRYPOINT_FILES:
         require_file(path)
 
     gitignore = (ROOT / ".gitignore").read_text()
@@ -822,6 +748,9 @@ def validate_gemini_cli_adapter() -> None:
 
 
 def validate_adapter_distribution_build() -> None:
+    for path in sorted({source.canonical for source in ADAPTER_BUNDLE_SOURCES}):
+        require_file(path)
+
     expected = {
         f"{source.adapter}/{source.target}" for source in ADAPTER_BUNDLE_SOURCES
     }
@@ -921,26 +850,8 @@ def validate_packaging_declarations() -> None:
     if "graft .codex-plugin" not in manifest:
         fail("MANIFEST.in must include the root Codex plugin manifest")
 
-    expected_modules = {
-        "waybill_core/adapter_matrix.py",
-        "waybill_core/adapter_bundles.py",
-        "waybill_core/adapter_installation.py",
-        "waybill_core/adapter_sources.py",
-        "waybill_core/agent_execution.py",
-        "waybill_core/agent_identity.py",
-        "waybill_core/application.py",
-        "waybill_core/conformance.py",
-        "waybill_core/export_conformance.py",
-        "waybill_core/roundtrip_conformance.py",
-        "waybill_core/delegation.py",
-    }
-    if not expected_modules.issubset(REQUIRED_PRODUCT_FILES):
-        fail("required product files must include every new package module")
-
     if (ROOT / "waybill_core/template-files").exists():
         fail("packaged adapter mirrors must not exist")
-    for source in ADAPTER_SOURCES:
-        require_file(source.canonical)
     if any(source.adapter == "codex" for source in ADAPTER_SOURCES):
         fail("Codex plugin must not be an init-managed packaged template")
 

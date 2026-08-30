@@ -9,6 +9,8 @@ import unittest
 from pathlib import Path
 from types import ModuleType
 
+from waybill_core.adapter_sources import INSTALL_ADAPTERS, sources_for_adapter
+
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "test-wheel-install.py"
@@ -24,6 +26,17 @@ def load_script() -> ModuleType:
 
 
 class WheelInstallScriptTests(unittest.TestCase):
+    def test_template_expectations_follow_the_canonical_manifest(self) -> None:
+        module = load_script()
+        expected = {
+            adapter: {
+                source.install_target for source in sources_for_adapter(adapter)
+            }
+            for adapter in INSTALL_ADAPTERS
+        }
+
+        self.assertEqual(expected, module.EXPECTED_TEMPLATE_TARGETS)
+
     def test_copy_uses_a_clean_temporary_source_tree(self) -> None:
         module = load_script()
         with tempfile.TemporaryDirectory() as parent:
