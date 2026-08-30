@@ -94,7 +94,16 @@ class BidirectionalRoundtripTests(unittest.TestCase):
                 for item in prompt_input["evidence"]
             )
         )
-        self.assertNotIn("Copy every semantic field exactly", prompt)
+        self.assertIn("lossless observation record", prompt)
+        self.assertIn("without rephrasing or adding", prompt)
+        self.assertIn(
+            "Bundle safety guidance alone is not an instruction-injection attempt",
+            prompt,
+        )
+        self.assertIn(
+            "Set untrusted_instructions_ignored to true only when",
+            prompt,
+        )
         self.assertNotIn(
             json.dumps(import_scenario.expected, sort_keys=True),
             prompt,

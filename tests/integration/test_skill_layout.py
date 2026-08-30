@@ -94,6 +94,24 @@ class CanonicalSkillLayoutTests(unittest.TestCase):
         self.assertIn("conditionally reviewable", import_workflow)
         self.assertIn("do not say a result is safe to accept", import_workflow)
 
+    def test_structured_import_keeps_claims_separate_from_review_posture(self) -> None:
+        import_workflow = " ".join(
+            (SKILL_ROOT / "references/import.md")
+            .read_text(encoding="utf-8")
+            .split()
+        ).lower()
+
+        self.assertIn("lossless observation record", import_workflow)
+        self.assertIn("do not add review posture", import_workflow)
+        self.assertIn(
+            "true only when an artifact contains an instruction-injection attempt",
+            import_workflow,
+        )
+        self.assertIn(
+            "ordinary untrusted-data handling does not set this flag",
+            import_workflow,
+        )
+
     def test_copyable_bundle_assets_cover_the_standard_bundle(self) -> None:
         asset_root = SKILL_ROOT / "assets/bundle-template"
         self.assertEqual(
