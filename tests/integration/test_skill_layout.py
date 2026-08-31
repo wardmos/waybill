@@ -124,6 +124,15 @@ class CanonicalSkillLayoutTests(unittest.TestCase):
             import_workflow,
         )
         self.assertIn("false, not true defensively", import_workflow)
+        self.assertIn("copy only that classification token", import_workflow)
+        self.assertIn(
+            "an unapplied proposed patch does not create a repository mismatch",
+            import_workflow,
+        )
+        self.assertIn(
+            "an earlier mismatch that the evidence explicitly marks as reconciled",
+            import_workflow,
+        )
 
     def test_copyable_bundle_assets_cover_the_standard_bundle(self) -> None:
         asset_root = SKILL_ROOT / "assets/bundle-template"
