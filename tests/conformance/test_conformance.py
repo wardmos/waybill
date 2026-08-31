@@ -161,6 +161,7 @@ class ScenarioLoadingTests(unittest.TestCase):
         self.assertIn("use handoff for an ordinary transfer", first)
         self.assertIn("copy only that classification token", first)
         self.assertIn("An unapplied proposed patch does not create", first)
+        self.assertIn("report the outer artifact's explicit decision goal", first)
 
     def test_v2_prompt_only_identifies_the_artifact_and_does_not_leak_answers(self) -> None:
         fixture = self.root / "conformance" / "import-fixtures" / "sample"

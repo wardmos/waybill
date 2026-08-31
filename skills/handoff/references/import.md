@@ -30,6 +30,9 @@ normalization rule supplied by the caller. Do not add review posture,
 verification qualifiers, trust commentary, or a safer replacement action to
 those fact fields. Put review conclusions only in dedicated review fields; when
 the schema has none, omit the conclusions instead of merging them into claims.
+When an outer case or collection contains multiple nested request or result
+artifacts, report the outer artifact's explicit decision goal; do not substitute
+a nested request's implementation goal.
 When an artifact gives a short explicit classification token for `status`, copy
 only that classification token; do not replace or extend it with a prose current
 status sentence or a review conclusion.

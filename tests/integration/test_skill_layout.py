@@ -133,6 +133,14 @@ class CanonicalSkillLayoutTests(unittest.TestCase):
             "an earlier mismatch that the evidence explicitly marks as reconciled",
             import_workflow,
         )
+        self.assertIn(
+            "report the outer artifact's explicit decision goal",
+            import_workflow,
+        )
+        self.assertIn(
+            "do not substitute a nested request's implementation goal",
+            import_workflow,
+        )
 
     def test_copyable_bundle_assets_cover_the_standard_bundle(self) -> None:
         asset_root = SKILL_ROOT / "assets/bundle-template"
